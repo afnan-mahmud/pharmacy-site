@@ -11,9 +11,17 @@ export type SessionPayload = {
 
 const SESSION_DURATION = "7d";
 
+const MIN_SESSION_SECRET_LENGTH = 32;
+
 function secretKey(): Uint8Array {
   const secret = process.env.SESSION_SECRET;
   if (!secret) throw new Error("SESSION_SECRET is not set");
+  if (secret.length < MIN_SESSION_SECRET_LENGTH) {
+    throw new Error(
+      `SESSION_SECRET must be at least ${MIN_SESSION_SECRET_LENGTH} characters long ` +
+        `(got ${secret.length}). A short secret makes session tokens brute-forceable offline.`,
+    );
+  }
   return new TextEncoder().encode(secret);
 }
 
@@ -46,7 +54,13 @@ export async function readSessionToken(
 ): Promise<SessionPayload | null> {
   if (!token) return null;
   try {
-    const { payload } = await jwtVerify(token, secretKey());
+    // Pin the algorithm explicitly. A Uint8Array key already restricts jose
+    // to HMAC, so this isn't exploitable today, but it's cheap defense-in-depth
+    // in case this module ever grows asymmetric keys (e.g. RS256) alongside
+    // HS256 — an attacker shouldn't be able to pick the algorithm.
+    const { payload } = await jwtVerify(token, secretKey(), {
+      algorithms: ["HS256"],
+    });
     const { userId, role, name } = payload as Record<string, unknown>;
     if (typeof userId !== "string") return null;
     if (role !== "admin" && role !== "buyer") return null;
