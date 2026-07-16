@@ -1,37 +1,9 @@
-import { describe, it, expect, beforeAll } from "vitest";
-import mongoose from "mongoose";
+import { describe, it, expect } from "vitest";
 import { setupTestDb } from "../helpers/db";
 import { getSettings, updateSettings } from "@/actions/settings";
 import { SettingsModel } from "@/models/Settings";
 
 setupTestDb();
-
-// Bridge: setupTestDb() connects mongoose directly against the in-memory
-// replica set, but connectDb() (called by the actions under test) tracks its
-// own connection on globalThis._mongooseCache and only (re)connects there,
-// requiring MONGODB_URI to do so. Without this, every action call would fail
-// with "MONGODB_URI is not set" even though mongoose is already connected.
-// Seeding the cache with the already-open connection makes connectDb() a
-// no-op short-circuit, matching how tests/lib/db.test.ts already pokes this
-// same global for equivalent reasons.
-type MongooseCache = {
-  conn: typeof mongoose | null;
-  promise: Promise<typeof mongoose> | null;
-};
-const globalWithMongoose = globalThis as typeof globalThis & {
-  _mongooseCache?: MongooseCache;
-};
-beforeAll(() => {
-  // db.ts closures over this object at import time and only ever mutates its
-  // fields in place (see tests/lib/db.test.ts's resetMongooseCache) —
-  // reassigning globalThis._mongooseCache to a new object would not be seen
-  // by that closure, so the existing object's fields must be set directly.
-  const cache = globalWithMongoose._mongooseCache;
-  if (cache) {
-    cache.conn = mongoose;
-    cache.promise = Promise.resolve(mongoose);
-  }
-});
 
 describe("getSettings", () => {
   it("creates the singleton with the placeholder name on first read", async () => {

@@ -2,6 +2,15 @@ import { MongoMemoryReplSet } from "mongodb-memory-server";
 import mongoose from "mongoose";
 import { beforeAll, afterAll, afterEach } from "vitest";
 
+type MongooseCache = {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
+};
+
+const globalWithMongoose = globalThis as typeof globalThis & {
+  _mongooseCache?: MongooseCache;
+};
+
 /**
  * Starts an in-memory MongoDB replica set for the current test file and points
  * Mongoose at it. Replica-set mode (not the simpler standalone) is required
@@ -13,6 +22,28 @@ export function setupTestDb(): void {
   beforeAll(async () => {
     replSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
     await mongoose.connect(replSet.getUri());
+
+    // Server actions under test call `connectDb()` (src/lib/db.ts), which is
+    // gated on process.env.MONGODB_URI and throws "MONGODB_URI is not set"
+    // if it's absent — which it is here, since we connect Mongoose directly
+    // to the in-memory replica set above rather than going through that
+    // helper. connectDb() short-circuits and returns immediately whenever
+    // `globalThis._mongooseCache.conn` is already set, so seeding that field
+    // with our already-open connection makes connectDb() a no-op instead of
+    // throwing, letting any test that calls setupTestDb() exercise server
+    // actions with no further setup.
+    //
+    // connectDb() closures over the cache object at import time and only
+    // ever mutates its fields in place, so we must set fields on the
+    // existing object (creating it if it doesn't exist yet) rather than
+    // replacing globalThis._mongooseCache wholesale — a fresh object
+    // wouldn't be visible to that closure. (Same constraint documented in
+    // tests/lib/db.test.ts's resetMongooseCache, which pokes this same
+    // global for the equivalent reason of testing connectDb() directly.)
+    const cache = globalWithMongoose._mongooseCache ?? { conn: null, promise: null };
+    cache.conn = mongoose;
+    cache.promise = Promise.resolve(mongoose);
+    globalWithMongoose._mongooseCache = cache;
   });
 
   // Only clears documents, not indexes or the mongoose model registry — those
@@ -31,5 +62,14 @@ export function setupTestDb(): void {
   afterAll(async () => {
     await mongoose.disconnect();
     await replSet.stop();
+
+    // Tear the cache back down so no connection state can leak to another
+    // test file if per-file isolation is ever relaxed (see the afterEach
+    // comment above for the same concern applied to collections/indexes).
+    const cache = globalWithMongoose._mongooseCache;
+    if (cache) {
+      cache.conn = null;
+      cache.promise = null;
+    }
   });
 }
