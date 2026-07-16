@@ -11,13 +11,44 @@ export type SettingsInput = {
   invoicePrefix: string;
 };
 
+const DUPLICATE_KEY_ERROR_CODE = 11000;
+
+function isDuplicateKeyError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === DUPLICATE_KEY_ERROR_CODE
+  );
+}
+
+// Two callers can both race a cold-start read/write past the "does the
+// singleton exist?" check and both attempt to upsert-insert it. The unique
+// index on `key` guarantees only one insert wins; MongoDB surfaces the
+// loser's attempt as an E11000 duplicate-key error instead of silently
+// merging it. Retrying the identical operation is sufficient to recover:
+// by the time it runs again, the winner's document already exists, so the
+// same query now matches an existing document instead of trying (and
+// failing) to insert a second one.
+async function withDuplicateKeyRetry<T>(operation: () => Promise<T>): Promise<T> {
+  try {
+    return await operation();
+  } catch (error) {
+    if (!isDuplicateKeyError(error)) throw error;
+    return operation();
+  }
+}
+
 export async function getSettings(): Promise<SettingsDoc> {
   await connectDb();
-  const settings = await SettingsModel.findOneAndUpdate(
-    { key: "singleton" },
-    { $setOnInsert: { key: "singleton" } },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
-  ).lean<SettingsDoc>();
+
+  const settings = await withDuplicateKeyRetry(() =>
+    SettingsModel.findOneAndUpdate(
+      { key: "singleton" },
+      { $setOnInsert: { key: "singleton" } },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    ).lean<SettingsDoc>(),
+  );
   return settings!;
 }
 
@@ -30,19 +61,21 @@ export async function updateSettings(input: SettingsInput): Promise<SettingsDoc>
   if (!pharmacyName) throw new Error("Pharmacy name is required");
   if (!invoicePrefix) throw new Error("Invoice prefix is required");
 
-  const settings = await SettingsModel.findOneAndUpdate(
-    { key: "singleton" },
-    {
-      $set: {
-        pharmacyName,
-        invoicePrefix,
-        address: input.address.trim(),
-        phone: input.phone.trim(),
+  const settings = await withDuplicateKeyRetry(() =>
+    SettingsModel.findOneAndUpdate(
+      { key: "singleton" },
+      {
+        $set: {
+          pharmacyName,
+          invoicePrefix,
+          address: input.address.trim(),
+          phone: input.phone.trim(),
+        },
+        $setOnInsert: { key: "singleton" },
       },
-      $setOnInsert: { key: "singleton" },
-    },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
-  ).lean<SettingsDoc>();
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    ).lean<SettingsDoc>(),
+  );
 
   revalidatePath("/", "layout");
   return settings!;
