@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { getSettings } from "@/actions/settings";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,10 +12,12 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export async function generateMetadata(): Promise<Metadata> {
-  const settings = await getSettings();
-  return { title: settings.pharmacyName };
-}
+// Static fallback title for routes outside the (admin) group (e.g. /login,
+// /_not-found). It must not depend on the database and must not name the
+// pharmacy — that comes only from Settings, read by the (admin) layout.
+export const metadata: Metadata = {
+  title: "Pharmacy Management System",
+};
 
 export default function RootLayout({
   children,
