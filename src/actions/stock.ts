@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { connectDb } from "@/lib/db";
 import { requireAdminAction } from "@/lib/session";
 import { boxesToPatas } from "@/lib/units";
+import { applyStockDelta } from "@/lib/stockTransaction";
 import { MedicineModel } from "@/models/Medicine";
 import { StockEntryModel, type StockEntryDoc } from "@/models/StockEntry";
 
@@ -50,35 +51,35 @@ export async function stockIn(input: StockInInput): Promise<void> {
   await connectDb();
   validate(input);
 
-  const medicine = await MedicineModel.findById(input.medicineId);
-  if (!medicine) throw new Error("Medicine not found");
-
-  const patasAdded = boxesToPatas(input.boxes, medicine.patasPerBox);
-
   // The stock increment and the audit record must both land or neither:
   // an increment without a record is stock nobody can account for, and a
   // record without an increment is a lie in the audit log.
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      // The medicine was read via findById *before* this session opened, so
-      // it could have been deleted (or otherwise stopped matching) in the
-      // window between that read and this transaction starting. updateOne
-      // matching zero documents is a silent no-op by default — checking
-      // matchedCount here, inside the transaction, is what turns that race
-      // into a hard abort instead of an audit record for an increment that
-      // never happened. This keeps the invariant transaction-local rather
-      // than depending on a second round-trip (re-reading inside the
-      // session) or a schema-level conditional-update trick, either of
-      // which would work but add complexity this doesn't need.
-      const result = await MedicineModel.updateOne(
-        { _id: medicine._id },
-        { $inc: { stockPatas: patasAdded } },
-        { session },
+      // The read lives *inside* withTransaction, not before it. MongoDB
+      // retries this callback from the top on a TransientTransactionError
+      // (e.g. a write conflict) — a read taken before the transaction opened
+      // would not be re-evaluated by that retry, so a retry could act on
+      // data that is already stale by the time it runs. Reading in here
+      // means every attempt, including retries, sees a fresh document.
+      const medicine = await MedicineModel.findById(input.medicineId).session(
+        session,
       );
-      if (result.matchedCount === 0) {
-        throw new Error("Medicine not found");
-      }
+      if (!medicine) throw new Error("Medicine not found");
+
+      const patasAdded = boxesToPatas(input.boxes, medicine.patasPerBox);
+
+      // See src/lib/stockTransaction.ts for why this goes through
+      // applyStockDelta rather than a bare `updateOne(..., { $inc })`, even
+      // though stockIn's delta is always positive and so can never fail the
+      // "enough stock" half of the precondition — only the "still exists"
+      // half. matchedCount === 0 here can only mean the medicine stopped
+      // existing in the (very small) window since the read above, which
+      // this treats as the same "not found" failure the read itself already
+      // guards against.
+      const matched = await applyStockDelta(medicine._id, patasAdded, session);
+      if (!matched) throw new Error("Medicine not found");
 
       await StockEntryModel.create(
         [

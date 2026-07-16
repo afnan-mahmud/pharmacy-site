@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { stockIn } from "@/actions/stock";
-import { formatStock } from "@/lib/units";
+import { formatStock, boxesToPatas } from "@/lib/units";
 import { MedicinePicker, type PickedMedicine } from "./MedicinePicker";
 
 export function StockInForm() {
@@ -70,9 +70,9 @@ export function StockInForm() {
             <input id="boxes" type="number" min={1} value={boxes} required
               onChange={(e) => setBoxes(e.target.value)}
               className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-            {boxes && Number(boxes) > 0 && (
+            {boxes && Number.isInteger(Number(boxes)) && Number(boxes) > 0 && (
               <p className="text-xs text-slate-500">
-                = {Number(boxes) * medicine.patasPerBox} pata
+                = {boxesToPatas(Number(boxes), medicine.patasPerBox)} pata
               </p>
             )}
           </div>
