@@ -27,7 +27,13 @@ export function SettingsForm({
     setDone(false);
 
     try {
-      await updateSettings(values);
+      const saved = await updateSettings(values);
+      setValues({
+        pharmacyName: saved.pharmacyName,
+        address: saved.address,
+        phone: saved.phone,
+        invoicePrefix: saved.invoicePrefix,
+      });
       setDone(true);
       router.refresh();
     } catch (err) {
@@ -35,6 +41,11 @@ export function SettingsForm({
     } finally {
       setBusy(false);
     }
+  }
+
+  function updateField(patch: Partial<typeof values>) {
+    setValues((prev) => ({ ...prev, ...patch }));
+    setDone(false);
   }
 
   const field = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm";
@@ -49,25 +60,25 @@ export function SettingsForm({
       <div className="space-y-1">
         <label htmlFor="pharmacyName" className="text-sm text-slate-700">Pharmacy-r nam</label>
         <input id="pharmacyName" className={field} required value={values.pharmacyName}
-          onChange={(e) => setValues({ ...values, pharmacyName: e.target.value })} />
+          onChange={(e) => updateField({ pharmacyName: e.target.value })} />
       </div>
 
       <div className="space-y-1">
         <label htmlFor="address" className="text-sm text-slate-700">Address</label>
         <input id="address" className={field} value={values.address}
-          onChange={(e) => setValues({ ...values, address: e.target.value })} />
+          onChange={(e) => updateField({ address: e.target.value })} />
       </div>
 
       <div className="space-y-1">
         <label htmlFor="phone" className="text-sm text-slate-700">Phone</label>
         <input id="phone" className={field} value={values.phone}
-          onChange={(e) => setValues({ ...values, phone: e.target.value })} />
+          onChange={(e) => updateField({ phone: e.target.value })} />
       </div>
 
       <div className="space-y-1">
         <label htmlFor="invoicePrefix" className="text-sm text-slate-700">Invoice prefix</label>
         <input id="invoicePrefix" className={field} required value={values.invoicePrefix}
-          onChange={(e) => setValues({ ...values, invoicePrefix: e.target.value })} />
+          onChange={(e) => updateField({ invoicePrefix: e.target.value })} />
         <p className="text-xs text-slate-500">
           Invoice number eirokom hobe: {values.invoicePrefix || "ABC"}-000041
         </p>
