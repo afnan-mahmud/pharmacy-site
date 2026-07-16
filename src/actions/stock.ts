@@ -14,12 +14,36 @@ export type StockInInput = {
   userId: string;
 };
 
+/**
+ * This action is a network-reachable trust boundary (same convention as
+ * src/actions/medicines.ts): every field is validated here before it
+ * touches Mongoose/Mongo, so a malformed payload fails with a clean domain
+ * error instead of a raw CastError or driver exception.
+ */
+function validate(input: StockInInput): void {
+  // A malformed id would otherwise reach findById and surface a raw
+  // Mongoose CastError instead of a clean "not found".
+  if (!mongoose.Types.ObjectId.isValid(input.medicineId)) {
+    throw new Error("Medicine not found");
+  }
+  if (
+    typeof input.boxes !== "number" ||
+    !Number.isInteger(input.boxes) ||
+    input.boxes < 1
+  ) {
+    throw new Error("Box sonkha 1 er kom hote parbe na");
+  }
+  if (typeof input.note !== "string") {
+    throw new Error("note must be a string");
+  }
+  if (!mongoose.Types.ObjectId.isValid(input.userId)) {
+    throw new Error("Invalid userId");
+  }
+}
+
 export async function stockIn(input: StockInInput): Promise<void> {
   await connectDb();
-
-  if (!Number.isInteger(input.boxes) || input.boxes < 1) {
-    throw new Error("Box সংখ্যা 1 er kom hote parbe na");
-  }
+  validate(input);
 
   const medicine = await MedicineModel.findById(input.medicineId);
   if (!medicine) throw new Error("Medicine not found");
@@ -27,15 +51,30 @@ export async function stockIn(input: StockInInput): Promise<void> {
   const patasAdded = boxesToPatas(input.boxes, medicine.patasPerBox);
 
   // The stock increment and the audit record must both land or neither:
-  // an increment without a record is stock nobody can account for.
+  // an increment without a record is stock nobody can account for, and a
+  // record without an increment is a lie in the audit log.
   const session = await mongoose.startSession();
   try {
     await session.withTransaction(async () => {
-      await MedicineModel.updateOne(
+      // The medicine was read via findById *before* this session opened, so
+      // it could have been deleted (or otherwise stopped matching) in the
+      // window between that read and this transaction starting. updateOne
+      // matching zero documents is a silent no-op by default — checking
+      // matchedCount here, inside the transaction, is what turns that race
+      // into a hard abort instead of an audit record for an increment that
+      // never happened. This keeps the invariant transaction-local rather
+      // than depending on a second round-trip (re-reading inside the
+      // session) or a schema-level conditional-update trick, either of
+      // which would work but add complexity this doesn't need.
+      const result = await MedicineModel.updateOne(
         { _id: medicine._id },
         { $inc: { stockPatas: patasAdded } },
         { session },
       );
+      if (result.matchedCount === 0) {
+        throw new Error("Medicine not found");
+      }
+
       await StockEntryModel.create(
         [
           {
