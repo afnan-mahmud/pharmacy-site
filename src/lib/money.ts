@@ -3,14 +3,17 @@
  * This module is the only place taka and paisa convert.
  */
 
-export function takaToPaisa(taka: string | number): number {
-  const value = typeof taka === "string" ? Number(taka.trim()) : taka;
+const PLAIN_DECIMAL = /^-?\d+(\.\d+)?$/;
 
-  if (typeof taka === "string" && taka.trim() === "") {
-    throw new Error("Amount is not a valid amount");
+export function takaToPaisa(taka: string | number): number {
+  const trimmed = typeof taka === "string" ? taka.trim() : undefined;
+  const value = typeof taka === "string" ? Number(trimmed) : taka;
+
+  if (typeof taka === "string" && !PLAIN_DECIMAL.test(trimmed as string)) {
+    throw new Error("Amount is not a valid number");
   }
   if (!Number.isFinite(value)) {
-    throw new Error("Amount is not a valid amount");
+    throw new Error("Amount is not a valid number");
   }
   if (value < 0) {
     throw new Error("Amount cannot be negative");

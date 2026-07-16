@@ -26,8 +26,48 @@ describe("takaToPaisa", () => {
   });
 
   it("rejects non-numeric input", () => {
-    expect(() => takaToPaisa("abc")).toThrow("not a valid amount");
-    expect(() => takaToPaisa(NaN)).toThrow("not a valid amount");
+    expect(() => takaToPaisa("abc")).toThrow("not a valid number");
+    expect(() => takaToPaisa(NaN)).toThrow("not a valid number");
+  });
+
+  it("accepts plain decimal strings with surrounding whitespace", () => {
+    expect(takaToPaisa(" 12 ")).toBe(1200);
+    expect(takaToPaisa("12.5")).toBe(1250);
+    expect(takaToPaisa(" 0.05 ")).toBe(5);
+    expect(takaToPaisa("0")).toBe(0);
+  });
+
+  it("rejects exponential notation", () => {
+    expect(() => takaToPaisa("1e3")).toThrow("not a valid number");
+  });
+
+  it("rejects hex notation", () => {
+    expect(() => takaToPaisa("0x10")).toThrow("not a valid number");
+  });
+
+  it("rejects trailing garbage after a number", () => {
+    expect(() => takaToPaisa("12abc")).toThrow("not a valid number");
+  });
+
+  it("rejects empty or whitespace-only strings", () => {
+    expect(() => takaToPaisa("")).toThrow("not a valid number");
+    expect(() => takaToPaisa("  ")).toThrow("not a valid number");
+  });
+
+  it("rejects comma-grouped input", () => {
+    expect(() => takaToPaisa("1,250")).toThrow("not a valid number");
+  });
+
+  it("rejects a taka sign prefix", () => {
+    expect(() => takaToPaisa("৳12")).toThrow("not a valid number");
+  });
+
+  it("rejects an explicit leading plus sign", () => {
+    expect(() => takaToPaisa("+12")).toThrow("not a valid number");
+  });
+
+  it("still treats a leading minus as negative, not a format error", () => {
+    expect(() => takaToPaisa("-5")).toThrow("cannot be negative");
   });
 });
 
