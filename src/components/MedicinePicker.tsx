@@ -23,29 +23,44 @@ export function MedicinePicker({
 }) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<PickedMedicine[]>([]);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!query.trim()) {
       setResults([]);
+      setError("");
       return;
     }
 
     // Debounced so typing does not fire a query per keystroke.
     let cancelled = false;
     const timer = setTimeout(async () => {
-      const found = await searchMedicines(query);
-      if (cancelled) return;
-      setResults(
-        found.map((m) => ({
-          id: String(m._id),
-          name: m.name,
-          genericName: m.genericName,
-          patasPerBox: m.patasPerBox,
-          boxPricePaisa: m.boxPricePaisa,
-          pataPricePaisa: m.pataPricePaisa,
-          stockPatas: m.stockPatas,
-        })),
-      );
+      try {
+        const found = await searchMedicines(query);
+        if (cancelled) return;
+        setError("");
+        setResults(
+          found.map((m) => ({
+            id: String(m._id),
+            name: m.name,
+            genericName: m.genericName,
+            patasPerBox: m.patasPerBox,
+            boxPricePaisa: m.boxPricePaisa,
+            pataPricePaisa: m.pataPricePaisa,
+            stockPatas: m.stockPatas,
+          })),
+        );
+      } catch (err) {
+        // Without this catch, a rejection here (e.g. requireAdminAction()
+        // throwing because a 7-day session just expired) became an
+        // unhandled promise rejection and the dropdown silently showed no
+        // results — indistinguishable from "no medicine matches", when the
+        // real problem is "you're logged out." Surfacing it explicitly so
+        // the owner sees a reason instead of a mid-sale dead end.
+        if (cancelled) return;
+        setResults([]);
+        setError(err instanceof Error ? err.message : "Kichu ekta bhul holo");
+      }
     }, 250);
 
     return () => {
@@ -88,6 +103,11 @@ export function MedicinePicker({
             </li>
           ))}
         </ul>
+      )}
+      {error && (
+        <p role="alert" className="mt-1 text-xs text-red-600">
+          {error}
+        </p>
       )}
     </div>
   );
