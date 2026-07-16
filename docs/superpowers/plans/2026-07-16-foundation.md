@@ -1340,6 +1340,7 @@ git commit -m "feat: add admin login with session cookies and seed script"
 - Create: `src/app/(admin)/dashboard/page.tsx`
 - Create: `src/components/AdminNav.tsx`
 - Modify: `src/app/page.tsx`
+- Modify: `src/app/layout.tsx`
 
 **Interfaces:**
 - Consumes: `requireAdmin` (Task 7), `getSettings` (Task 5)
@@ -1432,7 +1433,25 @@ export default function DashboardPage() {
 }
 ```
 
-- [ ] **Step 4: Redirect the root to the dashboard**
+- [ ] **Step 4: Replace the scaffold's browser tab title**
+
+The scaffold left `metadata.title` as "Create Next App". The pharmacy name must never be hardcoded, so the root layout reads it from Settings.
+
+In `src/app/layout.tsx`, delete the exported `metadata` constant and replace it with:
+
+```typescript
+import type { Metadata } from "next";
+import { getSettings } from "@/actions/settings";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getSettings();
+  return { title: settings.pharmacyName };
+}
+```
+
+Leave the rest of the root layout as the scaffold generated it.
+
+- [ ] **Step 5: Redirect the root to the dashboard**
 
 Replace `src/app/page.tsx` entirely:
 
@@ -1444,7 +1463,7 @@ export default function Home() {
 }
 ```
 
-- [ ] **Step 5: Verify protection works**
+- [ ] **Step 6: Verify protection works**
 
 ```bash
 npm run dev
@@ -1457,10 +1476,10 @@ npm run dev
 - In MongoDB Atlas, change `pharmacyName` on the settings document to "Test Name" and reload.
   Expected: the nav shows "Test Name". Change it back.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add "src/app/(admin)" src/components/AdminNav.tsx src/app/page.tsx
+git add "src/app/(admin)" src/components/AdminNav.tsx src/app/page.tsx src/app/layout.tsx
 git commit -m "feat: add protected admin shell reading pharmacy name from settings"
 ```
 
