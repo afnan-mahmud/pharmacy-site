@@ -18,8 +18,7 @@
 - **Currency symbol:** `৳` — the Taka sign.
 - **Two roles only:** `admin`, `buyer`.
 - **Timezone:** `Asia/Dhaka` for all date display and "today" calculations.
-- **Tests must pass before a task is considered done.**
-- **This project is not under version control, by the user's explicit choice.** Every step in this plan labelled "Commit" is to be **skipped** — do not run `git init`, `git add`, or `git commit`. Finish the task at the step before it. The commit steps are left in the document so they can be honoured if version control is added later.
+- **Tests must pass before every commit.**
 
 ---
 
@@ -131,6 +130,24 @@ Expected: PASS, 1 test passing.
 
 Run: `npm run dev`
 Expected: server starts on http://localhost:3000 with no errors. Stop it with Ctrl-C.
+
+- [ ] **Step 9: Restore the gitignore entries create-next-app overwrote**
+
+`create-next-app` replaces `.gitignore`. Confirm it still ignores `.env.local`, `node_modules/`, and `.next/`, and re-add the scratch directory used by the execution tooling:
+
+```bash
+grep -q '^\.superpowers/$' .gitignore || echo '.superpowers/' >> .gitignore
+grep -qE '^\.env\*?\.local$|^\.env\.local$' .gitignore || echo '.env.local' >> .gitignore
+```
+
+- [ ] **Step 10: Commit the scaffold**
+
+The scaffold must be committed here — later tasks are reviewed as diffs against this baseline, and an uncommitted scaffold would pollute every one of them.
+
+```bash
+git add -A
+git commit -m "chore: scaffold next.js app with vitest"
+```
 
 ---
 
