@@ -21,14 +21,53 @@ beforeEach(async () => {
 
 describe("login", () => {
   it("succeeds with correct credentials and sets a session cookie", async () => {
-    const { login } = await import("@/actions/auth");
-    const result = await login("owner", "secret123");
-    expect(result.ok).toBe(true);
-    expect(cookieStore.set).toHaveBeenCalledOnce();
+    // src/actions/auth.ts reads process.env.NODE_ENV at call time, so
+    // vi.stubEnv lets us pin it per-test; vi.unstubAllEnvs() in `finally`
+    // restores the original value so it can't leak into other tests in
+    // this file. NODE_ENV is typed read-only by @types/node, so a direct
+    // `process.env.NODE_ENV = ...` assignment doesn't type-check — stubEnv
+    // is also the vitest-blessed way to do this.
+    vi.stubEnv("NODE_ENV", "development");
+    try {
+      const { login } = await import("@/actions/auth");
+      const result = await login("owner", "secret123");
+      expect(result.ok).toBe(true);
+      expect(cookieStore.set).toHaveBeenCalledOnce();
 
-    const [name, , options] = cookieStore.set.mock.calls[0];
-    expect(name).toBe("session");
-    expect(options).toMatchObject({ httpOnly: true, sameSite: "lax" });
+      const [name, , options] = cookieStore.set.mock.calls[0];
+      expect(name).toBe("session");
+      expect(options).toEqual({
+        httpOnly: true,
+        secure: false,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7,
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("sets secure: true on the session cookie in production", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      const { login } = await import("@/actions/auth");
+      const result = await login("owner", "secret123");
+      expect(result.ok).toBe(true);
+      expect(cookieStore.set).toHaveBeenCalledOnce();
+
+      const [name, , options] = cookieStore.set.mock.calls[0];
+      expect(name).toBe("session");
+      expect(options).toEqual({
+        httpOnly: true,
+        secure: true,
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7,
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("fails with a wrong password and sets no cookie", async () => {
