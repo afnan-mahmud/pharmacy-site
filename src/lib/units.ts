@@ -8,11 +8,11 @@ function assertWholeNonNegative(value: number, label: string): void {
   if (!Number.isFinite(value)) {
     throw new Error(`${label} is not a valid number`);
   }
-  if (value < 0) {
-    throw new Error(`${label} cannot be negative`);
-  }
   if (!Number.isInteger(value)) {
     throw new Error(`${label} must be a whole number`);
+  }
+  if (value < 0) {
+    throw new Error(`${label} cannot be negative`);
   }
 }
 
