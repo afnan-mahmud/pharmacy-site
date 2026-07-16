@@ -16,10 +16,20 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
   const router = useRouter();
   const [editing, setEditing] = useState<MedicineRow | null>(null);
   const [adding, setAdding] = useState(false);
+  const [error, setError] = useState("");
+  const [deactivatingId, setDeactivatingId] = useState<string | null>(null);
 
   async function handleDeactivate(row: MedicineRow) {
-    await deactivateMedicine(row.id);
-    router.refresh();
+    setError("");
+    setDeactivatingId(row.id);
+    try {
+      await deactivateMedicine(row.id);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Kichu ekta bhul holo");
+    } finally {
+      setDeactivatingId(null);
+    }
   }
 
   if (adding || editing) {
@@ -45,6 +55,8 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
           + Notun medicine
         </button>
       </div>
+
+      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
 
       <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
         <table className="w-full text-sm">
@@ -88,7 +100,8 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
                       Edit
                     </button>
                     <button onClick={() => handleDeactivate(row)}
-                      className="ml-3 text-slate-400 hover:text-red-600">
+                      disabled={deactivatingId === row.id}
+                      className="ml-3 text-slate-400 hover:text-red-600 disabled:opacity-50">
                       Off
                     </button>
                   </td>
