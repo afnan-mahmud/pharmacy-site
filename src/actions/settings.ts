@@ -12,6 +12,47 @@ export type SettingsInput = {
   invoicePrefix: string;
 };
 
+/**
+ * genericName/company in src/actions/medicines.ts coerce a missing/null
+ * optional string field to "" rather than reject it, since the schema
+ * itself defaults address/phone to "" (src/models/Settings.ts) — a payload
+ * that omits them should behave the same as a direct model write. Any other
+ * type is rejected rather than silently stringified: this is a
+ * network-reachable trust boundary, same convention as medicines.ts.
+ */
+function toOptionalString(value: unknown, label: string): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value !== "string") {
+    throw new Error(`${label} must be a string`);
+  }
+  return value;
+}
+
+// Invoice numbers are rendered as `${invoicePrefix}-000041` (thermal
+// invoice, Sale plan). Before this, invoicePrefix had no charset or length
+// constraint at all, so it could be saved empty-after-trim-of-whitespace-only
+// (already rejected below), absurdly long, or containing characters (spaces,
+// dashes, Bengali script, punctuation) that would make the resulting invoice
+// number ambiguous to read off a receipt or to parse back apart later.
+// Constrained to 2-8 ASCII letters/digits: long enough to be a recognisable
+// abbreviation, short enough to stay readable on a narrow thermal strip, and
+// restricted to a charset with no ambiguity around the "-" that separates it
+// from the sequence number. Normalized to uppercase on save (matching the
+// "ABC" schema default) rather than rejecting lowercase input outright — a
+// case difference isn't a meaningfully invalid input, just one worth
+// normalizing.
+const INVOICE_PREFIX_PATTERN = /^[A-Z0-9]{2,8}$/;
+
+function validateInvoicePrefix(raw: string): string {
+  const prefix = raw.toUpperCase();
+  if (!INVOICE_PREFIX_PATTERN.test(prefix)) {
+    throw new Error(
+      "Invoice prefix 2-8 character hote hobe, khali A-Z ar 0-9 (space/dash chalbe na)",
+    );
+  }
+  return prefix;
+}
+
 const DUPLICATE_KEY_ERROR_CODE = 11000;
 
 function isDuplicateKeyError(error: unknown): boolean {
@@ -90,26 +131,46 @@ export async function readSettings(): Promise<SettingsDoc> {
   return new SettingsModel({ key: "singleton" }).toObject() as SettingsDoc;
 }
 
+/**
+ * This action is a network-reachable trust boundary (same convention as
+ * src/actions/medicines.ts): every field is validated here before it
+ * touches Mongoose/Mongo, so a malformed payload (e.g. a non-string
+ * pharmacyName, or an omitted address) fails with a clean domain error
+ * instead of a raw TypeError from calling .trim() on the wrong type.
+ */
+function validate(input: SettingsInput): {
+  pharmacyName: string;
+  address: string;
+  phone: string;
+  invoicePrefix: string;
+} {
+  if (typeof input.pharmacyName !== "string" || !input.pharmacyName.trim()) {
+    throw new Error("Pharmacy name is required");
+  }
+  const pharmacyName = input.pharmacyName.trim();
+
+  const address = toOptionalString(input.address, "address").trim();
+  const phone = toOptionalString(input.phone, "phone").trim();
+
+  if (typeof input.invoicePrefix !== "string" || !input.invoicePrefix.trim()) {
+    throw new Error("Invoice prefix is required");
+  }
+  const invoicePrefix = validateInvoicePrefix(input.invoicePrefix.trim());
+
+  return { pharmacyName, address, phone, invoicePrefix };
+}
+
 export async function updateSettings(input: SettingsInput): Promise<SettingsDoc> {
   await requireAdminAction();
   await connectDb();
 
-  const pharmacyName = input.pharmacyName.trim();
-  const invoicePrefix = input.invoicePrefix.trim();
-
-  if (!pharmacyName) throw new Error("Pharmacy name is required");
-  if (!invoicePrefix) throw new Error("Invoice prefix is required");
+  const { pharmacyName, address, phone, invoicePrefix } = validate(input);
 
   const settings = await withDuplicateKeyRetry(() =>
     SettingsModel.findOneAndUpdate(
       { key: "singleton" },
       {
-        $set: {
-          pharmacyName,
-          invoicePrefix,
-          address: input.address.trim(),
-          phone: input.phone.trim(),
-        },
+        $set: { pharmacyName, invoicePrefix, address, phone },
         $setOnInsert: { key: "singleton" },
       },
       { upsert: true, new: true, setDefaultsOnInsert: true },

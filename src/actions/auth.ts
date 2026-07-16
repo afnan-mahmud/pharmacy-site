@@ -17,6 +17,18 @@ export async function login(
   username: string,
   password: string,
 ): Promise<LoginResult> {
+  // login is the only unauthenticated, network-reachable action in the app
+  // — anyone can POST to it directly, no page render required. A malformed
+  // (non-string) username or password must fail exactly like a wrong
+  // username/password: the same LOGIN_FAILED result, not a raw TypeError
+  // and not some other message. Either of those would itself be a new
+  // distinguishable signal an attacker could use to probe the endpoint,
+  // on top of the username-enumeration signal LOGIN_FAILED already exists
+  // to prevent.
+  if (typeof username !== "string" || typeof password !== "string") {
+    return { ok: false, error: LOGIN_FAILED };
+  }
+
   await connectDb();
 
   const user = await AdminUserModel.findOne({ username: username.trim() });

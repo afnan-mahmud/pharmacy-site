@@ -90,4 +90,31 @@ describe("login", () => {
     // Distinguishable errors would let an attacker enumerate valid usernames.
     expect(unknownUser).toEqual(wrongPassword);
   });
+
+  // Fix 3: login is the only unauthenticated, network-reachable action in
+  // the app, and had the weakest input handling in the codebase — a
+  // non-string username/password reached `.trim()`/bcrypt as a raw
+  // TypeError instead of the standard failure result.
+  it("gives the standard failure result (not a raw TypeError) for a non-string username", async () => {
+    const { login } = await import("@/actions/auth");
+    const result = await login(123 as unknown as string, "secret123");
+    expect(result).toEqual({ ok: false, error: "Username ba password bhul" });
+    expect(cookieStore.set).not.toHaveBeenCalled();
+  });
+
+  it("gives the standard failure result (not a raw TypeError) for a non-string password", async () => {
+    const { login } = await import("@/actions/auth");
+    const result = await login("owner", null as unknown as string);
+    expect(result).toEqual({ ok: false, error: "Username ba password bhul" });
+    expect(cookieStore.set).not.toHaveBeenCalled();
+  });
+
+  // A non-string input must not become a new distinguishable signal either:
+  // it must produce the exact same result as any other failure mode.
+  it("gives the same error for a non-string username as for a wrong password", async () => {
+    const { login } = await import("@/actions/auth");
+    const malformed = await login(123 as unknown as string, "secret123");
+    const wrongPassword = await login("owner", "wrong");
+    expect(malformed).toEqual(wrongPassword);
+  });
 });

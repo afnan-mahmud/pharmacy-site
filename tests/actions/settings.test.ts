@@ -126,6 +126,97 @@ describe("updateSettings", () => {
       }),
     ).rejects.toThrow("Invoice prefix is required");
   });
+
+  // Trust-boundary hardening (Fix 3): pharmacyName was `.trim()`-ed with no
+  // type check, so a non-string value reached it as a raw TypeError instead
+  // of a clean domain error.
+  it("rejects a non-string pharmacyName instead of crashing on .trim()", async () => {
+    await expect(
+      updateSettings({
+        pharmacyName: 123 as unknown as string,
+        address: "x",
+        phone: "y",
+        invoicePrefix: "NN",
+      }),
+    ).rejects.toThrow("Pharmacy name is required");
+  });
+
+  // address/phone default to "" on the schema, so an omitted value should
+  // behave like a direct model write, not crash — same leniency
+  // medicines.ts's toOptionalString gives genericName/company.
+  it("accepts an omitted address and phone, saving them as empty strings", async () => {
+    const settings = await updateSettings({
+      pharmacyName: "No Address Pharmacy",
+      invoicePrefix: "NN",
+    } as unknown as Parameters<typeof updateSettings>[0]);
+    expect(settings.address).toBe("");
+    expect(settings.phone).toBe("");
+  });
+
+  it("rejects a non-string address instead of crashing on .trim()", async () => {
+    await expect(
+      updateSettings({
+        pharmacyName: "Name",
+        address: 42 as unknown as string,
+        phone: "y",
+        invoicePrefix: "NN",
+      }),
+    ).rejects.toThrow("address must be a string");
+  });
+
+  describe("invoicePrefix charset/length", () => {
+    it("rejects a prefix shorter than 2 characters", async () => {
+      await expect(
+        updateSettings({
+          pharmacyName: "Name",
+          address: "",
+          phone: "",
+          invoicePrefix: "A",
+        }),
+      ).rejects.toThrow("Invoice prefix 2-8 character hote hobe");
+    });
+
+    it("rejects a prefix longer than 8 characters", async () => {
+      await expect(
+        updateSettings({
+          pharmacyName: "Name",
+          address: "",
+          phone: "",
+          invoicePrefix: "ABCDEFGHI",
+        }),
+      ).rejects.toThrow("Invoice prefix 2-8 character hote hobe");
+    });
+
+    it("rejects a prefix containing a dash or space", async () => {
+      await expect(
+        updateSettings({
+          pharmacyName: "Name",
+          address: "",
+          phone: "",
+          invoicePrefix: "AB-1",
+        }),
+      ).rejects.toThrow("Invoice prefix 2-8 character hote hobe");
+
+      await expect(
+        updateSettings({
+          pharmacyName: "Name",
+          address: "",
+          phone: "",
+          invoicePrefix: "A B",
+        }),
+      ).rejects.toThrow("Invoice prefix 2-8 character hote hobe");
+    });
+
+    it("normalizes a lowercase prefix to uppercase instead of rejecting it", async () => {
+      const settings = await updateSettings({
+        pharmacyName: "Name",
+        address: "",
+        phone: "",
+        invoicePrefix: "np",
+      });
+      expect(settings.invoicePrefix).toBe("NP");
+    });
+  });
 });
 
 describe("concurrent access", () => {
