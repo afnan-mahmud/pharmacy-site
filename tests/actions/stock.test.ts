@@ -1,12 +1,32 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import mongoose from "mongoose";
 import { setupTestDb } from "../helpers/db";
+import {
+  createMockCookieStore,
+  setSessionCookie,
+  clearSessionCookie,
+  adminToken,
+  buyerToken,
+  ADMIN_USER_ID,
+} from "../helpers/auth";
+import { ADMIN_ONLY_ERROR } from "@/lib/session";
 import { createMedicine } from "@/actions/medicines";
 import { stockIn, listStockEntries } from "@/actions/stock";
 import { MedicineModel } from "@/models/Medicine";
 import { StockEntryModel } from "@/models/StockEntry";
 
+const cookieStore = createMockCookieStore();
+vi.mock("next/headers", () => ({
+  cookies: async () => cookieStore,
+}));
+
 setupTestDb();
+
+// stockIn/listStockEntries are admin-only work, so every test needs a valid
+// admin session present unless it is specifically testing the guard.
+beforeEach(async () => {
+  setSessionCookie(cookieStore, await adminToken());
+});
 
 const napa = {
   name: "Napa 500mg",
@@ -18,8 +38,6 @@ const napa = {
   lowStockThreshold: 20,
 };
 
-const USER_ID = "507f1f77bcf86cd799439011";
-
 describe("stockIn", () => {
   it("converts boxes to patas and increases stock", async () => {
     const medicine = await createMedicine(napa);
@@ -27,7 +45,6 @@ describe("stockIn", () => {
       medicineId: String(medicine._id),
       boxes: 50,
       note: "",
-      userId: USER_ID,
     });
 
     const updated = await MedicineModel.findById(medicine._id);
@@ -36,7 +53,7 @@ describe("stockIn", () => {
 
   it("accumulates across entries", async () => {
     const medicine = await createMedicine(napa);
-    const entry = { medicineId: String(medicine._id), note: "", userId: USER_ID };
+    const entry = { medicineId: String(medicine._id), note: "" };
     await stockIn({ ...entry, boxes: 50 });
     await stockIn({ ...entry, boxes: 20 });
 
@@ -50,7 +67,6 @@ describe("stockIn", () => {
       medicineId: String(medicine._id),
       boxes: 50,
       note: "Beximco delivery",
-      userId: USER_ID,
     });
 
     const entries = await StockEntryModel.find();
@@ -60,13 +76,29 @@ describe("stockIn", () => {
     expect(entries[0].note).toBe("Beximco delivery");
   });
 
+  // createdBy must come from the authenticated session, never from the
+  // caller-supplied input — this is the audit-trail spoofing hole the
+  // guard closes. There is no `userId` field in the input at all any more:
+  // stockIn derives it itself from requireAdminAction()'s session.
+  it("stamps createdBy from the session, not from the input", async () => {
+    const medicine = await createMedicine(napa);
+    await stockIn({
+      medicineId: String(medicine._id),
+      boxes: 50,
+      note: "",
+    });
+
+    const entries = await StockEntryModel.find();
+    expect(entries).toHaveLength(1);
+    expect(String(entries[0].createdBy)).toBe(ADMIN_USER_ID);
+  });
+
   it("keeps the historical patasAdded when patasPerBox later changes, and a new entry uses the new pack size", async () => {
     const medicine = await createMedicine(napa);
     await stockIn({
       medicineId: String(medicine._id),
       boxes: 10,
       note: "",
-      userId: USER_ID,
     });
 
     // The pack size changes; history must not be retroactively rewritten.
@@ -78,7 +110,6 @@ describe("stockIn", () => {
       medicineId: String(medicine._id),
       boxes: 10,
       note: "",
-      userId: USER_ID,
     });
 
     const entries = await StockEntryModel.find().sort({ createdAt: 1 });
@@ -90,14 +121,14 @@ describe("stockIn", () => {
   it("rejects zero boxes", async () => {
     const medicine = await createMedicine(napa);
     await expect(
-      stockIn({ medicineId: String(medicine._id), boxes: 0, note: "", userId: USER_ID }),
+      stockIn({ medicineId: String(medicine._id), boxes: 0, note: "" }),
     ).rejects.toThrow("Box sonkha 1 er kom hote parbe na");
   });
 
   it("rejects negative boxes", async () => {
     const medicine = await createMedicine(napa);
     await expect(
-      stockIn({ medicineId: String(medicine._id), boxes: -5, note: "", userId: USER_ID }),
+      stockIn({ medicineId: String(medicine._id), boxes: -5, note: "" }),
     ).rejects.toThrow("Box sonkha 1 er kom hote parbe na");
   });
 
@@ -107,7 +138,6 @@ describe("stockIn", () => {
         medicineId: "507f1f77bcf86cd799439011",
         boxes: 5,
         note: "",
-        userId: USER_ID,
       }),
     ).rejects.toThrow("Medicine not found");
     expect(await StockEntryModel.countDocuments()).toBe(0);
@@ -121,7 +151,6 @@ describe("stockIn input validation", () => {
         medicineId: "not-an-object-id",
         boxes: 5,
         note: "",
-        userId: USER_ID,
       }),
     ).rejects.toThrow("Medicine not found");
     expect(await StockEntryModel.countDocuments()).toBe(0);
@@ -130,7 +159,7 @@ describe("stockIn input validation", () => {
   it("rejects non-integer boxes", async () => {
     const medicine = await createMedicine(napa);
     await expect(
-      stockIn({ medicineId: String(medicine._id), boxes: 1.5, note: "", userId: USER_ID }),
+      stockIn({ medicineId: String(medicine._id), boxes: 1.5, note: "" }),
     ).rejects.toThrow("Box sonkha 1 er kom hote parbe na");
   });
 
@@ -141,22 +170,8 @@ describe("stockIn input validation", () => {
         medicineId: String(medicine._id),
         boxes: 5,
         note: 12345 as unknown as string,
-        userId: USER_ID,
       }),
     ).rejects.toThrow("note must be a string");
-    expect(await StockEntryModel.countDocuments()).toBe(0);
-  });
-
-  it("rejects a malformed userId instead of throwing a raw driver error", async () => {
-    const medicine = await createMedicine(napa);
-    await expect(
-      stockIn({
-        medicineId: String(medicine._id),
-        boxes: 5,
-        note: "",
-        userId: "not-an-object-id",
-      }),
-    ).rejects.toThrow("Invalid userId");
     expect(await StockEntryModel.countDocuments()).toBe(0);
   });
 });
@@ -178,7 +193,6 @@ describe("stockIn transactional rollback", () => {
         medicineId: String(medicine._id),
         boxes: 50,
         note: "",
-        userId: USER_ID,
       }),
     ).rejects.toThrow("Simulated failure after the increment landed");
 
@@ -203,7 +217,6 @@ describe("stockIn transactional rollback", () => {
         medicineId: String(medicine._id),
         boxes: 50,
         note: "",
-        userId: USER_ID,
       }),
     ).rejects.toThrow("Medicine not found");
 
@@ -214,12 +227,49 @@ describe("stockIn transactional rollback", () => {
 describe("listStockEntries", () => {
   it("returns entries newest first", async () => {
     const medicine = await createMedicine(napa);
-    const base = { medicineId: String(medicine._id), note: "", userId: USER_ID };
+    const base = { medicineId: String(medicine._id), note: "" };
     await stockIn({ ...base, boxes: 1 });
     await stockIn({ ...base, boxes: 2 });
 
     const entries = await listStockEntries();
     expect(entries[0].boxes).toBe(2);
     expect(entries[1].boxes).toBe(1);
+  });
+});
+
+// stockIn/listStockEntries are network-reachable Server Actions with no page
+// render in front of them — an unauthenticated (or buyer-role) caller must
+// never be able to invoke them, and in particular must never be able to
+// stamp a StockEntry.createdBy of their choosing. This must fail against a
+// version of src/actions/stock.ts that doesn't call requireAdminAction().
+describe("authorization", () => {
+  it("stockIn rejects an unauthenticated caller and writes no entry", async () => {
+    const medicine = await createMedicine(napa);
+    clearSessionCookie(cookieStore);
+
+    await expect(
+      stockIn({ medicineId: String(medicine._id), boxes: 5, note: "" }),
+    ).rejects.toThrow(ADMIN_ONLY_ERROR);
+    expect(await StockEntryModel.countDocuments()).toBe(0);
+  });
+
+  it("stockIn rejects a buyer-role session and writes no entry", async () => {
+    const medicine = await createMedicine(napa);
+    setSessionCookie(cookieStore, await buyerToken());
+
+    await expect(
+      stockIn({ medicineId: String(medicine._id), boxes: 5, note: "" }),
+    ).rejects.toThrow(ADMIN_ONLY_ERROR);
+    expect(await StockEntryModel.countDocuments()).toBe(0);
+  });
+
+  it("listStockEntries rejects an unauthenticated caller", async () => {
+    clearSessionCookie(cookieStore);
+    await expect(listStockEntries()).rejects.toThrow(ADMIN_ONLY_ERROR);
+  });
+
+  it("listStockEntries rejects a buyer-role session", async () => {
+    setSessionCookie(cookieStore, await buyerToken());
+    await expect(listStockEntries()).rejects.toThrow(ADMIN_ONLY_ERROR);
   });
 });

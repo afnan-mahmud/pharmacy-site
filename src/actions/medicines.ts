@@ -3,6 +3,7 @@
 import mongoose from "mongoose";
 import { revalidatePath } from "next/cache";
 import { connectDb } from "@/lib/db";
+import { requireAdminAction } from "@/lib/session";
 import { MedicineModel, type MedicineDoc } from "@/models/Medicine";
 
 export type MedicineInput = {
@@ -90,6 +91,7 @@ function toFields(input: MedicineInput) {
 export async function createMedicine(
   input: MedicineInput,
 ): Promise<MedicineDoc> {
+  await requireAdminAction();
   await connectDb();
   validate(input);
 
@@ -109,6 +111,7 @@ export async function updateMedicine(
   id: string,
   input: MedicineInput,
 ): Promise<MedicineDoc> {
+  await requireAdminAction();
   await connectDb();
   validate(input);
 
@@ -139,6 +142,7 @@ export async function updateMedicine(
 }
 
 export async function listMedicines(query?: string): Promise<MedicineDoc[]> {
+  await requireAdminAction();
   await connectDb();
 
   // query is optional, so undefined/null are treated as "no filter" — the
@@ -160,6 +164,7 @@ export async function searchMedicines(
   query: string,
   limit = 10,
 ): Promise<MedicineDoc[]> {
+  await requireAdminAction();
   await connectDb();
   // query is required here (same convention as the `name` check in
   // validate() above), so unlike listMedicines, undefined/null are
@@ -183,6 +188,7 @@ export async function searchMedicines(
 }
 
 export async function deactivateMedicine(id: string): Promise<void> {
+  await requireAdminAction();
   await connectDb();
   // A malformed id would otherwise reach the driver and surface a raw
   // Mongoose CastError instead of a clean "not found".

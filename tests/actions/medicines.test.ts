@@ -1,5 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { setupTestDb } from "../helpers/db";
+import {
+  createMockCookieStore,
+  setSessionCookie,
+  clearSessionCookie,
+  adminToken,
+  buyerToken,
+} from "../helpers/auth";
+import { ADMIN_ONLY_ERROR } from "@/lib/session";
 import {
   createMedicine,
   updateMedicine,
@@ -8,7 +16,18 @@ import {
   deactivateMedicine,
 } from "@/actions/medicines";
 
+const cookieStore = createMockCookieStore();
+vi.mock("next/headers", () => ({
+  cookies: async () => cookieStore,
+}));
+
 setupTestDb();
+
+// Every action in this file is admin-only work, so every test needs a valid
+// admin session present unless it is specifically testing the guard itself.
+beforeEach(async () => {
+  setSessionCookie(cookieStore, await adminToken());
+});
 
 const napa = {
   name: "Napa 500mg",
@@ -246,6 +265,75 @@ describe("deactivateMedicine", () => {
   it("throws Medicine not found for a malformed id", async () => {
     await expect(deactivateMedicine("not-an-objectid")).rejects.toThrow(
       "Medicine not found",
+    );
+  });
+});
+
+// These medicine actions are network-reachable Server Actions with no page
+// render in front of them — an unauthenticated (or buyer-role) caller must
+// never be able to invoke them. This is the whole point of this suite: it
+// must fail against a version of src/actions/medicines.ts that doesn't call
+// requireAdminAction().
+describe("authorization", () => {
+  it("createMedicine rejects an unauthenticated caller", async () => {
+    clearSessionCookie(cookieStore);
+    await expect(createMedicine(napa)).rejects.toThrow(ADMIN_ONLY_ERROR);
+  });
+
+  it("createMedicine rejects a buyer-role session", async () => {
+    setSessionCookie(cookieStore, await buyerToken());
+    await expect(createMedicine(napa)).rejects.toThrow(ADMIN_ONLY_ERROR);
+  });
+
+  it("updateMedicine rejects an unauthenticated caller", async () => {
+    const medicine = await createMedicine(napa);
+    clearSessionCookie(cookieStore);
+    await expect(
+      updateMedicine(String(medicine._id), napa),
+    ).rejects.toThrow(ADMIN_ONLY_ERROR);
+  });
+
+  it("updateMedicine rejects a buyer-role session", async () => {
+    const medicine = await createMedicine(napa);
+    setSessionCookie(cookieStore, await buyerToken());
+    await expect(
+      updateMedicine(String(medicine._id), napa),
+    ).rejects.toThrow(ADMIN_ONLY_ERROR);
+  });
+
+  it("listMedicines rejects an unauthenticated caller", async () => {
+    clearSessionCookie(cookieStore);
+    await expect(listMedicines()).rejects.toThrow(ADMIN_ONLY_ERROR);
+  });
+
+  it("listMedicines rejects a buyer-role session", async () => {
+    setSessionCookie(cookieStore, await buyerToken());
+    await expect(listMedicines()).rejects.toThrow(ADMIN_ONLY_ERROR);
+  });
+
+  it("searchMedicines rejects an unauthenticated caller", async () => {
+    clearSessionCookie(cookieStore);
+    await expect(searchMedicines("napa")).rejects.toThrow(ADMIN_ONLY_ERROR);
+  });
+
+  it("searchMedicines rejects a buyer-role session", async () => {
+    setSessionCookie(cookieStore, await buyerToken());
+    await expect(searchMedicines("napa")).rejects.toThrow(ADMIN_ONLY_ERROR);
+  });
+
+  it("deactivateMedicine rejects an unauthenticated caller", async () => {
+    const medicine = await createMedicine(napa);
+    clearSessionCookie(cookieStore);
+    await expect(deactivateMedicine(String(medicine._id))).rejects.toThrow(
+      ADMIN_ONLY_ERROR,
+    );
+  });
+
+  it("deactivateMedicine rejects a buyer-role session", async () => {
+    const medicine = await createMedicine(napa);
+    setSessionCookie(cookieStore, await buyerToken());
+    await expect(deactivateMedicine(String(medicine._id))).rejects.toThrow(
+      ADMIN_ONLY_ERROR,
     );
   });
 });

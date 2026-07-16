@@ -3,12 +3,12 @@ import { listStockEntries } from "@/actions/stock";
 import { StockInForm } from "@/components/StockInForm";
 
 export default async function StockPage() {
-  const session = await requireAdmin();
+  await requireAdmin();
   const entries = await listStockEntries();
 
   return (
     <div className="space-y-6">
-      <StockInForm userId={session.userId} />
+      <StockInForm />
 
       <div>
         <h2 className="mb-2 font-semibold text-slate-900">Ager stock entry</h2>

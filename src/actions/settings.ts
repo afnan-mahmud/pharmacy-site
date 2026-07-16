@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { connectDb } from "@/lib/db";
+import { requireAdminAction } from "@/lib/session";
 import { SettingsModel, type SettingsDoc } from "@/models/Settings";
 
 export type SettingsInput = {
@@ -40,6 +41,7 @@ async function withDuplicateKeyRetry<T>(operation: () => Promise<T>): Promise<T>
 }
 
 export async function getSettings(): Promise<SettingsDoc> {
+  await requireAdminAction();
   await connectDb();
 
   const settings = await withDuplicateKeyRetry(() =>
@@ -53,6 +55,7 @@ export async function getSettings(): Promise<SettingsDoc> {
 }
 
 export async function updateSettings(input: SettingsInput): Promise<SettingsDoc> {
+  await requireAdminAction();
   await connectDb();
 
   const pharmacyName = input.pharmacyName.trim();

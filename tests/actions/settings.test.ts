@@ -1,5 +1,13 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { setupTestDb } from "../helpers/db";
+import {
+  createMockCookieStore,
+  setSessionCookie,
+  clearSessionCookie,
+  adminToken,
+  buyerToken,
+} from "../helpers/auth";
+import { ADMIN_ONLY_ERROR } from "@/lib/session";
 import { getSettings, updateSettings } from "@/actions/settings";
 import { SettingsModel } from "@/models/Settings";
 
@@ -9,7 +17,18 @@ function makeDuplicateKeyError(): Error & { code: number } {
   });
 }
 
+const cookieStore = createMockCookieStore();
+vi.mock("next/headers", () => ({
+  cookies: async () => cookieStore,
+}));
+
 setupTestDb();
+
+// getSettings and updateSettings are admin-only work, so every test needs a
+// valid admin session present unless it is specifically testing the guard.
+beforeEach(async () => {
+  setSessionCookie(cookieStore, await adminToken());
+});
 
 describe("getSettings", () => {
   it("creates the singleton with the placeholder name on first read", async () => {
@@ -174,5 +193,45 @@ describe("duplicate-key race handling (mocked)", () => {
     expect(calls).toBe(2);
     expect(settings.pharmacyName).toBe("Retried Pharmacy");
     expect(await SettingsModel.countDocuments()).toBe(1);
+  });
+});
+
+// getSettings/updateSettings are network-reachable Server Actions with no
+// page render in front of them — an unauthenticated (or buyer-role) caller
+// must never be able to invoke them. This must fail against a version of
+// src/actions/settings.ts that doesn't call requireAdminAction().
+describe("authorization", () => {
+  it("getSettings rejects an unauthenticated caller", async () => {
+    clearSessionCookie(cookieStore);
+    await expect(getSettings()).rejects.toThrow(ADMIN_ONLY_ERROR);
+  });
+
+  it("getSettings rejects a buyer-role session", async () => {
+    setSessionCookie(cookieStore, await buyerToken());
+    await expect(getSettings()).rejects.toThrow(ADMIN_ONLY_ERROR);
+  });
+
+  it("updateSettings rejects an unauthenticated caller", async () => {
+    clearSessionCookie(cookieStore);
+    await expect(
+      updateSettings({
+        pharmacyName: "Hacked Pharmacy",
+        address: "",
+        phone: "",
+        invoicePrefix: "HK",
+      }),
+    ).rejects.toThrow(ADMIN_ONLY_ERROR);
+  });
+
+  it("updateSettings rejects a buyer-role session", async () => {
+    setSessionCookie(cookieStore, await buyerToken());
+    await expect(
+      updateSettings({
+        pharmacyName: "Hacked Pharmacy",
+        address: "",
+        phone: "",
+        invoicePrefix: "HK",
+      }),
+    ).rejects.toThrow(ADMIN_ONLY_ERROR);
   });
 });

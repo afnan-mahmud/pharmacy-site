@@ -102,3 +102,51 @@ describe("requireAdmin", () => {
     expect(redirectMock).not.toHaveBeenCalled();
   });
 });
+
+// requireAdminAction guards Server Actions, which are independently-callable
+// POST endpoints reachable with no page render in flight — redirect() has no
+// page to redirect *to* there, so this guard throws a plain Error instead
+// (the same failure mode every action-calling component already displays via
+// `err.message`). It must never call redirect(), and it must never fall back
+// to requireAdmin()'s behavior silently.
+describe("requireAdminAction", () => {
+  it("throws (not redirects) when there is no session", async () => {
+    cookieStore.get.mockReturnValue(undefined);
+    const { requireAdminAction } = await import("@/lib/session");
+
+    await expect(requireAdminAction()).rejects.toThrow();
+    await expect(requireAdminAction()).rejects.not.toThrow(RedirectError);
+    expect(redirectMock).not.toHaveBeenCalled();
+  });
+
+  it("throws when the token is valid but carries role: buyer", async () => {
+    const token = await createSessionToken({
+      userId: "buyer-1",
+      role: "buyer",
+      name: "Some Wholesale Buyer",
+    });
+    cookieStore.get.mockReturnValue({ value: token });
+    const { requireAdminAction } = await import("@/lib/session");
+
+    await expect(requireAdminAction()).rejects.toThrow();
+    await expect(requireAdminAction()).rejects.not.toThrow(RedirectError);
+    expect(redirectMock).not.toHaveBeenCalled();
+  });
+
+  it("returns the session for a valid admin token, same as requireAdmin", async () => {
+    const token = await createSessionToken({
+      userId: "admin-1",
+      role: "admin",
+      name: "Owner",
+    });
+    cookieStore.get.mockReturnValue({ value: token });
+    const { requireAdminAction } = await import("@/lib/session");
+
+    await expect(requireAdminAction()).resolves.toEqual({
+      userId: "admin-1",
+      role: "admin",
+      name: "Owner",
+    });
+    expect(redirectMock).not.toHaveBeenCalled();
+  });
+});

@@ -6,7 +6,7 @@ import { stockIn } from "@/actions/stock";
 import { formatStock } from "@/lib/units";
 import { MedicinePicker, type PickedMedicine } from "./MedicinePicker";
 
-export function StockInForm({ userId }: { userId: string }) {
+export function StockInForm() {
   const router = useRouter();
   const [medicine, setMedicine] = useState<PickedMedicine | null>(null);
   const [boxes, setBoxes] = useState("");
@@ -28,7 +28,6 @@ export function StockInForm({ userId }: { userId: string }) {
         medicineId: medicine.id,
         boxes: Number(boxes),
         note,
-        userId,
       });
       setDone(`${medicine.name} — ${boxes} box stock e dhuklo`);
       setMedicine(null);

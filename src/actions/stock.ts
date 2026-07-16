@@ -3,6 +3,7 @@
 import mongoose from "mongoose";
 import { revalidatePath } from "next/cache";
 import { connectDb } from "@/lib/db";
+import { requireAdminAction } from "@/lib/session";
 import { boxesToPatas } from "@/lib/units";
 import { MedicineModel } from "@/models/Medicine";
 import { StockEntryModel, type StockEntryDoc } from "@/models/StockEntry";
@@ -11,7 +12,6 @@ export type StockInInput = {
   medicineId: string;
   boxes: number;
   note: string;
-  userId: string;
 };
 
 /**
@@ -19,6 +19,13 @@ export type StockInInput = {
  * src/actions/medicines.ts): every field is validated here before it
  * touches Mongoose/Mongo, so a malformed payload fails with a clean domain
  * error instead of a raw CastError or driver exception.
+ *
+ * `userId` used to live on StockInInput and be validated here too, but it
+ * was client-supplied — trivially spoofable, since StockInForm posted
+ * back whatever `userId` prop it was handed. StockEntry.createdBy must be
+ * an honest audit trail, so it now comes solely from the caller's
+ * server-side session (see stockIn below), never from input the caller
+ * controls.
  */
 function validate(input: StockInInput): void {
   // A malformed id would otherwise reach findById and surface a raw
@@ -36,12 +43,10 @@ function validate(input: StockInInput): void {
   if (typeof input.note !== "string") {
     throw new Error("note must be a string");
   }
-  if (!mongoose.Types.ObjectId.isValid(input.userId)) {
-    throw new Error("Invalid userId");
-  }
 }
 
 export async function stockIn(input: StockInInput): Promise<void> {
+  const adminSession = await requireAdminAction();
   await connectDb();
   validate(input);
 
@@ -83,7 +88,7 @@ export async function stockIn(input: StockInInput): Promise<void> {
             boxes: input.boxes,
             patasAdded,
             note: input.note.trim(),
-            createdBy: new mongoose.Types.ObjectId(input.userId),
+            createdBy: new mongoose.Types.ObjectId(adminSession.userId),
           },
         ],
         { session },
@@ -98,6 +103,7 @@ export async function stockIn(input: StockInInput): Promise<void> {
 }
 
 export async function listStockEntries(limit = 50): Promise<StockEntryDoc[]> {
+  await requireAdminAction();
   await connectDb();
   return StockEntryModel.find()
     .sort({ createdAt: -1 })
