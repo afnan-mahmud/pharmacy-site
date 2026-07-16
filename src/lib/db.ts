@@ -25,7 +25,14 @@ export async function connectDb(): Promise<typeof mongoose> {
     if (!uri) {
       throw new Error("MONGODB_URI is not set");
     }
-    cache.promise = mongoose.connect(uri, { bufferCommands: false });
+    // If the connection attempt fails, clear the cached promise so the next
+    // connectDb() call retries instead of re-awaiting a dead, rejected
+    // promise forever. Concurrent callers already awaiting this same promise
+    // still see the rejection, which is correct.
+    cache.promise = mongoose.connect(uri, { bufferCommands: false }).catch((err) => {
+      cache.promise = null;
+      throw err;
+    });
   }
 
   cache.conn = await cache.promise;

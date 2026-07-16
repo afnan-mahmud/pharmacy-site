@@ -15,6 +15,12 @@ export function setupTestDb(): void {
     await mongoose.connect(replSet.getUri());
   });
 
+  // Only clears documents, not indexes or the mongoose model registry — those
+  // persist for the whole file. That's only safe because Vitest's default
+  // per-file isolation (`isolate: true`) gives each test file its own module
+  // context, so registry/index state never leaks across files. If isolation
+  // is ever turned off, this becomes a landmine: models and indexes would
+  // leak between test files that currently assume a clean slate.
   afterEach(async () => {
     const collections = await mongoose.connection.db!.collections();
     for (const collection of collections) {
