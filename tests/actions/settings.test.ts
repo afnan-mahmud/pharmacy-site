@@ -8,7 +8,7 @@ import {
   buyerToken,
 } from "../helpers/auth";
 import { ADMIN_ONLY_ERROR } from "@/lib/session";
-import { getSettings, updateSettings } from "@/actions/settings";
+import { getSettings, updateSettings, readSettings } from "@/actions/settings";
 import { SettingsModel } from "@/models/Settings";
 
 function makeDuplicateKeyError(): Error & { code: number } {
@@ -52,6 +52,42 @@ describe("getSettings", () => {
     });
     const settings = await getSettings();
     expect(settings.pharmacyName).toBe("Real Pharmacy");
+  });
+});
+
+describe("readSettings", () => {
+  it("returns the schema defaults with no admin session and no document yet", async () => {
+    clearSessionCookie(cookieStore);
+    const settings = await readSettings();
+    expect(settings.pharmacyName).toBe("ABC Pharmacy");
+    expect(settings.invoicePrefix).toBe("ABC");
+  });
+
+  it("never creates a document as a side effect", async () => {
+    clearSessionCookie(cookieStore);
+    await readSettings();
+    await readSettings();
+    expect(await SettingsModel.countDocuments()).toBe(0);
+  });
+
+  it("returns the real stored values once an admin has saved them, with no session required", async () => {
+    await updateSettings({
+      pharmacyName: "Real Pharmacy",
+      address: "123 Road, Dhaka",
+      phone: "01700000000",
+      invoicePrefix: "RP",
+    });
+
+    clearSessionCookie(cookieStore);
+    const settings = await readSettings();
+    expect(settings.pharmacyName).toBe("Real Pharmacy");
+    expect(settings.invoicePrefix).toBe("RP");
+  });
+
+  it("works identically for a buyer-role session", async () => {
+    setSessionCookie(cookieStore, await buyerToken());
+    const settings = await readSettings();
+    expect(settings.pharmacyName).toBe("ABC Pharmacy");
   });
 });
 
