@@ -13,7 +13,7 @@ export function AdminNav({ pharmacyName }: { pharmacyName: string }) {
     <header className="border-b border-slate-200 bg-white">
       <div className="mx-auto flex max-w-6xl items-center gap-6 px-4 py-3">
         <span className="font-semibold text-teal-800">{pharmacyName}</span>
-        <nav className="flex gap-4 text-sm">
+        <nav className="ml-auto flex gap-4 text-sm">
           {LINKS.map((link) => (
             <Link
               key={link.href}
@@ -24,7 +24,7 @@ export function AdminNav({ pharmacyName }: { pharmacyName: string }) {
             </Link>
           ))}
         </nav>
-        <form action={logout} className="ml-auto">
+        <form action={logout}>
           <button type="submit" className="text-sm text-slate-500 hover:text-red-600">
             Logout
           </button>
