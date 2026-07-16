@@ -141,9 +141,16 @@ export async function updateMedicine(
 export async function listMedicines(query?: string): Promise<MedicineDoc[]> {
   await connectDb();
 
+  // query is optional, so undefined/null are treated as "no filter" — the
+  // same leniency toOptionalString gives genericName/company above. Any
+  // other non-string type (number, object, array, ...) is a malformed
+  // payload on this network-reachable trust boundary and is rejected
+  // rather than allowed to reach .trim() as a raw TypeError.
+  const term = toOptionalString(query, "query").trim();
+
   const filter: Record<string, unknown> = { active: true };
-  if (query?.trim()) {
-    filter.name = { $regex: escapeRegex(query.trim()), $options: "i" };
+  if (term) {
+    filter.name = { $regex: escapeRegex(term), $options: "i" };
   }
 
   return MedicineModel.find(filter).sort({ name: 1 }).lean<MedicineDoc[]>();
@@ -154,6 +161,14 @@ export async function searchMedicines(
   limit = 10,
 ): Promise<MedicineDoc[]> {
   await connectDb();
+  // query is required here (same convention as the `name` check in
+  // validate() above), so unlike listMedicines, undefined/null are
+  // rejected rather than defaulted — this is the type-ahead's every-
+  // keystroke entry point and must never let a malformed payload reach
+  // .trim() as a raw TypeError.
+  if (typeof query !== "string") {
+    throw new Error("query must be a string");
+  }
   const term = query.trim();
   if (!term) return [];
 

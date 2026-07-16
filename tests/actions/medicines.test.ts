@@ -150,6 +150,12 @@ describe("listMedicines", () => {
     // A user typing ".*" must not match everything.
     expect(await listMedicines(".*")).toEqual([]);
   });
+
+  it("rejects a non-string query", async () => {
+    await expect(
+      listMedicines(12345 as unknown as string),
+    ).rejects.toThrow("query must be a string");
+  });
 });
 
 describe("searchMedicines", () => {
@@ -182,6 +188,18 @@ describe("searchMedicines", () => {
     await createMedicine(napa);
     // A user typing ".*" must not match everything.
     expect(await searchMedicines(".*")).toEqual([]);
+  });
+
+  it("rejects a non-string query", async () => {
+    await expect(
+      searchMedicines(12345 as unknown as string),
+    ).rejects.toThrow("query must be a string");
+  });
+
+  it("rejects a null query", async () => {
+    await expect(
+      searchMedicines(null as unknown as string),
+    ).rejects.toThrow("query must be a string");
   });
 });
 
