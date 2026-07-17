@@ -1,7 +1,10 @@
 /**
  * Every date the owner sees, and every "today" the system computes, is a
- * Dhaka date — not a UTC one. Bangladesh is UTC+6 and does not observe DST
- * (it was tried once, in 2009, and abandoned), so the offset is a constant.
+ * Dhaka date — not a UTC one. Bangladesh is UTC+6 today, but the offset is
+ * resolved from the runtime's tz database (via `dhakaOffsetFor`) rather than
+ * hardcoded, so if DST is ever reintroduced (it ran briefly in 2009) this
+ * module tracks the change instead of silently drifting a day off from the
+ * cash drawer.
  *
  * This matters concretely: a sale rung up at 22:30 Dhaka time is stored as
  * 16:30 UTC the same day, but one at 00:30 Dhaka is stored as 18:30 UTC the
@@ -25,8 +28,11 @@ function dhakaOffsetFor(referenceInstant: Date): string {
   }).formatToParts(referenceInstant);
   const zoneName = parts.find((part) => part.type === "timeZoneName")?.value;
   const match = zoneName?.match(/^GMT([+-]\d{2}:\d{2})$/);
-  // Falls back to the known present-day offset; a modern ICU build always
-  // resolves this, so the fallback should never actually be exercised.
+  // Falls back to the known present-day offset. This *is* reachable: for
+  // pre-1941 dates, ICU reports Dhaka's local mean time as `GMT+05:53:20`
+  // (a non-integer-minute offset, with seconds), which the `\d{2}:\d{2}`
+  // regex above doesn't match. Irrelevant for a pharmacy's records, but the
+  // fallback is live code, not dead code.
   return match ? match[1] : "+06:00";
 }
 
@@ -65,6 +71,31 @@ export function dhakaToday(now: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Dhaka" }).format(now);
 }
 
+// The UTC instant of Dhaka midnight that begins `dhakaDate`. Assumes
+// `dhakaDate` is already a validated YYYY-MM-DD string.
+function dhakaMidnightInstant(dhakaDate: string): Date {
+  // A midday probe on this calendar date is enough to ask the tz database
+  // what Dhaka's offset was that day — accurate even across a DST
+  // transition, where the offset for one day differs from the next.
+  const offset = dhakaOffsetFor(new Date(`${dhakaDate}T12:00:00Z`));
+  return new Date(`${dhakaDate}T00:00:00.000${offset}`);
+}
+
+// The calendar date (YYYY-MM-DD) immediately following `dhakaDate`, with no
+// timezone involved — this is pure calendar arithmetic. Reuses the same
+// setUTCFullYear rollover `assertDhakaDate` relies on, except here the
+// rollover is exactly what we want: "day after Dec 31" should become the
+// next January, "day after the month's last day" the next month.
+function nextCalendarDate(dhakaDate: string): string {
+  const [, yearStr, monthStr, dayStr] = dhakaDate.match(ISO_DATE) as RegExpMatchArray;
+  const probe = new Date(0);
+  probe.setUTCFullYear(Number(yearStr), Number(monthStr) - 1, Number(dayStr) + 1);
+  const year = String(probe.getUTCFullYear()).padStart(4, "0");
+  const month = String(probe.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(probe.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 /**
  * The UTC instants bounding a Dhaka day: `start` inclusive, `end` exclusive.
  * Query with `{ createdAt: { $gte: start, $lt: end } }`.
@@ -72,12 +103,13 @@ export function dhakaToday(now: Date = new Date()): string {
 export function dhakaDayBounds(dhakaDate: string): { start: Date; end: Date } {
   assertDhakaDate(dhakaDate);
 
-  // A midday probe on this calendar date is enough to ask the tz database
-  // what Dhaka's offset was that day — accurate even on the (currently
-  // hypothetical) day that offset changes.
-  const offset = dhakaOffsetFor(new Date(`${dhakaDate}T12:00:00Z`));
-  const start = new Date(`${dhakaDate}T00:00:00.000${offset}`);
-  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  // `end` is the *next* day's midnight, not `start + 24h`. A calendar day
+  // is not always 24 hours long across a DST transition (Bangladesh ran
+  // DST briefly in 2009): computing `end` this way makes it structurally
+  // equal to the next day's `start`, so adjacent days can never overlap or
+  // leave a gap, regardless of what the offset does in between.
+  const start = dhakaMidnightInstant(dhakaDate);
+  const end = dhakaMidnightInstant(nextCalendarDate(dhakaDate));
   return { start, end };
 }
 

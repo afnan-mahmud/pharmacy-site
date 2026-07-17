@@ -41,9 +41,30 @@ describe("dhakaDayBounds", () => {
     expect(end.toISOString()).toBe("2026-07-17T18:00:00.000Z");
   });
 
-  it("spans exactly 24 hours", () => {
+  it("spans exactly 24 hours on a present-day date, where no DST is in force", () => {
     const { start, end } = dhakaDayBounds("2026-07-17");
     expect(end.getTime() - start.getTime()).toBe(24 * 60 * 60 * 1000);
+  });
+
+  // Bangladesh briefly observed DST in 2009. `end` must be derived from the
+  // *next* day's `start`, not from `start + 24h` — otherwise a DST
+  // transition creates an overlapping hour (double-counted sales) or a
+  // missing hour (uncounted sales). These pin real tz-db data from that
+  // transition and fail against a `start + 24h` implementation.
+  it("has no overlap across the 2009 spring-forward transition (Jun 19 -> Jun 20)", () => {
+    const day19 = dhakaDayBounds("2009-06-19");
+    const day20 = dhakaDayBounds("2009-06-20");
+    // The end of one day must be exactly the start of the next — not later.
+    expect(day19.end.getTime()).toBe(day20.start.getTime());
+    expect(day19.end.toISOString()).toBe("2009-06-19T17:00:00.000Z");
+  });
+
+  it("has no gap across the 2009 fall-back transition (Dec 31 -> Jan 1)", () => {
+    const dec31 = dhakaDayBounds("2009-12-31");
+    const jan1 = dhakaDayBounds("2010-01-01");
+    // The end of one day must be exactly the start of the next — not earlier.
+    expect(dec31.end.getTime()).toBe(jan1.start.getTime());
+    expect(dec31.end.toISOString()).toBe("2009-12-31T18:00:00.000Z");
   });
 
   it("brackets a sale made late in the Dhaka evening", () => {
