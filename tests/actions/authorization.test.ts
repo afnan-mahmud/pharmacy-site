@@ -90,6 +90,7 @@ describe("every action module export requires an admin session", () => {
       "/src/actions/buyers.ts",
       "/src/actions/due.ts",
       "/src/actions/medicines.ts",
+      "/src/actions/reports.ts",
       "/src/actions/sales.ts",
       "/src/actions/settings.ts",
       "/src/actions/stock.ts",
