@@ -24,12 +24,24 @@ export default async function InvoicePage({
         <PrintButton />
         {sale.status === "active" && (
           <form
-            action={async () => {
+            action={async (formData: FormData) => {
               "use server";
-              await cancelSale(id, "Admin er maddome cancel kora hoyeche");
+              const reason = String(formData.get("reason") ?? "");
+              // cancelSale itself rejects a blank reason — the required
+              // attribute below is just a client-side head start, not a
+              // substitute for that server-side check.
+              await cancelSale(id, reason);
               revalidatePath(`/invoice/${id}`);
             }}
+            className="flex items-center gap-2"
           >
+            <input
+              type="text"
+              name="reason"
+              required
+              placeholder="Cancel korar karon"
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
             <button
               type="submit"
               className="rounded-lg border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50"

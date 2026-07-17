@@ -6,6 +6,7 @@ import Link from "next/link";
 import { recordWholesaleSale } from "@/actions/sales";
 import { MedicinePicker, type PickedMedicine } from "./MedicinePicker";
 import { formatTaka, takaToPaisa } from "@/lib/money";
+import { computeTotals } from "@/lib/saleTotals";
 
 type BuyerOption = {
   id: string;
@@ -34,9 +35,28 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
     0,
   );
   const discountPaisa = Math.round(takaToPaisa(discount || 0));
-  const totalPaisa = Math.max(0, subtotalPaisa - discountPaisa);
   const paidPaisa = Math.round(takaToPaisa(paid || 0));
-  const duePaisa = Math.max(0, totalPaisa - paidPaisa);
+
+  // Reuse the server's own totals math instead of a second, looser
+  // definition (the old Math.max(0, ...) here would happily show ৳0.00 for
+  // a discount larger than the subtotal, then fail on submit with a server
+  // error the form never previewed). computeTotals throws on the same
+  // over-discount / over-payment conditions recordWholesaleSale enforces,
+  // so the client and server always agree.
+  let totalPaisa = subtotalPaisa;
+  let duePaisa = 0;
+  let totalsError = "";
+  try {
+    const totals = computeTotals(
+      cart.map((line) => ({ ratePaisa: line.medicine.boxPricePaisa, quantity: line.boxes })),
+      discountPaisa,
+      paidPaisa,
+    );
+    totalPaisa = totals.totalPaisa;
+    duePaisa = totals.duePaisa;
+  } catch (err) {
+    totalsError = err instanceof Error ? err.message : "Kichu ekta bhul holo";
+  }
 
   function addMedicine(medicine: PickedMedicine) {
     if (cart.some((l) => l.medicine.id === medicine.id)) return;
@@ -209,14 +229,20 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
                 <span>− {formatTaka(discountPaisa)}</span>
               </div>
             )}
-            <div className="flex justify-between text-sm font-semibold text-slate-900">
-              <span>Mot</span>
-              <span>{formatTaka(totalPaisa)}</span>
-            </div>
-            <div className="flex justify-between text-sm font-semibold text-red-600">
-              <span>Baki</span>
-              <span>{formatTaka(duePaisa)}</span>
-            </div>
+            {totalsError ? (
+              <p role="alert" className="text-sm text-red-600">{totalsError}</p>
+            ) : (
+              <>
+                <div className="flex justify-between text-sm font-semibold text-slate-900">
+                  <span>Mot</span>
+                  <span>{formatTaka(totalPaisa)}</span>
+                </div>
+                <div className="flex justify-between text-sm font-semibold text-red-600">
+                  <span>Baki</span>
+                  <span>{formatTaka(duePaisa)}</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -224,7 +250,7 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
 
         <button
           type="submit"
-          disabled={busy || cart.length === 0 || !buyerId}
+          disabled={busy || cart.length === 0 || !buyerId || !!totalsError}
           className="rounded-lg bg-teal-700 px-6 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           {busy ? "Wait..." : "Bikri confirm koro"}
