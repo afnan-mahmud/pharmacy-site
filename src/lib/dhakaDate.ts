@@ -10,16 +10,50 @@
  * drawer.
  */
 
-const DHAKA_UTC_OFFSET = "+06:00";
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+// Bangladesh has run DST exactly once (2009, since abandoned), so the
+// offset is *usually* a constant — but deriving it from the runtime's tz
+// database, the same source `dhakaToday`/`formatDhakaDate` resolve through
+// via Intl, keeps every function in this module agreeing about who decides
+// the timezone. If DST ever returned, all four would track it together
+// instead of quietly disagreeing about which day "today" is.
+function dhakaOffsetFor(referenceInstant: Date): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Dhaka",
+    timeZoneName: "longOffset",
+  }).formatToParts(referenceInstant);
+  const zoneName = parts.find((part) => part.type === "timeZoneName")?.value;
+  const match = zoneName?.match(/^GMT([+-]\d{2}:\d{2})$/);
+  // Falls back to the known present-day offset; a modern ICU build always
+  // resolves this, so the fallback should never actually be exercised.
+  return match ? match[1] : "+06:00";
+}
 
 function assertDhakaDate(dhakaDate: string): void {
-  if (typeof dhakaDate !== "string" || !ISO_DATE.test(dhakaDate)) {
+  const match = typeof dhakaDate === "string" ? dhakaDate.match(ISO_DATE) : null;
+  if (!match) {
     throw new Error("Date ta YYYY-MM-DD hote hobe");
   }
-  // The regex admits shapes like 2026-13-01; only Date can say whether the
-  // calendar actually contains that day.
-  if (Number.isNaN(Date.parse(`${dhakaDate}T00:00:00${DHAKA_UTC_OFFSET}`))) {
+
+  // The regex admits shapes like 2026-02-30 or 2026-13-01 that the calendar
+  // doesn't contain. Date.parse/Date.UTC don't reject those — they
+  // *normalize* them (Feb 30 becomes Mar 2), which would silently hand a
+  // caller the wrong day's bounds. Round-tripping the parsed components
+  // through setUTCFullYear and comparing catches any normalization: a
+  // rolled-over date won't read back the same year/month/day.
+  const [, yearStr, monthStr, dayStr] = match;
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+
+  const probe = new Date(0);
+  probe.setUTCFullYear(year, month - 1, day);
+  if (
+    probe.getUTCFullYear() !== year ||
+    probe.getUTCMonth() !== month - 1 ||
+    probe.getUTCDate() !== day
+  ) {
     throw new Error("Date ta thik na");
   }
 }
@@ -38,7 +72,11 @@ export function dhakaToday(now: Date = new Date()): string {
 export function dhakaDayBounds(dhakaDate: string): { start: Date; end: Date } {
   assertDhakaDate(dhakaDate);
 
-  const start = new Date(`${dhakaDate}T00:00:00.000${DHAKA_UTC_OFFSET}`);
+  // A midday probe on this calendar date is enough to ask the tz database
+  // what Dhaka's offset was that day — accurate even on the (currently
+  // hypothetical) day that offset changes.
+  const offset = dhakaOffsetFor(new Date(`${dhakaDate}T12:00:00Z`));
+  const start = new Date(`${dhakaDate}T00:00:00.000${offset}`);
   const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
   return { start, end };
 }

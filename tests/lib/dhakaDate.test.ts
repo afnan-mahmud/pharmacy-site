@@ -70,6 +70,40 @@ describe("dhakaDayBounds", () => {
     expect(() => dhakaDayBounds("")).toThrow("Date ta YYYY-MM-DD hote hobe");
     expect(() => dhakaDayBounds("2026-13-01")).toThrow("Date ta thik na");
   });
+
+  it("rejects a calendar day that does not exist, instead of rolling it over", () => {
+    // February 2026 has 28 days; Date.parse would silently normalize this
+    // to March 1st instead of rejecting it.
+    expect(() => dhakaDayBounds("2026-02-30")).toThrow("Date ta thik na");
+  });
+
+  it("rejects Feb 29 in a non-leap year", () => {
+    // 2023 is not a leap year; Date.parse would roll this to March 1st.
+    expect(() => dhakaDayBounds("2023-02-29")).toThrow("Date ta thik na");
+  });
+
+  it("rejects April 31st, since April has only 30 days", () => {
+    expect(() => dhakaDayBounds("2026-04-31")).toThrow("Date ta thik na");
+  });
+
+  it("rejects month 00", () => {
+    expect(() => dhakaDayBounds("2026-00-10")).toThrow("Date ta thik na");
+  });
+
+  it("rejects day 00", () => {
+    expect(() => dhakaDayBounds("2026-01-00")).toThrow("Date ta thik na");
+  });
+
+  it("rejects an all-zero date", () => {
+    expect(() => dhakaDayBounds("0000-00-00")).toThrow("Date ta thik na");
+  });
+
+  it("accepts a real leap day", () => {
+    // 2024 is a leap year, so Feb 29 is a genuine calendar day and must
+    // not be rejected.
+    const { start } = dhakaDayBounds("2024-02-29");
+    expect(start.toISOString()).toBe("2024-02-28T18:00:00.000Z");
+  });
 });
 
 describe("dhakaRangeBounds", () => {
