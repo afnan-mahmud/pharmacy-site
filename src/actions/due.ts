@@ -116,6 +116,18 @@ export async function buyerDueBalance(buyerId: string): Promise<number> {
 
   if (!mongoose.Types.ObjectId.isValid(buyerId)) return 0;
 
+  return computeBuyerDueBalance(buyerId);
+}
+
+/**
+ * The aggregation behind buyerDueBalance, factored out so recordPayment can
+ * run the exact same read inside its transaction session — see the
+ * "session" param and recordPayment's comment for why that matters.
+ */
+async function computeBuyerDueBalance(
+  buyerId: string,
+  session?: mongoose.ClientSession,
+): Promise<number> {
   const [saleTotals, paymentTotals] = await Promise.all([
     SaleModel.aggregate<{ totalDue: number }>([
       {
@@ -126,13 +138,13 @@ export async function buyerDueBalance(buyerId: string): Promise<number> {
         },
       },
       { $group: { _id: null, totalDue: { $sum: "$duePaisa" } } },
-    ]),
+    ]).session(session ?? null),
     PaymentModel.aggregate<{ totalPaid: number }>([
       {
         $match: { buyerId: new mongoose.Types.ObjectId(buyerId) },
       },
       { $group: { _id: null, totalPaid: { $sum: "$amountPaisa" } } },
-    ]),
+    ]).session(session ?? null),
   ]);
 
   const totalDue = saleTotals[0]?.totalDue ?? 0;
@@ -183,9 +195,6 @@ export async function recordPayment(
     throw new Error("Buyer pawa jay ni");
   }
 
-  const buyer = await BuyerModel.findById(buyerId);
-  if (!buyer) throw new Error("Buyer pawa jay ni");
-
   // takaToPaisa converts the UI input (which may be a decimal taka value)
   // into integer paisa. Math.round is essential: a floating-point input
   // like 1.005 produces 100.50000... which truncated to an integer would
@@ -195,35 +204,71 @@ export async function recordPayment(
   if (!Number.isInteger(amountPaisa) || amountPaisa < 1) {
     throw new Error("Taka 1 er kom hote parbe na");
   }
-
-  // The due is computed dynamically, so we must re-read it inside the
-  // validation to get a consistent view.
-  const due = await buyerDueBalance(buyerId);
-
-  // due <= 0 means the buyer owes nothing right now — either square, or
-  // already in credit from a cancelled paid-for sale. Either way there is
-  // nothing to pay against, so say that plainly instead of falling through
-  // to the "more than X ৳" message below, which would otherwise put a
-  // negative or zero taka figure in front of the pharmacist.
-  if (due <= 0) {
-    throw new Error(
-      due < 0
-        ? `Ei buyer er kono baki nei — uni borong ${new Intl.NumberFormat("en-BD").format(-due / 100)} ৳ joma ache, notun kore joma neoya lagbe na`
-        : "Ei buyer er kono baki nei, joma neoya lagbe na",
-    );
-  }
-  if (amountPaisa > due) {
-    throw new Error(
-      `Joma ${new Intl.NumberFormat("en-BD").format(amountPaisa / 100)} ৳ baki ${new Intl.NumberFormat("en-BD").format(due / 100)} ৳ er cheye beshi hote parbe na`,
-    );
-  }
-
   if (typeof note !== "string") throw new Error("note must be a string");
 
-  await PaymentModel.create({
-    buyerId: new mongoose.Types.ObjectId(buyerId),
-    amountPaisa,
-    note: note.trim(),
-    createdBy: new mongoose.Types.ObjectId(adminSession.userId),
-  });
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      // Bumping the buyer document's own versionKey (__v) here is the
+      // guard in the write path, the same role cancelSale's conditional
+      // updateOne plays for cancellation. The due balance below is a
+      // *derived* read across the Sale and Payment collections — nothing
+      // about Payment being append-only makes a plain "read the due, then
+      // insert a Payment" sequence safe, because two concurrent calls can
+      // both read the same due total before either one's insert is
+      // visible to the other (a classic check-then-act race: a
+      // double-click on "Joma add koro" fires two calls that can both
+      // pass the "not more than the due" check and both commit,
+      // overcounting the payment). Having both transactions write to this
+      // buyer document is what makes MongoDB detect the conflict: when
+      // two open transactions try to modify the same document, one gets a
+      // TransientTransactionError and withTransaction retries its
+      // callback from the top — so the retry's due-balance read below
+      // sees the sibling payment that already committed.
+      const buyer = await BuyerModel.findOneAndUpdate(
+        { _id: buyerId },
+        { $inc: { __v: 1 } },
+        { session, new: true },
+      );
+      if (!buyer) throw new Error("Buyer pawa jay ni");
+
+      // Read inside the transaction so a TransientTransactionError retry
+      // (see above) re-evaluates the due balance against the latest
+      // committed state, not a stale value captured before the retry.
+      const due = await computeBuyerDueBalance(buyerId, session);
+
+      // due <= 0 means the buyer owes nothing right now — either square,
+      // or already in credit from a cancelled paid-for sale. Either way
+      // there is nothing to pay against, so say that plainly instead of
+      // falling through to the "more than X ৳" message below, which would
+      // otherwise put a negative or zero taka figure in front of the
+      // pharmacist.
+      if (due <= 0) {
+        throw new Error(
+          due < 0
+            ? `Ei buyer er kono baki nei — uni borong ${new Intl.NumberFormat("en-BD").format(-due / 100)} ৳ joma ache, notun kore joma neoya lagbe na`
+            : "Ei buyer er kono baki nei, joma neoya lagbe na",
+        );
+      }
+      if (amountPaisa > due) {
+        throw new Error(
+          `Joma ${new Intl.NumberFormat("en-BD").format(amountPaisa / 100)} ৳ baki ${new Intl.NumberFormat("en-BD").format(due / 100)} ৳ er cheye beshi hote parbe na`,
+        );
+      }
+
+      await PaymentModel.create(
+        [
+          {
+            buyerId: new mongoose.Types.ObjectId(buyerId),
+            amountPaisa,
+            note: note.trim(),
+            createdBy: new mongoose.Types.ObjectId(adminSession.userId),
+          },
+        ],
+        { session },
+      );
+    });
+  } finally {
+    await session.endSession();
+  }
 }

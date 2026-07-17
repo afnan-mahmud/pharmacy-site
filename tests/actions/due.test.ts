@@ -316,6 +316,32 @@ describe("recordPayment", () => {
     clearSessionCookie(cookieStore);
     await expect(recordPayment("507f1f77bcf86cd799439011", 50, "")).rejects.toThrow();
   });
+
+  it("does not let two concurrent payments for the whole due both commit (a double-click must not halve the debt)", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+
+    await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 1 }], // 12000 paisa due
+      discountPaisa: 0,
+      paidPaisa: 0,
+    });
+
+    const results = await Promise.allSettled([
+      recordPayment(buyer._id, 120, "concurrent A"),
+      recordPayment(buyer._id, 120, "concurrent B"),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+
+    const count = await PaymentModel.countDocuments({ buyerId: buyer._id });
+    expect(count).toBe(1);
+    expect(await buyerDueBalance(buyer._id)).toBe(0);
+  });
 });
 
 describe("buyerLedger", () => {
