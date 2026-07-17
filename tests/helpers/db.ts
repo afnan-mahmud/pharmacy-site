@@ -44,6 +44,18 @@ export function setupTestDb(): void {
     cache.conn = mongoose;
     cache.promise = Promise.resolve(mongoose);
     globalWithMongoose._mongooseCache = cache;
+
+    // Mongoose normally starts index creation lazily on first write, which
+    // races the very next insert in a test — so a "rejects a duplicate"
+    // test can pass on timing luck even if the schema's `unique: true` is
+    // wrong or missing entirely. Every model that any test file for this
+    // suite has imported by now is already registered (imports resolve
+    // before this async beforeAll body runs), so awaiting Model.init() for
+    // all of them here makes every unique/sparse/partial index actually
+    // exist in Mongo before the first test runs.
+    await Promise.all(
+      mongoose.modelNames().map((name) => mongoose.model(name).init()),
+    );
   });
 
   // Only clears documents, not indexes or the mongoose model registry — those

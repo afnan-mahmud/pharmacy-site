@@ -86,6 +86,19 @@ describe("recordRetailSale", () => {
     expect(sale.invoiceNo).toBeNull();
   });
 
+  it("allows a second retail sale without colliding on invoiceNo (regression: a sparse unique index does not skip explicit nulls)", async () => {
+    const medicine = await makeMedicine({}, 100);
+    const first = await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 1 }],
+    });
+    const second = await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 1 }],
+    });
+    expect(first.invoiceNo).toBeNull();
+    expect(second.invoiceNo).toBeNull();
+    expect(await SaleModel.countDocuments({ type: "retail" })).toBe(2);
+  });
+
   it("has no buyer", async () => {
     const medicine = await makeMedicine();
     const sale = await recordRetailSale({
