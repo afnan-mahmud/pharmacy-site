@@ -22,7 +22,9 @@ const orderSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: "Buyer",
       required: true,
-      index: true,
+      // No single-field index here: the { buyerId: 1, createdAt: -1 } compound
+      // index below already serves buyerId-only queries via its leftmost
+      // prefix, so a separate one would only add write overhead.
     },
     // Denormalised so the owner's pending-order list reads without a join.
     buyerName: { type: String, required: true },
