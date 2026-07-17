@@ -25,29 +25,68 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/*
+ * 80mm thermal receipt. The printer is installed as an ordinary Windows
+ * driver, so the browser's own print dialog does the work — no bridge
+ * program, no ESC/POS.
+ */
 @media print {
-  .no-print {
-    display: none !important;
+  /*
+   * `size: 80mm auto` gives the roll's width and lets the height grow to fit
+   * the receipt, which is what a continuous roll wants. Without it the
+   * browser lays the page out for its default paper (A4/Letter) regardless
+   * of how wide the invoice element is.
+   */
+  @page {
+    size: 80mm auto;
+    margin: 0;
   }
+
   body {
     background: white;
     margin: 0;
     padding: 0;
   }
-  /* Hide everything outside the invoice on print. */
-  body > * {
-    display: none;
+
+  /*
+   * Hiding everything then re-showing the invoice must go through
+   * `visibility`, not `display`. `display: none` on an ancestor removes the
+   * whole subtree from the box tree, and no descendant can opt back in — the
+   * invoice is nested several levels inside the admin layout, so a
+   * `body > * { display: none }` rule made it generate zero boxes and print
+   * a blank page. `visibility: hidden` only hides the element itself, so a
+   * descendant can set `visibility: visible` and be painted.
+   */
+  body * {
+    visibility: hidden;
   }
+
+  .invoice,
+  .invoice * {
+    visibility: visible;
+  }
+
   .invoice {
-    display: block !important;
-    /* Reset any inherited Tailwind constraints so the invoice sits at the
-       top-left corner of the printed page, flush to the paper edge. */
-    position: static !important;
+    /* Lifted out of the layout's centering and padding so the receipt sits
+       flush to the paper's top-left corner. */
+    position: absolute;
+    left: 0;
+    top: 0;
+    /* Stated explicitly rather than relying on Tailwind's preflight: with
+       content-box, `width: 80mm` plus 4mm of padding each side would lay the
+       receipt out 88mm wide on 80mm paper and clip the right edge. */
+    box-sizing: border-box;
     margin: 0 !important;
     padding: 4mm !important;
     width: 80mm !important;
     max-width: 80mm !important;
     font-size: 10pt;
     color: black;
+  }
+
+  /* Still display-based: these must take up no space at all, not merely be
+     invisible, or they would leave blank paper where they used to sit. */
+  .no-print {
+    display: none !important;
   }
 }
