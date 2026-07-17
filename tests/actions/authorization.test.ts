@@ -65,6 +65,11 @@ const EXEMPT: Record<string, string[]> = {
     // (including an already-expired or malformed one) in order to clear it.
     "login",
     "logout",
+    // Buyer equivalents — buyerLogin establishes a buyer session (so it can't
+    // require one) and buyerLogout must be callable to clear a cookie. Covered
+    // by their own tests in tests/actions/auth.test.ts.
+    "buyerLogin",
+    "buyerLogout",
   ],
   "/src/actions/settings.ts": [
     // Added by Fix 2: an unguarded, upsert-free read of pharmacy identity

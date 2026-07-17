@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { setupTestDb } from "../helpers/db";
 import { AdminUserModel } from "@/models/AdminUser";
+import { BuyerModel } from "@/models/Buyer";
 import { hashPassword } from "@/lib/auth";
 
 const cookieStore = { set: vi.fn(), delete: vi.fn(), get: vi.fn() };
@@ -116,5 +117,65 @@ describe("login", () => {
     const malformed = await login(123 as unknown as string, "secret123");
     const wrongPassword = await login("owner", "wrong");
     expect(malformed).toEqual(wrongPassword);
+  });
+});
+
+describe("buyerLogin", () => {
+  beforeEach(async () => {
+    await BuyerModel.create({
+      name: "Karim Uddin",
+      shopName: "Karim Medical Hall",
+      phone: "01711111111",
+      address: "Mirpur",
+      passwordHash: await hashPassword("secret123"),
+      active: true,
+    });
+  });
+
+  it("succeeds with the right phone and password and sets a buyer cookie", async () => {
+    const { buyerLogin } = await import("@/actions/auth");
+    const result = await buyerLogin("01711111111", "secret123");
+    expect(result.ok).toBe(true);
+    expect(cookieStore.set).toHaveBeenCalledOnce();
+
+    const [name, , options] = cookieStore.set.mock.calls[0];
+    expect(name).toBe("session");
+    expect(options).toMatchObject({
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+    });
+  });
+
+  it("fails with a wrong password and sets no cookie", async () => {
+    const { buyerLogin } = await import("@/actions/auth");
+    const result = await buyerLogin("01711111111", "wrong");
+    expect(result).toEqual({ ok: false, error: "Phone ba password bhul" });
+    expect(cookieStore.set).not.toHaveBeenCalled();
+  });
+
+  it("gives the same error for an unknown phone as a wrong password", async () => {
+    const { buyerLogin } = await import("@/actions/auth");
+    const unknown = await buyerLogin("01799999999", "secret123");
+    const wrong = await buyerLogin("01711111111", "wrong");
+    expect(unknown).toEqual(wrong);
+  });
+
+  it("refuses an inactive buyer with the same generic error", async () => {
+    await BuyerModel.updateOne(
+      { phone: "01711111111" },
+      { $set: { active: false } },
+    );
+    const { buyerLogin } = await import("@/actions/auth");
+    const result = await buyerLogin("01711111111", "secret123");
+    expect(result).toEqual({ ok: false, error: "Phone ba password bhul" });
+    expect(cookieStore.set).not.toHaveBeenCalled();
+  });
+
+  it("fails a non-string input exactly like a wrong password", async () => {
+    const { buyerLogin } = await import("@/actions/auth");
+    // @ts-expect-error deliberately passing a non-string past the type boundary
+    const result = await buyerLogin(12345, "secret123");
+    expect(result).toEqual({ ok: false, error: "Phone ba password bhul" });
   });
 });

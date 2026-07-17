@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createSessionToken } from "@/lib/auth";
+import {
+  setSessionCookie,
+  clearSessionCookie,
+  adminToken,
+  buyerToken,
+} from "../helpers/auth";
 
 // No setupTestDb() here: getSession/requireAdmin never touch the database,
 // they only read a cookie and verify a JWT. Pulling in the in-memory Mongo
@@ -147,6 +153,58 @@ describe("requireAdminAction", () => {
       role: "admin",
       name: "Owner",
     });
+    expect(redirectMock).not.toHaveBeenCalled();
+  });
+});
+
+// requireBuyerAction mirrors requireAdminAction exactly, for the buyer role:
+// it guards a Server Action, so it throws (never redirects) when there's no
+// buyer session.
+describe("requireBuyerAction", () => {
+  it("returns the session for a buyer token", async () => {
+    setSessionCookie(cookieStore, await buyerToken());
+    const { requireBuyerAction } = await import("@/lib/session");
+
+    const session = await requireBuyerAction();
+    expect(session.role).toBe("buyer");
+  });
+
+  it("throws for an admin token", async () => {
+    setSessionCookie(cookieStore, await adminToken());
+    const { requireBuyerAction, BUYER_ONLY_ERROR } = await import(
+      "@/lib/session"
+    );
+
+    await expect(requireBuyerAction()).rejects.toThrow(BUYER_ONLY_ERROR);
+  });
+
+  it("throws with no session", async () => {
+    clearSessionCookie(cookieStore);
+    const { requireBuyerAction, BUYER_ONLY_ERROR } = await import(
+      "@/lib/session"
+    );
+
+    await expect(requireBuyerAction()).rejects.toThrow(BUYER_ONLY_ERROR);
+  });
+});
+
+// requireBuyer mirrors requireAdmin: it's a page guard, so a non-buyer is
+// redirected to the buyer login rather than thrown at.
+describe("requireBuyer", () => {
+  it("redirects an admin to the buyer login", async () => {
+    setSessionCookie(cookieStore, await adminToken());
+    const { requireBuyer } = await import("@/lib/session");
+
+    await expect(requireBuyer()).rejects.toThrow(RedirectError);
+    expect(redirectMock).toHaveBeenCalledWith("/buyer/login");
+  });
+
+  it("returns the session for a buyer", async () => {
+    setSessionCookie(cookieStore, await buyerToken());
+    const { requireBuyer } = await import("@/lib/session");
+
+    const session = await requireBuyer();
+    expect(session.role).toBe("buyer");
     expect(redirectMock).not.toHaveBeenCalled();
   });
 });

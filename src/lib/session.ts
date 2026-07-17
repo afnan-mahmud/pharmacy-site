@@ -48,3 +48,29 @@ export async function requireAdminAction(): Promise<SessionPayload> {
   }
   return session;
 }
+
+export const BUYER_ONLY_ERROR = "Buyer login chara ei kaj kora jabe na";
+
+/** Page guard for buyer routes — redirects a non-buyer to the buyer login. */
+export async function requireBuyer(): Promise<SessionPayload> {
+  const session = await getSession();
+  if (!session || session.role !== "buyer") redirect("/buyer/login");
+  return session;
+}
+
+/**
+ * Action guard for buyer server actions. Throws rather than redirects, for
+ * the same reason requireAdminAction does: a server action is a POST-shaped
+ * endpoint with no page render to turn a redirect into. See requireAdminAction.
+ *
+ * This proves only that *some* buyer is calling. It does NOT prove the buyer
+ * owns the data an action names — that check must live in each action, which
+ * is the only place that knows which order or balance is being touched.
+ */
+export async function requireBuyerAction(): Promise<SessionPayload> {
+  const session = await getSession();
+  if (!session || session.role !== "buyer") {
+    throw new Error(BUYER_ONLY_ERROR);
+  }
+  return session;
+}
