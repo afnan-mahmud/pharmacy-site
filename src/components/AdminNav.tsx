@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/stock", label: "Stock In" },
   { href: "/buyers", label: "Buyer" },
   { href: "/due", label: "Baki Khata" },
+  { href: "/reports", label: "Report" },
   { href: "/settings", label: "Settings" },
 ];
 
