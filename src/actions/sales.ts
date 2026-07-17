@@ -7,11 +7,9 @@ import { requireAdminAction } from "@/lib/session";
 import { applyStockDelta } from "@/lib/stockTransaction";
 import { computeTotals, lineTotal } from "@/lib/saleTotals";
 import { toPlain, type Serialized } from "@/lib/serialize";
-import { boxesToPatas } from "@/lib/units";
-import { nextInvoiceSeq, formatInvoiceNo } from "@/lib/invoiceNumber";
+import { writeWholesaleSale } from "@/lib/writeWholesaleSale";
 import { MedicineModel } from "@/models/Medicine";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
-import { SettingsModel } from "@/models/Settings";
 import { BuyerModel } from "@/models/Buyer";
 
 export type RetailSaleInput = {
@@ -210,74 +208,15 @@ export async function recordWholesaleSale(
       if (!buyer) throw new Error("Buyer pawa jay ni");
       if (!buyer.active) throw new Error("Buyer ta bondho ache");
 
-      const lines = [];
-
-      for (const item of input.items) {
-        const medicine = await MedicineModel.findById(item.medicineId).session(
-          session,
-        );
-        if (!medicine) throw new Error("Medicine pawa jay ni");
-
-        const patas = boxesToPatas(item.boxes, medicine.patasPerBox);
-
-        const ok = await applyStockDelta(medicine._id, -patas, session);
-        if (!ok) {
-          const current = await MedicineModel.findById(item.medicineId).session(
-            session,
-          );
-          throw new Error(
-            `${medicine.name} — stock e ache ${current?.stockPatas ?? 0} pata, lagbe ${patas} pata`,
-          );
-        }
-
-        lines.push({
-          medicineId: medicine._id,
-          medicineName: medicine.name,
-          unit: "box" as const,
-          quantity: item.boxes,
-          ratePaisa: medicine.boxPricePaisa,
-          lineTotalPaisa: lineTotal({
-            ratePaisa: medicine.boxPricePaisa,
-            quantity: item.boxes,
-          }),
-          patasDeducted: patas,
-        });
-      }
-
-      const { subtotalPaisa, totalPaisa, duePaisa } = computeTotals(
-        lines.map((l) => ({ ratePaisa: l.ratePaisa, quantity: l.quantity })),
-        input.discountPaisa,
-        input.paidPaisa,
-      );
-
-      // Read the prefix inside the transaction so the invoice number and the
-      // prefix it was formatted with come from one consistent view.
-      const settings = await SettingsModel.findOne({ key: "singleton" }).session(
+      const sale = await writeWholesaleSale({
         session,
-      );
-      const prefix = settings?.invoicePrefix ?? "ABC";
-      const seq = await nextInvoiceSeq(session);
-
-      const [sale] = await SaleModel.create(
-        [
-          {
-            type: "wholesale",
-            buyerId: buyer._id,
-            buyerName: buyer.name,
-            buyerShopName: buyer.shopName,
-            invoiceNo: formatInvoiceNo(prefix, seq),
-            items: lines,
-            subtotalPaisa,
-            discountPaisa: input.discountPaisa,
-            totalPaisa,
-            paidPaisa: input.paidPaisa,
-            duePaisa,
-            status: "active",
-            createdBy: new mongoose.Types.ObjectId(adminSession.userId),
-          },
-        ],
-        { session },
-      );
+        buyer: { id: buyer._id, name: buyer.name, shopName: buyer.shopName },
+        items: input.items,
+        discountPaisa: input.discountPaisa,
+        paidPaisa: input.paidPaisa,
+        createdBy: adminSession.userId,
+        orderId: null,
+      });
       saleId = sale._id;
     });
   } finally {
