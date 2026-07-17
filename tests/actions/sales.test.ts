@@ -1,0 +1,612 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { setupTestDb } from "../helpers/db";
+import {
+  createMockCookieStore,
+  setSessionCookie,
+  clearSessionCookie,
+  adminToken,
+} from "../helpers/auth";
+import { ADMIN_ONLY_ERROR } from "@/lib/session";
+import { createMedicine } from "@/actions/medicines";
+import { recordRetailSale, recordWholesaleSale, cancelSale } from "@/actions/sales";
+import { createBuyer } from "@/actions/buyers";
+import { MedicineModel } from "@/models/Medicine";
+import { SaleModel } from "@/models/Sale";
+import { SettingsModel } from "@/models/Settings";
+
+const cookieStore = createMockCookieStore();
+vi.mock("next/headers", () => ({
+  cookies: async () => cookieStore,
+}));
+
+setupTestDb();
+
+const napa = {
+  name: "Napa 500mg",
+  genericName: "Paracetamol",
+  company: "Beximco",
+  patasPerBox: 10,
+  boxPricePaisa: 12000,
+  pataPricePaisa: 1400,
+  lowStockThreshold: 20,
+};
+
+async function makeMedicine(overrides = {}, stockPatas = 500) {
+  const medicine = await createMedicine({ ...napa, ...overrides });
+  await MedicineModel.updateOne({ _id: medicine._id }, { $set: { stockPatas } });
+  return medicine;
+}
+
+async function makeBuyer(overrides = {}) {
+  return createBuyer(
+    {
+      name: "Karim Uddin",
+      shopName: "Karim Medical Hall",
+      phone: `017${Math.floor(Math.random() * 100000000)}`,
+      address: "Mirpur",
+      ...overrides,
+    },
+    "secret123",
+  );
+}
+
+// Every action here is admin-only work, so every test needs a valid admin
+// session unless it is specifically testing the guard.
+beforeEach(async () => {
+  setSessionCookie(cookieStore, await adminToken());
+});
+
+describe("recordRetailSale", () => {
+  it("charges the pata rate and deducts patas", async () => {
+    const medicine = await makeMedicine();
+    const sale = await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 2 }],
+    });
+
+    expect(sale.type).toBe("retail");
+    expect(sale.totalPaisa).toBe(2800);
+    const after = await MedicineModel.findById(medicine._id);
+    expect(after!.stockPatas).toBe(498);
+  });
+
+  it("is always paid in full with no due", async () => {
+    const medicine = await makeMedicine();
+    const sale = await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 2 }],
+    });
+    expect(sale.paidPaisa).toBe(2800);
+    expect(sale.duePaisa).toBe(0);
+  });
+
+  it("assigns no invoice number", async () => {
+    const medicine = await makeMedicine();
+    const sale = await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 1 }],
+    });
+    expect(sale.invoiceNo).toBeNull();
+  });
+
+  it("has no buyer", async () => {
+    const medicine = await makeMedicine();
+    const sale = await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 1 }],
+    });
+    expect(sale.buyerId).toBeNull();
+  });
+
+  it("snapshots the medicine name and rate onto the line", async () => {
+    const medicine = await makeMedicine();
+    const sale = await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 2 }],
+    });
+    expect(sale.items[0].medicineName).toBe("Napa 500mg");
+    expect(sale.items[0].ratePaisa).toBe(1400);
+    expect(sale.items[0].unit).toBe("pata");
+    expect(sale.items[0].patasDeducted).toBe(2);
+  });
+
+  it("does not rewrite a past sale when the price later changes", async () => {
+    const medicine = await makeMedicine();
+    const sale = await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 2 }],
+    });
+    await MedicineModel.updateOne(
+      { _id: medicine._id },
+      { $set: { pataPricePaisa: 9900 } },
+    );
+    const stored = await SaleModel.findById(sale._id);
+    expect(stored!.items[0].ratePaisa).toBe(1400);
+    expect(stored!.totalPaisa).toBe(2800);
+  });
+
+  it("handles multiple lines", async () => {
+    const a = await makeMedicine();
+    const b = await makeMedicine({ name: "Ace", pataPricePaisa: 1000 });
+    const sale = await recordRetailSale({
+      items: [
+        { medicineId: a._id, patas: 2 },
+        { medicineId: b._id, patas: 3 },
+      ],
+    });
+    expect(sale.totalPaisa).toBe(2800 + 3000);
+    expect(sale.items).toHaveLength(2);
+  });
+
+  it("refuses to sell more than the stock and changes nothing", async () => {
+    const medicine = await makeMedicine({}, 5);
+    await expect(
+      recordRetailSale({ items: [{ medicineId: medicine._id, patas: 6 }] }),
+    ).rejects.toThrow("Napa 500mg — stock e ache 5 pata, lagbe 6 pata");
+
+    const after = await MedicineModel.findById(medicine._id);
+    expect(after!.stockPatas).toBe(5);
+    expect(await SaleModel.countDocuments()).toBe(0);
+  });
+
+  it("rolls back every line when a later line is short", async () => {
+    // The whole sale must be atomic: the first medicine's stock must not
+    // stay deducted because the second one failed.
+    const a = await makeMedicine({}, 500);
+    const b = await makeMedicine({ name: "Ace" }, 1);
+
+    await expect(
+      recordRetailSale({
+        items: [
+          { medicineId: a._id, patas: 2 },
+          { medicineId: b._id, patas: 5 },
+        ],
+      }),
+    ).rejects.toThrow("stock e ache");
+
+    expect((await MedicineModel.findById(a._id))!.stockPatas).toBe(500);
+    expect((await MedicineModel.findById(b._id))!.stockPatas).toBe(1);
+    expect(await SaleModel.countDocuments()).toBe(0);
+  });
+
+  it("stock can never go negative through this path", async () => {
+    const medicine = await makeMedicine({}, 3);
+    await expect(
+      recordRetailSale({ items: [{ medicineId: medicine._id, patas: 1000 }] }),
+    ).rejects.toThrow();
+    const after = await MedicineModel.findById(medicine._id);
+    expect(after!.stockPatas).toBeGreaterThanOrEqual(0);
+  });
+
+  it("rejects an empty sale", async () => {
+    await expect(recordRetailSale({ items: [] })).rejects.toThrow(
+      "Cart khali",
+    );
+  });
+
+  it("rejects a zero quantity", async () => {
+    const medicine = await makeMedicine();
+    await expect(
+      recordRetailSale({ items: [{ medicineId: medicine._id, patas: 0 }] }),
+    ).rejects.toThrow("Pata sonkha 1 er kom hote parbe na");
+  });
+
+  it("rejects a fractional quantity", async () => {
+    const medicine = await makeMedicine();
+    await expect(
+      recordRetailSale({ items: [{ medicineId: medicine._id, patas: 1.5 }] }),
+    ).rejects.toThrow("Pata sonkha 1 er kom hote parbe na");
+  });
+
+  it("rejects a malformed medicine id", async () => {
+    await expect(
+      recordRetailSale({ items: [{ medicineId: "not-an-id", patas: 1 }] }),
+    ).rejects.toThrow("Medicine pawa jay ni");
+  });
+
+  it("rejects an unknown medicine", async () => {
+    await expect(
+      recordRetailSale({
+        items: [{ medicineId: "507f1f77bcf86cd799439011", patas: 1 }],
+      }),
+    ).rejects.toThrow("Medicine pawa jay ni");
+  });
+
+  it("rejects the same medicine listed twice", async () => {
+    // Two lines for one medicine would each check stock independently and
+    // could together oversell it.
+    const medicine = await makeMedicine({}, 3);
+    await expect(
+      recordRetailSale({
+        items: [
+          { medicineId: medicine._id, patas: 2 },
+          { medicineId: medicine._id, patas: 2 },
+        ],
+      }),
+    ).rejects.toThrow("ekbar er beshi");
+  });
+
+  it("rejects an unauthenticated caller", async () => {
+    clearSessionCookie(cookieStore);
+    await expect(
+      recordRetailSale({ items: [{ medicineId: "507f1f77bcf86cd799439011", patas: 1 }] }),
+    ).rejects.toThrow();
+  });
+});
+
+describe("recordWholesaleSale", () => {
+  it("charges the box rate and deducts boxes worth of patas", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+
+    const sale = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 3 }],
+      discountPaisa: 0,
+      paidPaisa: 36000,
+    });
+
+    expect(sale.type).toBe("wholesale");
+    expect(sale.totalPaisa).toBe(36000);
+    expect(sale.items[0].unit).toBe("box");
+    expect(sale.items[0].quantity).toBe(3);
+    expect(sale.items[0].ratePaisa).toBe(12000);
+    expect(sale.items[0].patasDeducted).toBe(30);
+
+    const after = await MedicineModel.findById(medicine._id);
+    expect(after!.stockPatas).toBe(470);
+  });
+
+  it("assigns a sequential invoice number using the settings prefix", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    const line = { medicineId: medicine._id, boxes: 1 };
+
+    const first = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [line],
+      discountPaisa: 0,
+      paidPaisa: 12000,
+    });
+    const second = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [line],
+      discountPaisa: 0,
+      paidPaisa: 12000,
+    });
+
+    expect(first.invoiceNo).toBe("ABC-000001");
+    expect(second.invoiceNo).toBe("ABC-000002");
+  });
+
+  it("uses a changed invoice prefix", async () => {
+    await SettingsModel.findOneAndUpdate(
+      { key: "singleton" },
+      { $set: { invoicePrefix: "RP" } },
+      { upsert: true },
+    );
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+
+    const sale = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 1 }],
+      discountPaisa: 0,
+      paidPaisa: 12000,
+    });
+    expect(sale.invoiceNo).toBe("RP-000001");
+  });
+
+  it("records a part payment as a due", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+
+    const sale = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 3 }],
+      discountPaisa: 0,
+      paidPaisa: 20000,
+    });
+
+    expect(sale.totalPaisa).toBe(36000);
+    expect(sale.paidPaisa).toBe(20000);
+    expect(sale.duePaisa).toBe(16000);
+  });
+
+  it("subtracts a discount from the total", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+
+    const sale = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 3 }],
+      discountPaisa: 1000,
+      paidPaisa: 0,
+    });
+
+    expect(sale.subtotalPaisa).toBe(36000);
+    expect(sale.discountPaisa).toBe(1000);
+    expect(sale.totalPaisa).toBe(35000);
+    expect(sale.duePaisa).toBe(35000);
+  });
+
+  it("snapshots the buyer name and shop onto the sale", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    const sale = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 1 }],
+      discountPaisa: 0,
+      paidPaisa: 12000,
+    });
+    expect(sale.buyerName).toBe("Karim Uddin");
+    expect(sale.buyerShopName).toBe("Karim Medical Hall");
+  });
+
+  it("refuses to sell more boxes than the stock covers, and changes nothing", async () => {
+    const medicine = await makeMedicine({}, 25); // 2 boxes and 5 patas
+    const buyer = await makeBuyer();
+
+    await expect(
+      recordWholesaleSale({
+        buyerId: buyer._id,
+        items: [{ medicineId: medicine._id, boxes: 3 }],
+        discountPaisa: 0,
+        paidPaisa: 0,
+      }),
+    ).rejects.toThrow("stock e ache");
+
+    const after = await MedicineModel.findById(medicine._id);
+    expect(after!.stockPatas).toBe(25);
+    expect(await SaleModel.countDocuments()).toBe(0);
+  });
+
+  it("burns the invoice number rather than reusing it after a failure", async () => {
+    const good = await makeMedicine({}, 500);
+    const short = await makeMedicine({ name: "Ace" }, 0);
+    const buyer = await makeBuyer();
+
+    await expect(
+      recordWholesaleSale({
+        buyerId: buyer._id,
+        items: [{ medicineId: short._id, boxes: 1 }],
+        discountPaisa: 0,
+        paidPaisa: 0,
+      }),
+    ).rejects.toThrow();
+
+    const after = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: good._id, boxes: 1 }],
+      discountPaisa: 0,
+      paidPaisa: 12000,
+    });
+
+    // The number the failed attempt would have taken must never appear on a
+    // second sale. Whatever it is, it must be unique.
+    const all = await SaleModel.find({ invoiceNo: { $ne: null } });
+    const numbers = all.map((s) => s.invoiceNo);
+    expect(new Set(numbers).size).toBe(numbers.length);
+    expect(after.invoiceNo).toBeTruthy();
+  });
+
+  it("rejects an unknown buyer", async () => {
+    const medicine = await makeMedicine();
+    await expect(
+      recordWholesaleSale({
+        buyerId: "507f1f77bcf86cd799439011",
+        items: [{ medicineId: medicine._id, boxes: 1 }],
+        discountPaisa: 0,
+        paidPaisa: 0,
+      }),
+    ).rejects.toThrow("Buyer pawa jay ni");
+  });
+
+  it("rejects an inactive buyer", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    const { setBuyerActive } = await import("@/actions/buyers");
+    await setBuyerActive(buyer._id, false);
+
+    await expect(
+      recordWholesaleSale({
+        buyerId: buyer._id,
+        items: [{ medicineId: medicine._id, boxes: 1 }],
+        discountPaisa: 0,
+        paidPaisa: 0,
+      }),
+    ).rejects.toThrow("Buyer ta bondho ache");
+  });
+
+  it("rejects a discount larger than the subtotal", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    await expect(
+      recordWholesaleSale({
+        buyerId: buyer._id,
+        items: [{ medicineId: medicine._id, boxes: 1 }],
+        discountPaisa: 99999,
+        paidPaisa: 0,
+      }),
+    ).rejects.toThrow("Discount total er cheye beshi hote parbe na");
+  });
+
+  it("rejects paying more than the total", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    await expect(
+      recordWholesaleSale({
+        buyerId: buyer._id,
+        items: [{ medicineId: medicine._id, boxes: 1 }],
+        discountPaisa: 0,
+        paidPaisa: 99999,
+      }),
+    ).rejects.toThrow("Joma taka total er cheye beshi hote parbe na");
+  });
+
+  it("rejects a zero box count", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    await expect(
+      recordWholesaleSale({
+        buyerId: buyer._id,
+        items: [{ medicineId: medicine._id, boxes: 0 }],
+        discountPaisa: 0,
+        paidPaisa: 0,
+      }),
+    ).rejects.toThrow("Box sonkha 1 er kom hote parbe na");
+  });
+
+  it("rejects an unauthenticated caller", async () => {
+    clearSessionCookie(cookieStore);
+    await expect(
+      recordWholesaleSale({
+        buyerId: "507f1f77bcf86cd799439011",
+        items: [{ medicineId: "507f1f77bcf86cd799439011", boxes: 1 }],
+        discountPaisa: 0,
+        paidPaisa: 0,
+      }),
+    ).rejects.toThrow();
+  });
+});
+
+describe("cancelSale", () => {
+  it("returns the stock the sale took", async () => {
+    const medicine = await makeMedicine({}, 500);
+    const buyer = await makeBuyer();
+    const sale = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 3 }],
+      discountPaisa: 0,
+      paidPaisa: 36000,
+    });
+    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(470);
+
+    await cancelSale(sale._id, "Bhul kore kora hoyeche");
+
+    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(500);
+  });
+
+  it("marks the sale cancelled without deleting it", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    const sale = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 1 }],
+      discountPaisa: 0,
+      paidPaisa: 12000,
+    });
+
+    await cancelSale(sale._id, "Buyer ferot diyeche");
+
+    const stored = await SaleModel.findById(sale._id);
+    expect(stored).not.toBeNull();
+    expect(stored!.status).toBe("cancelled");
+    expect(stored!.cancelReason).toBe("Buyer ferot diyeche");
+    expect(stored!.cancelledAt).toBeInstanceOf(Date);
+  });
+
+  it("keeps the invoice number rather than freeing it", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    const sale = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 1 }],
+      discountPaisa: 0,
+      paidPaisa: 12000,
+    });
+
+    await cancelSale(sale._id, "test");
+
+    const stored = await SaleModel.findById(sale._id);
+    expect(stored!.invoiceNo).toBe(sale.invoiceNo);
+  });
+
+  it("returns retail stock too", async () => {
+    const medicine = await makeMedicine({}, 500);
+    const sale = await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 4 }],
+    });
+    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(496);
+
+    await cancelSale(sale._id, "test");
+
+    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(500);
+  });
+
+  it("returns stock for every line", async () => {
+    const a = await makeMedicine({}, 500);
+    const b = await makeMedicine({ name: "Ace" }, 300);
+    const sale = await recordRetailSale({
+      items: [
+        { medicineId: a._id, patas: 2 },
+        { medicineId: b._id, patas: 3 },
+      ],
+    });
+
+    await cancelSale(sale._id, "test");
+
+    expect((await MedicineModel.findById(a._id))!.stockPatas).toBe(500);
+    expect((await MedicineModel.findById(b._id))!.stockPatas).toBe(300);
+  });
+
+  it("refuses to cancel twice, so stock is not returned twice", async () => {
+    const medicine = await makeMedicine({}, 500);
+    const sale = await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 4 }],
+    });
+
+    await cancelSale(sale._id, "first");
+    await expect(cancelSale(sale._id, "second")).rejects.toThrow(
+      "Ei bikri age theke cancel kora",
+    );
+
+    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(500);
+  });
+
+  it("returns the snapshotted patas even if the pack size later changed", async () => {
+    const medicine = await makeMedicine({}, 500);
+    const buyer = await makeBuyer();
+    const sale = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 2 }],
+      discountPaisa: 0,
+      paidPaisa: 24000,
+    });
+    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(480);
+
+    // The supplier switches pack size after the sale.
+    await MedicineModel.updateOne(
+      { _id: medicine._id },
+      { $set: { patasPerBox: 12 } },
+    );
+
+    await cancelSale(sale._id, "test");
+
+    // 20 patas went out, so exactly 20 must come back — not 24.
+    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(500);
+  });
+
+  it("throws for an unknown sale", async () => {
+    await expect(
+      cancelSale("507f1f77bcf86cd799439011", "test"),
+    ).rejects.toThrow("Bikri pawa jay ni");
+  });
+
+  it("throws for a malformed id", async () => {
+    await expect(cancelSale("not-an-id", "test")).rejects.toThrow(
+      "Bikri pawa jay ni",
+    );
+  });
+
+  it("requires a reason", async () => {
+    const medicine = await makeMedicine();
+    const sale = await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 1 }],
+    });
+    await expect(cancelSale(sale._id, "   ")).rejects.toThrow(
+      "Cancel korar karon likhte hobe",
+    );
+  });
+
+  it("rejects an unauthenticated caller", async () => {
+    clearSessionCookie(cookieStore);
+    await expect(
+      cancelSale("507f1f77bcf86cd799439011", "test"),
+    ).rejects.toThrow();
+  });
+});

@@ -32,7 +32,7 @@ export default async function StockPage() {
                 </tr>
               )}
               {entries.map((entry) => (
-                <tr key={String(entry._id)} className="border-b border-slate-100">
+                <tr key={entry._id} className="border-b border-slate-100">
                   <td className="p-3 text-slate-600">
                     {new Date(entry.createdAt).toLocaleDateString("en-GB", {
                       timeZone: "Asia/Dhaka",

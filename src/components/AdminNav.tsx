@@ -3,8 +3,12 @@ import { logout } from "@/actions/auth";
 
 const LINKS = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/sell", label: "Khuchra Bikri" },
+  { href: "/wholesale", label: "Wholesale Bikri" },
   { href: "/medicines", label: "Medicine" },
   { href: "/stock", label: "Stock In" },
+  { href: "/buyers", label: "Buyer" },
+  { href: "/due", label: "Baki Khata" },
   { href: "/settings", label: "Settings" },
 ];
 

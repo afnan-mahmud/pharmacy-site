@@ -41,7 +41,7 @@ export function MedicinePicker({
         setError("");
         setResults(
           found.map((m) => ({
-            id: String(m._id),
+            id: m._id,
             name: m.name,
             genericName: m.genericName,
             patasPerBox: m.patasPerBox,

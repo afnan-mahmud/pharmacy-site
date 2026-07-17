@@ -87,7 +87,10 @@ describe("every action module export requires an admin session", () => {
     // of failing loudly. This pins the count so that can't happen quietly.
     expect(modulePaths).toEqual([
       "/src/actions/auth.ts",
+      "/src/actions/buyers.ts",
+      "/src/actions/due.ts",
       "/src/actions/medicines.ts",
+      "/src/actions/sales.ts",
       "/src/actions/settings.ts",
       "/src/actions/stock.ts",
     ]);

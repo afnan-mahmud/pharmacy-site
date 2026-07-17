@@ -24,3 +24,30 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: white;
+    margin: 0;
+    padding: 0;
+  }
+  /* Hide everything outside the invoice on print. */
+  body > * {
+    display: none;
+  }
+  .invoice {
+    display: block !important;
+    /* Reset any inherited Tailwind constraints so the invoice sits at the
+       top-left corner of the printed page, flush to the paper edge. */
+    position: static !important;
+    margin: 0 !important;
+    padding: 4mm !important;
+    width: 80mm !important;
+    max-width: 80mm !important;
+    font-size: 10pt;
+    color: black;
+  }
+}

@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import { revalidatePath } from "next/cache";
 import { connectDb } from "@/lib/db";
 import { requireAdminAction } from "@/lib/session";
+import { toPlain, toPlainList, type Serialized } from "@/lib/serialize";
 import { MedicineModel, type MedicineDoc } from "@/models/Medicine";
 
 export type MedicineInput = {
@@ -90,7 +91,7 @@ function toFields(input: MedicineInput) {
 
 export async function createMedicine(
   input: MedicineInput,
-): Promise<MedicineDoc> {
+): Promise<Serialized<MedicineDoc>> {
   await requireAdminAction();
   await connectDb();
   validate(input);
@@ -98,7 +99,7 @@ export async function createMedicine(
   try {
     const medicine = await MedicineModel.create(toFields(input));
     revalidatePath("/medicines");
-    return medicine.toObject();
+    return toPlain(medicine.toObject() as MedicineDoc);
   } catch (error) {
     if ((error as { code?: number }).code === 11000) {
       throw new Error(`Medicine "${input.name.trim()}" already exists`);
@@ -110,7 +111,7 @@ export async function createMedicine(
 export async function updateMedicine(
   id: string,
   input: MedicineInput,
-): Promise<MedicineDoc> {
+): Promise<Serialized<MedicineDoc>> {
   await requireAdminAction();
   await connectDb();
   validate(input);
@@ -132,7 +133,7 @@ export async function updateMedicine(
 
     if (!medicine) throw new Error("Medicine not found");
     revalidatePath("/medicines");
-    return medicine;
+    return toPlain(medicine);
   } catch (error) {
     if ((error as { code?: number }).code === 11000) {
       throw new Error(`Medicine "${input.name.trim()}" already exists`);
@@ -141,7 +142,7 @@ export async function updateMedicine(
   }
 }
 
-export async function listMedicines(query?: string): Promise<MedicineDoc[]> {
+export async function listMedicines(query?: string): Promise<Serialized<MedicineDoc>[]> {
   await requireAdminAction();
   await connectDb();
 
@@ -157,13 +158,14 @@ export async function listMedicines(query?: string): Promise<MedicineDoc[]> {
     filter.name = { $regex: escapeRegex(term), $options: "i" };
   }
 
-  return MedicineModel.find(filter).sort({ name: 1 }).lean<MedicineDoc[]>();
+  const docs = await MedicineModel.find(filter).sort({ name: 1 }).lean<MedicineDoc[]>();
+  return toPlainList(docs);
 }
 
 export async function searchMedicines(
   query: string,
   limit = 10,
-): Promise<MedicineDoc[]> {
+): Promise<Serialized<MedicineDoc>[]> {
   await requireAdminAction();
   await connectDb();
   // query is required here (same convention as the `name` check in
@@ -178,13 +180,14 @@ export async function searchMedicines(
   if (!term) return [];
 
   const pattern = { $regex: escapeRegex(term), $options: "i" };
-  return MedicineModel.find({
+  const docs = await MedicineModel.find({
     active: true,
     $or: [{ name: pattern }, { genericName: pattern }],
   })
     .sort({ name: 1 })
     .limit(limit)
     .lean<MedicineDoc[]>();
+  return toPlainList(docs);
 }
 
 export async function deactivateMedicine(id: string): Promise<void> {

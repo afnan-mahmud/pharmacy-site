@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import { revalidatePath } from "next/cache";
 import { connectDb } from "@/lib/db";
 import { requireAdminAction } from "@/lib/session";
+import { toPlainList, type Serialized } from "@/lib/serialize";
 import { boxesToPatas } from "@/lib/units";
 import { applyStockDelta } from "@/lib/stockTransaction";
 import { MedicineModel } from "@/models/Medicine";
@@ -103,11 +104,12 @@ export async function stockIn(input: StockInInput): Promise<void> {
   revalidatePath("/medicines");
 }
 
-export async function listStockEntries(limit = 50): Promise<StockEntryDoc[]> {
+export async function listStockEntries(limit = 50): Promise<Serialized<StockEntryDoc>[]> {
   await requireAdminAction();
   await connectDb();
-  return StockEntryModel.find()
+  const docs = await StockEntryModel.find()
     .sort({ createdAt: -1 })
     .limit(limit)
     .lean<StockEntryDoc[]>();
+  return toPlainList(docs);
 }

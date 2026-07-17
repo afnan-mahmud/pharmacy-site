@@ -5,7 +5,7 @@ export default async function MedicinesPage() {
   const medicines = await listMedicines();
 
   const rows: MedicineRow[] = medicines.map((m) => ({
-    id: String(m._id),
+    id: m._id,
     name: m.name,
     genericName: m.genericName,
     company: m.company,

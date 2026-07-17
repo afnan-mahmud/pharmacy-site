@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { connectDb } from "@/lib/db";
 import { requireAdminAction } from "@/lib/session";
+import { toPlain, type Serialized } from "@/lib/serialize";
 import { SettingsModel, type SettingsDoc } from "@/models/Settings";
 
 export type SettingsInput = {
@@ -81,7 +82,7 @@ async function withDuplicateKeyRetry<T>(operation: () => Promise<T>): Promise<T>
   }
 }
 
-export async function getSettings(): Promise<SettingsDoc> {
+export async function getSettings(): Promise<Serialized<SettingsDoc>> {
   await requireAdminAction();
   await connectDb();
 
@@ -92,7 +93,7 @@ export async function getSettings(): Promise<SettingsDoc> {
       { upsert: true, new: true, setDefaultsOnInsert: true },
     ).lean<SettingsDoc>(),
   );
-  return settings!;
+  return toPlain(settings!);
 }
 
 /**
@@ -160,7 +161,7 @@ function validate(input: SettingsInput): {
   return { pharmacyName, address, phone, invoicePrefix };
 }
 
-export async function updateSettings(input: SettingsInput): Promise<SettingsDoc> {
+export async function updateSettings(input: SettingsInput): Promise<Serialized<SettingsDoc>> {
   await requireAdminAction();
   await connectDb();
 
@@ -178,5 +179,5 @@ export async function updateSettings(input: SettingsInput): Promise<SettingsDoc>
   );
 
   revalidatePath("/", "layout");
-  return settings!;
+  return toPlain(settings!);
 }
