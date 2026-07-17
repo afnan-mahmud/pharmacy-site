@@ -54,9 +54,18 @@ const saleSchema = new Schema(
   { timestamps: true },
 );
 
-// A sparse unique index: retail sales have invoiceNo null and must not
-// collide with each other, but a wholesale invoice number must be unique.
-saleSchema.index({ invoiceNo: 1 }, { unique: true, sparse: true });
+// A partial unique index scoped to string invoiceNo values only. Retail
+// sales are written with invoiceNo: null (see recordRetailSale) — a plain
+// `sparse` index only excludes documents where the field is *missing*, not
+// documents where it is present but null, so every retail sale would collide
+// on the single `{ invoiceNo: null }` index entry. Filtering the index to
+// `$type: "string"` excludes nulls (and missing fields) from the uniqueness
+// check entirely, while a wholesale invoice number — always a string — stays
+// enforced unique.
+saleSchema.index(
+  { invoiceNo: 1 },
+  { unique: true, partialFilterExpression: { invoiceNo: { $type: "string" } } },
+);
 saleSchema.index({ buyerId: 1, status: 1 });
 saleSchema.index({ createdAt: -1 });
 
