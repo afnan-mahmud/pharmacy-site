@@ -29,3 +29,20 @@ export function describeDue(duePaisa: number): DueDisplay {
   }
   return { label: "Baki nei", amountText: formatTaka(0), className: "text-slate-500" };
 }
+
+/**
+ * Splits signed balances into what buyers owe and what the pharmacy owes
+ * them, as two positive figures.
+ *
+ * These are deliberately NOT netted into one number: a buyer sitting on
+ * credit would otherwise shrink the total the owner is actually owed, hiding
+ * one buyer's debt behind another's credit. The owner needs both figures.
+ */
+export function splitDueTotals(
+  rows: { duePaisa: number }[],
+): { totalDuePaisa: number; totalCreditPaisa: number } {
+  return {
+    totalDuePaisa: rows.reduce((total, row) => total + Math.max(0, row.duePaisa), 0),
+    totalCreditPaisa: rows.reduce((total, row) => total + Math.max(0, -row.duePaisa), 0),
+  };
+}

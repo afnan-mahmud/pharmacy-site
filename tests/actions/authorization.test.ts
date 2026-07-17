@@ -88,6 +88,7 @@ describe("every action module export requires an admin session", () => {
     expect(modulePaths).toEqual([
       "/src/actions/auth.ts",
       "/src/actions/buyers.ts",
+      "/src/actions/dashboard.ts",
       "/src/actions/due.ts",
       "/src/actions/medicines.ts",
       "/src/actions/reports.ts",

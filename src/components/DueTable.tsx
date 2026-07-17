@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatTaka } from "@/lib/money";
-import { describeDue } from "@/lib/dueDisplay";
+import { describeDue, splitDueTotals } from "@/lib/dueDisplay";
 import type { DueRow } from "@/actions/due";
 import type { BuyerLedgerResult } from "@/actions/due";
 import { BuyerLedger } from "./BuyerLedger";
@@ -60,9 +60,9 @@ export function DueTable({ dues, fetchLedger }: Props) {
   // (credit) balances would understate the real total outstanding and mask
   // it behind buyers who happen to be in credit. Credit is called out
   // separately so the owner sees both figures honestly rather than one
-  // number that quietly nets them together.
-  const totalDuePaisa = dues.reduce((sum, row) => sum + Math.max(0, row.duePaisa), 0);
-  const totalCreditPaisa = dues.reduce((sum, row) => sum + Math.max(0, -row.duePaisa), 0);
+  // number that quietly nets them together. Shared with the dashboard via
+  // splitDueTotals so the two screens cannot drift into disagreeing.
+  const { totalDuePaisa, totalCreditPaisa } = splitDueTotals(dues);
 
   return (
     <div className="space-y-4">
