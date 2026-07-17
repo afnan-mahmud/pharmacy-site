@@ -91,4 +91,15 @@ describe("formatTaka", () => {
   it("formats zero", () => {
     expect(formatTaka(0)).toBe("৳0.00");
   });
+
+  it("puts the minus sign before the currency symbol for negative amounts", () => {
+    // A buyer credit balance is represented as a negative paisa figure
+    // (see src/actions/due.ts). "৳-12.50" reads as nonsense to a
+    // pharmacist; "-৳12.50" reads as a negative amount of taka.
+    expect(formatTaka(-1250)).toBe("-৳12.50");
+  });
+
+  it("groups thousands on a negative amount", () => {
+    expect(formatTaka(-125050)).toBe("-৳1,250.50");
+  });
 });

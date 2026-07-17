@@ -111,6 +111,34 @@ describe("listBuyerDues", () => {
     expect(dues).toHaveLength(0); // Cancelled sale means 0 wholesale active sales, so filtered out
   });
 
+  it("shows a negative duePaisa (credit), not clamped to 0, when the buyer overpaid because a paid-for sale was cancelled", async () => {
+    // Same scenario as the buyerDueBalance test above (A=1200, B=600, one
+    // 1200 payment, then A cancelled): the buyer still has one active
+    // wholesale sale (B), so they still show up in listBuyerDues — but
+    // their net position is -600 (credit), not the old clamped 0.
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+
+    const saleA = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 10 }], // 120000 paisa
+      discountPaisa: 0,
+      paidPaisa: 0,
+    });
+    await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 5 }], // 60000 paisa
+      discountPaisa: 0,
+      paidPaisa: 0,
+    });
+    await recordPayment(buyer._id, 1200, "Cash");
+    await cancelSale(saleA._id, "Bhul order");
+
+    const dues = await listBuyerDues();
+    expect(dues).toHaveLength(1);
+    expect(dues[0].duePaisa).toBe(-60000);
+  });
+
   it("orders by due amount descending", async () => {
     const medicine = await makeMedicine();
     const buyer1 = await makeBuyer("Karim");
@@ -142,7 +170,7 @@ describe("buyerDueBalance", () => {
   it("calculates the exact due for a single buyer", async () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
-    
+
     await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
@@ -157,6 +185,68 @@ describe("buyerDueBalance", () => {
 
   it("returns 0 if buyer does not exist", async () => {
     expect(await buyerDueBalance("507f1f77bcf86cd799439011")).toBe(0);
+  });
+
+  it("does not forgive a buyer's other debts when a paid-for sale is cancelled", async () => {
+    // The exact scenario from the review: sale A (1200) and sale B (600),
+    // both taken unpaid, then a single buyer-level payment of 1200 (which
+    // does not belong to either sale specifically — Payment has no
+    // saleId). Before any cancellation the buyer legitimately owes
+    // 1800 - 1200 = 600.
+    //
+    // Cancelling A removes A's 1200 from the *active* due total, but the
+    // 1200 Payment record is buyer-level and is never removed — per the
+    // owner's decided rule, that money now stays as the buyer's credit
+    // rather than vanishing. So once A is void, the buyer's remaining
+    // active obligation is just B's 600, against which 1200 has already
+    // been paid: a net credit of 600 (negative = pharmacy owes the buyer),
+    // not the 0 the old Math.max(0, ...) clamp reported, and not a false
+    // "still owes 600" either — the buyer overpaid relative to what's left
+    // owing once A is voided.
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+
+    const saleA = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 10 }], // 120000 paisa
+      discountPaisa: 0,
+      paidPaisa: 0,
+    });
+    await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 5 }], // 60000 paisa
+      discountPaisa: 0,
+      paidPaisa: 0,
+    });
+
+    await recordPayment(buyer._id, 1200, "Cash"); // 120000 paisa
+    expect(await buyerDueBalance(buyer._id)).toBe(60000); // 1800 - 1200 = 600 owed, pre-cancel
+
+    await cancelSale(saleA._id, "Bhul order");
+
+    // 600 (B's due) - 1200 (payment) = -600: the buyer is in credit, not
+    // square and not still owing 600.
+    expect(await buyerDueBalance(buyer._id)).toBe(-60000);
+  });
+
+  it("shows a full credit, not zero, when a fully-paid sale is cancelled", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+
+    const sale = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 10 }], // 120000 paisa
+      discountPaisa: 0,
+      paidPaisa: 0,
+    });
+    await recordPayment(buyer._id, 1200, "Cash"); // pays it off in full
+    expect(await buyerDueBalance(buyer._id)).toBe(0);
+
+    await cancelSale(sale._id, "Bhul order");
+
+    // The 1200 payment doesn't disappear just because the sale it paid for
+    // did — it becomes ৳1200 of credit, not a reset to 0.
+    expect(await buyerDueBalance(buyer._id)).toBe(-120000);
   });
 });
 
@@ -201,6 +291,24 @@ describe("recordPayment", () => {
   it("rejects an invalid buyer", async () => {
     await expect(recordPayment("507f1f77bcf86cd799439011", 50, "")).rejects.toThrow(
       "Buyer pawa jay ni"
+    );
+  });
+
+  it("rejects any payment with a clear Banglish message when the buyer is already in credit, instead of a negative number", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+
+    const sale = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 10 }], // 120000 paisa
+      discountPaisa: 0,
+      paidPaisa: 0,
+    });
+    await recordPayment(buyer._id, 1200, "Cash"); // pays it off exactly
+    await cancelSale(sale._id, "Bhul order"); // now buyer is 1200 in credit
+
+    await expect(recordPayment(buyer._id, 10, "test")).rejects.toThrow(
+      "kono baki nei",
     );
   });
 

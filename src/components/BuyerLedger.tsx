@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatTaka } from "@/lib/money";
+import { describeDue } from "@/lib/dueDisplay";
 import { recordPayment, type BuyerLedgerResult } from "@/actions/due";
 import Link from "next/link";
 
@@ -31,6 +32,8 @@ export function BuyerLedger({ buyerId, buyerName, buyerShopName, duePaisa, ledge
   const [payNote, setPayNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  const currentDue = describeDue(duePaisa);
 
   const entries: Entry[] = [];
 
@@ -98,6 +101,11 @@ export function BuyerLedger({ buyerId, buyerName, buyerShopName, duePaisa, ledge
         <div>
           <h2 className="text-lg font-semibold text-slate-900">{buyerName}</h2>
           {buyerShopName && <p className="text-sm text-slate-500">{buyerShopName}</p>}
+          <p className={`text-sm font-medium ${currentDue.className}`}>
+            {currentDue.label !== "Baki nei"
+              ? `${currentDue.label}: ${currentDue.amountText}`
+              : currentDue.label}
+          </p>
         </div>
         <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
           × Bondho
@@ -122,7 +130,11 @@ export function BuyerLedger({ buyerId, buyerName, buyerShopName, duePaisa, ledge
             {busy ? "Wait..." : "Joma add koro"}
           </button>
         </form>
-        {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+        {error && (
+          <p role="alert" className="mt-2 text-sm text-red-600">
+            {error}
+          </p>
+        )}
       </div>
 
       <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
@@ -137,31 +149,36 @@ export function BuyerLedger({ buyerId, buyerName, buyerShopName, duePaisa, ledge
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
-              <tr key={r.id} className="border-b border-slate-100">
-                <td className={td}>
-                  {r.date.toLocaleDateString("en-GB", { timeZone: "Asia/Dhaka" })}
-                </td>
-                <td className={td}>
-                  {r.link ? (
-                    <Link href={r.link} className="text-teal-700 hover:underline">
-                      {r.desc}
-                    </Link>
-                  ) : (
-                    r.desc
-                  )}
-                </td>
-                <td className={`${td} text-right text-red-600`}>
-                  {r.debit > 0 ? formatTaka(r.debit) : "—"}
-                </td>
-                <td className={`${td} text-right text-teal-700`}>
-                  {r.credit > 0 ? formatTaka(r.credit) : "—"}
-                </td>
-                <td className={`${td} text-right font-medium text-slate-900`}>
-                  {formatTaka(Math.max(0, r.balance))}
-                </td>
-              </tr>
-            ))}
+            {rows.map((r) => {
+              const rowBalance = describeDue(r.balance);
+              return (
+                <tr key={r.id} className="border-b border-slate-100">
+                  <td className={td}>
+                    {r.date.toLocaleDateString("en-GB", { timeZone: "Asia/Dhaka" })}
+                  </td>
+                  <td className={td}>
+                    {r.link ? (
+                      <Link href={r.link} className="text-teal-700 hover:underline">
+                        {r.desc}
+                      </Link>
+                    ) : (
+                      r.desc
+                    )}
+                  </td>
+                  <td className={`${td} text-right text-red-600`}>
+                    {r.debit > 0 ? formatTaka(r.debit) : "—"}
+                  </td>
+                  <td className={`${td} text-right text-teal-700`}>
+                    {r.credit > 0 ? formatTaka(r.credit) : "—"}
+                  </td>
+                  <td className={`${td} text-right font-medium ${rowBalance.className}`}>
+                    {rowBalance.label !== "Baki nei"
+                      ? `${rowBalance.amountText} (${rowBalance.label})`
+                      : rowBalance.amountText}
+                  </td>
+                </tr>
+              );
+            })}
             {rows.length === 0 && (
               <tr>
                 <td colSpan={5} className="p-6 text-center text-slate-400">

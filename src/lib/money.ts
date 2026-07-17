@@ -29,9 +29,15 @@ export function paisaToTaka(paisa: number): number {
 }
 
 export function formatTaka(paisa: number): string {
-  const formatted = (paisa / 100).toLocaleString("en-US", {
+  // Format the magnitude and place the sign in front of the currency
+  // symbol: "-৳12.50", not "৳-12.50". The latter reads as a taka amount of
+  // "-12.50" glued onto the symbol; the former reads as a negative amount
+  // of money, which is what a negative balance (buyer credit — see
+  // src/actions/due.ts) actually means.
+  const sign = paisa < 0 ? "-" : "";
+  const formatted = (Math.abs(paisa) / 100).toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  return `৳${formatted}`;
+  return `${sign}৳${formatted}`;
 }

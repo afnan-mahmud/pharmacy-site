@@ -25,6 +25,16 @@ export type DueRow = {
  * wholesale sale (i.e. they've ever received goods on credit). Buyers with
  * a zero balance are still returned — the owner can see the credit history
  * even when nothing is owed.
+ *
+ * duePaisa is signed: positive means the buyer owes the pharmacy (Baki),
+ * negative means the pharmacy owes the buyer (Joma ache). A buyer goes
+ * negative when a sale that was already paid for gets cancelled — Payment
+ * has no saleId, so the money that paid for it does not vanish with the
+ * sale; the owner's decided rule is that it stays as the buyer's credit
+ * toward their next purchase. Clamping this at 0 would silently erase that
+ * credit and, worse, could hide a buyer's real remaining debt on their
+ * other active sales (see buyerDueBalance's doc comment for the worked
+ * example) — so callers must not clamp this value themselves either.
  */
 export async function listBuyerDues(): Promise<DueRow[]> {
   await requireAdminAction();
@@ -71,8 +81,10 @@ export async function listBuyerDues(): Promise<DueRow[]> {
     const bid = String(s._id);
     const paid = paymentByBuyer.get(bid) ?? 0;
     // Sale-level duePaisa already accounts for the partial payment made at
-    // sale time. Additional payments here reduce it further.
-    const duePaisa = Math.max(0, s.totalDuePaisa - paid);
+    // sale time. Additional payments here reduce it further — and can take
+    // it negative (credit); see the module comment above for why that must
+    // be allowed through, not clamped.
+    const duePaisa = s.totalDuePaisa - paid;
     const buyer = buyerMap.get(bid) ?? { name: "Unknown", shopName: "" };
     return { buyerId: bid, buyerName: buyer.name, buyerShopName: buyer.shopName, duePaisa };
   });
@@ -84,6 +96,19 @@ export async function listBuyerDues(): Promise<DueRow[]> {
  * The current outstanding balance for one buyer, derived from their active
  * sales and all recorded payments. Always computed, never stored, so it
  * cannot drift out of sync.
+ *
+ * Signed: positive means the buyer owes the pharmacy, negative means the
+ * buyer is in credit. This must stay signed (no Math.max(0, ...) clamp) —
+ * worked example: buyer takes sale A (৳1200) and sale B (৳600), both
+ * unpaid, then makes one buyer-level payment of ৳1200 (Payment has no
+ * saleId, so it isn't tied to either sale). Before any cancellation the
+ * buyer owes 1800 - 1200 = ৳600. If A is then cancelled, its ৳1200 no
+ * longer counts toward the active total, but the ৳1200 payment record
+ * still exists and still counts — so the buyer's remaining active
+ * obligation is just B's ৳600, against which ৳1200 has already been paid:
+ * a net ৳600 *credit*, not the ৳0 a clamp would report (which would hide
+ * that they're actually owed money back) and not a naive "still owes ৳600"
+ * either (which would ignore the payment entirely).
  */
 export async function buyerDueBalance(buyerId: string): Promise<number> {
   await requireAdminAction();
@@ -112,7 +137,7 @@ export async function buyerDueBalance(buyerId: string): Promise<number> {
 
   const totalDue = saleTotals[0]?.totalDue ?? 0;
   const totalPaid = paymentTotals[0]?.totalPaid ?? 0;
-  return Math.max(0, totalDue - totalPaid);
+  return totalDue - totalPaid;
 }
 
 export type BuyerLedgerResult = {
@@ -172,11 +197,21 @@ export async function recordPayment(
   }
 
   // The due is computed dynamically, so we must re-read it inside the
-  // validation to get a consistent view. There is no transaction needed
-  // here because Payment is append-only — the balance is always derived,
-  // never stored, so a concurrent read cannot produce a stale total that
-  // this write then over-counts.
+  // validation to get a consistent view.
   const due = await buyerDueBalance(buyerId);
+
+  // due <= 0 means the buyer owes nothing right now — either square, or
+  // already in credit from a cancelled paid-for sale. Either way there is
+  // nothing to pay against, so say that plainly instead of falling through
+  // to the "more than X ৳" message below, which would otherwise put a
+  // negative or zero taka figure in front of the pharmacist.
+  if (due <= 0) {
+    throw new Error(
+      due < 0
+        ? `Ei buyer er kono baki nei — uni borong ${new Intl.NumberFormat("en-BD").format(-due / 100)} ৳ joma ache, notun kore joma neoya lagbe na`
+        : "Ei buyer er kono baki nei, joma neoya lagbe na",
+    );
+  }
   if (amountPaisa > due) {
     throw new Error(
       `Joma ${new Intl.NumberFormat("en-BD").format(amountPaisa / 100)} ৳ baki ${new Intl.NumberFormat("en-BD").format(due / 100)} ৳ er cheye beshi hote parbe na`,
