@@ -14,6 +14,7 @@ export type SalesReportRow = {
   totalPaisa: number;
   paidPaisa: number;
   duePaisa: number;
+  status: "active" | "cancelled";
   cancelled: boolean;
 };
 
@@ -68,10 +69,16 @@ export async function salesReport(
     totalPaisa: sale.totalPaisa,
     paidPaisa: sale.paidPaisa,
     duePaisa: sale.duePaisa,
+    status: sale.status as "active" | "cancelled",
     cancelled: sale.status === "cancelled",
   }));
 
-  const active = rows.filter((row) => !row.cancelled);
+  // Totals count only sales that are actually "active" — a whitelist, not a
+  // "not cancelled" blacklist. If a third status (e.g. a future "draft" or
+  // "void") were ever added, a blacklist would silently let it into the
+  // day's takings; a whitelist keeps a new status out of the totals until
+  // someone deliberately includes it. The rows above still list every sale.
+  const active = rows.filter((row) => row.status === "active");
   const retailRows = active.filter((row) => row.type === "retail");
   const wholesaleRows = active.filter((row) => row.type === "wholesale");
 
