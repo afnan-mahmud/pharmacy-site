@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { setupTestDb } from "../helpers/db";
 import { createMockCookieStore, clearSessionCookie } from "../helpers/auth";
-import { ADMIN_ONLY_ERROR } from "@/lib/session";
+import { ADMIN_ONLY_ERROR, BUYER_ONLY_ERROR } from "@/lib/session";
 
 const cookieStore = createMockCookieStore();
 vi.mock("next/headers", () => ({
@@ -82,6 +82,13 @@ const EXEMPT: Record<string, string[]> = {
   ],
 };
 
+// Most action modules are admin-only. Buyer-portal modules reject with
+// BUYER_ONLY_ERROR instead — same structural guarantee (every export refuses
+// an unauthenticated caller before touching its arguments), different role.
+const EXPECTED_ERROR: Record<string, string> = {
+  "/src/actions/buyerOrders.ts": BUYER_ONLY_ERROR,
+};
+
 describe("every action module export requires an admin session", () => {
   const modulePaths = Object.keys(actionModules).sort();
 
@@ -92,6 +99,7 @@ describe("every action module export requires an admin session", () => {
     // of failing loudly. This pins the count so that can't happen quietly.
     expect(modulePaths).toEqual([
       "/src/actions/auth.ts",
+      "/src/actions/buyerOrders.ts",
       "/src/actions/buyers.ts",
       "/src/actions/dashboard.ts",
       "/src/actions/due.ts",
@@ -117,7 +125,8 @@ describe("every action module export requires an admin session", () => {
 
       it(`${path} → ${exportName}() rejects an unauthenticated caller`, async () => {
         const fn = value as (...args: unknown[]) => unknown;
-        await expect(fn()).rejects.toThrow(ADMIN_ONLY_ERROR);
+        const expected = EXPECTED_ERROR[path] ?? ADMIN_ONLY_ERROR;
+        await expect(fn()).rejects.toThrow(expected);
       });
     }
   }
