@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { requireAdmin } from "@/lib/session";
 import { readSettings } from "@/actions/settings";
 import { AdminNav } from "@/components/AdminNav";
+import { AdminBottomNav } from "@/components/AdminBottomNav";
 
 // Memoized per-request so generateMetadata() and the layout body below share
 // one DB round trip instead of each calling readSettings() independently.
@@ -44,7 +45,9 @@ export default async function AdminLayout({
   return (
     <div className="min-h-screen bg-canvas">
       <AdminNav pharmacyName={settings.pharmacyName} tagline={settings.tagline} />
-      <main className="mx-auto max-w-6xl p-4 sm:p-6">{children}</main>
+      {/* Bottom padding leaves room for the fixed mobile tab bar. */}
+      <main className="mx-auto max-w-6xl p-4 pb-24 sm:p-6 md:pb-6">{children}</main>
+      <AdminBottomNav />
     </div>
   );
 }

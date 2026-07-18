@@ -34,8 +34,9 @@ export function AdminNav({
           <Brand name={pharmacyName} tagline={tagline} />
         </Link>
 
-        {/* Scrolls horizontally on narrow screens rather than wrapping. */}
-        <nav className="ml-auto flex min-w-0 gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {/* Desktop only — on mobile the bottom tab bar carries navigation.
+            Scrolls horizontally on a narrow desktop rather than wrapping. */}
+        <nav className="ml-auto hidden min-w-0 gap-1 overflow-x-auto md:flex [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {LINKS.map((link) => {
             const active =
               link.href === "/dashboard"
@@ -58,7 +59,8 @@ export function AdminNav({
           })}
         </nav>
 
-        <form action={logout} className="shrink-0">
+        {/* Logout lives in the mobile "More" drawer, so it's desktop-only here. */}
+        <form action={logout} className="ml-auto hidden shrink-0 md:block">
           <button
             type="submit"
             className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold text-muted transition hover:border-danger hover:text-danger"
