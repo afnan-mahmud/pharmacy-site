@@ -5,11 +5,66 @@ import { revalidatePath } from "next/cache";
 import { connectDb } from "@/lib/db";
 import { requireBuyerAction } from "@/lib/session";
 import { toPlain, toPlainList, type Serialized } from "@/lib/serialize";
+import { computeBuyerDue, loadBuyerLedger } from "@/lib/dueComputation";
 import { BuyerModel } from "@/models/Buyer";
 import { MedicineModel } from "@/models/Medicine";
 import { OrderModel, type OrderDoc } from "@/models/Order";
+import { type PaymentDoc } from "@/models/Payment";
+import { type SaleDoc } from "@/models/Sale";
 
 export type OrderItemInput = { medicineId: string; boxes: number };
+
+/**
+ * Escapes regex metacharacters so a typed "." or "*" is matched literally.
+ * Mirrors the private helper of the same name in src/actions/medicines.ts —
+ * duplicated rather than imported/exported across the admin/buyer trust
+ * boundary, so this file's guard (requireBuyerAction) stays the only gate a
+ * reader has to check for everything exported here.
+ */
+function escapeRegex(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export type BuyerMedicineOption = { id: string; name: string; boxPricePaisa: number };
+
+/**
+ * A buyer never sees stock or the pata/retail price (see the domain rule in
+ * the buyer portal plan). src/actions/medicines.ts's searchMedicines is
+ * both wrong and unsafe for this screen: it is guarded by
+ * requireAdminAction (a buyer session gets rejected outright), and even if
+ * it weren't, it returns the full Medicine document — stockPatas and
+ * pataPricePaisa included — over the wire to the client, where a buyer
+ * could read them straight out of the network response regardless of what
+ * the UI chooses to render. This is a separate, buyer-guarded read that
+ * projects only the two fields a buyer is allowed to see.
+ */
+export async function searchMedicinesForBuyer(
+  query: string,
+): Promise<BuyerMedicineOption[]> {
+  await requireBuyerAction();
+  await connectDb();
+  if (typeof query !== "string") {
+    throw new Error("query must be a string");
+  }
+  const term = query.trim();
+  if (!term) return [];
+
+  const pattern = { $regex: escapeRegex(term), $options: "i" };
+  const docs = await MedicineModel.find({
+    active: true,
+    $or: [{ name: pattern }, { genericName: pattern }],
+  })
+    .select("name boxPricePaisa")
+    .sort({ name: 1 })
+    .limit(10)
+    .lean<{ _id: mongoose.Types.ObjectId; name: string; boxPricePaisa: number }[]>();
+
+  return docs.map((m) => ({
+    id: String(m._id),
+    name: m.name,
+    boxPricePaisa: m.boxPricePaisa,
+  }));
+}
 
 /**
  * Network-reachable trust boundary — same convention as
@@ -130,4 +185,29 @@ export async function cancelMyOrder(orderId: string): Promise<void> {
   }
 
   revalidatePath("/buyer/orders");
+}
+
+/**
+ * The signed balance for the *session's own* buyer — never takes a buyer id
+ * as a parameter, unlike the admin-only buyerDueBalance in
+ * src/actions/due.ts. That asymmetry is deliberate: an admin is trusted to
+ * name any buyer, a buyer is trusted only to read himself. Shares its
+ * definition with the admin ledger via src/lib/dueComputation.ts so the two
+ * screens can never silently disagree about what a buyer owes.
+ */
+export async function myDueBalance(): Promise<number> {
+  const session = await requireBuyerAction();
+  await connectDb();
+  return computeBuyerDue(session.userId);
+}
+
+/** The session's own sales/payments history — see myDueBalance above. */
+export async function myLedger(): Promise<{
+  sales: Serialized<SaleDoc>[];
+  payments: Serialized<PaymentDoc>[];
+}> {
+  const session = await requireBuyerAction();
+  await connectDb();
+  const { sales, payments } = await loadBuyerLedger(session.userId);
+  return { sales: toPlainList(sales), payments: toPlainList(payments) };
 }

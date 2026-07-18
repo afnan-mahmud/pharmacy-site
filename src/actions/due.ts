@@ -5,6 +5,7 @@ import { connectDb } from "@/lib/db";
 import { requireAdminAction } from "@/lib/session";
 import { takaToPaisa } from "@/lib/money";
 import { toPlainList, type Serialized } from "@/lib/serialize";
+import { computeBuyerDue, loadBuyerLedger } from "@/lib/dueComputation";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { PaymentModel, type PaymentDoc } from "@/models/Payment";
 import { BuyerModel } from "@/models/Buyer";
@@ -114,42 +115,7 @@ export async function buyerDueBalance(buyerId: string): Promise<number> {
   await requireAdminAction();
   await connectDb();
 
-  if (!mongoose.Types.ObjectId.isValid(buyerId)) return 0;
-
-  return computeBuyerDueBalance(buyerId);
-}
-
-/**
- * The aggregation behind buyerDueBalance, factored out so recordPayment can
- * run the exact same read inside its transaction session — see the
- * "session" param and recordPayment's comment for why that matters.
- */
-async function computeBuyerDueBalance(
-  buyerId: string,
-  session?: mongoose.ClientSession,
-): Promise<number> {
-  const [saleTotals, paymentTotals] = await Promise.all([
-    SaleModel.aggregate<{ totalDue: number }>([
-      {
-        $match: {
-          buyerId: new mongoose.Types.ObjectId(buyerId),
-          type: "wholesale",
-          status: "active",
-        },
-      },
-      { $group: { _id: null, totalDue: { $sum: "$duePaisa" } } },
-    ]).session(session ?? null),
-    PaymentModel.aggregate<{ totalPaid: number }>([
-      {
-        $match: { buyerId: new mongoose.Types.ObjectId(buyerId) },
-      },
-      { $group: { _id: null, totalPaid: { $sum: "$amountPaisa" } } },
-    ]).session(session ?? null),
-  ]);
-
-  const totalDue = saleTotals[0]?.totalDue ?? 0;
-  const totalPaid = paymentTotals[0]?.totalPaid ?? 0;
-  return totalDue - totalPaid;
+  return computeBuyerDue(buyerId);
 }
 
 export type BuyerLedgerResult = {
@@ -161,21 +127,7 @@ export async function buyerLedger(buyerId: string): Promise<BuyerLedgerResult> {
   await requireAdminAction();
   await connectDb();
 
-  if (!mongoose.Types.ObjectId.isValid(buyerId)) {
-    return { sales: [], payments: [] };
-  }
-
-  const [sales, payments] = await Promise.all([
-    SaleModel.find({
-      buyerId: new mongoose.Types.ObjectId(buyerId),
-      type: "wholesale",
-    })
-      .sort({ createdAt: -1 })
-      .lean<SaleDoc[]>(),
-    PaymentModel.find({ buyerId: new mongoose.Types.ObjectId(buyerId) })
-      .sort({ createdAt: -1 })
-      .lean<PaymentDoc[]>(),
-  ]);
+  const { sales, payments } = await loadBuyerLedger(buyerId);
 
   return {
     sales: toPlainList(sales),
@@ -235,7 +187,7 @@ export async function recordPayment(
       // Read inside the transaction so a TransientTransactionError retry
       // (see above) re-evaluates the due balance against the latest
       // committed state, not a stale value captured before the retry.
-      const due = await computeBuyerDueBalance(buyerId, session);
+      const due = await computeBuyerDue(buyerId, session);
 
       // due <= 0 means the buyer owes nothing right now — either square,
       // or already in credit from a cancelled paid-for sale. Either way

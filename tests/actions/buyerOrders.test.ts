@@ -15,7 +15,12 @@ import {
   listMyOrders,
   getMyOrder,
   cancelMyOrder,
+  myDueBalance,
+  myLedger,
+  searchMedicinesForBuyer,
 } from "@/actions/buyerOrders";
+import { recordWholesaleSale } from "@/actions/sales";
+import { recordPayment } from "@/actions/due";
 import { BuyerModel } from "@/models/Buyer";
 import { MedicineModel } from "@/models/Medicine";
 import { OrderModel } from "@/models/Order";
@@ -241,5 +246,106 @@ describe("cancelMyOrder — ownership and status", () => {
     await expect(cancelMyOrder("507f1f77bcf86cd799439011")).rejects.toThrow(
       BUYER_ONLY_ERROR,
     );
+  });
+});
+
+describe("myDueBalance and myLedger — buyer-scoped reads", () => {
+  it("returns only the session buyer's own balance and ledger, never another buyer's", async () => {
+    await makeSessionBuyer();
+    const medicine = await makeMedicine();
+
+    // Seed a second, unrelated buyer with their own sale — this requires an
+    // admin session, so switch briefly before returning to the buyer
+    // session below.
+    setSessionCookie(cookieStore, await adminToken());
+    const otherBuyer = await BuyerModel.create({
+      name: "Onno Buyer",
+      shopName: "Onno Shop",
+      phone: "01799999999",
+      address: "Uttara",
+      passwordHash: "x",
+      active: true,
+    });
+    await recordWholesaleSale({
+      buyerId: String(otherBuyer._id),
+      items: [{ medicineId: String(medicine._id), boxes: 5 }], // 60000 paisa
+      discountPaisa: 0,
+      paidPaisa: 0,
+    });
+
+    // The session buyer's own sale, partially paid, plus a separate payment.
+    await recordWholesaleSale({
+      buyerId: BUYER_USER_ID,
+      items: [{ medicineId: String(medicine._id), boxes: 1 }], // 12000 paisa
+      discountPaisa: 0,
+      paidPaisa: 2000,
+    });
+    await recordPayment(BUYER_USER_ID, 10, "test"); // 1000 paisa
+
+    // Back to the buyer session for the reads under test.
+    setSessionCookie(cookieStore, await buyerToken());
+
+    expect(await myDueBalance()).toBe(9000); // 12000 - 2000 - 1000
+
+    const ledger = await myLedger();
+    expect(ledger.sales).toHaveLength(1);
+    expect(ledger.sales.every((s) => s.buyerId === BUYER_USER_ID)).toBe(true);
+    expect(ledger.payments).toHaveLength(1);
+    // The other buyer's 60000-paisa sale must never appear here.
+    expect(ledger.sales.some((s) => s.totalPaisa === 60000)).toBe(false);
+  });
+
+  it("rejects an unauthenticated caller", async () => {
+    clearSessionCookie(cookieStore);
+    await expect(myDueBalance()).rejects.toThrow(BUYER_ONLY_ERROR);
+    await expect(myLedger()).rejects.toThrow(BUYER_ONLY_ERROR);
+  });
+
+  it("rejects an admin caller", async () => {
+    setSessionCookie(cookieStore, await adminToken());
+    await expect(myDueBalance()).rejects.toThrow(BUYER_ONLY_ERROR);
+    await expect(myLedger()).rejects.toThrow(BUYER_ONLY_ERROR);
+  });
+});
+
+describe("searchMedicinesForBuyer", () => {
+  it("returns only id, name, and boxPricePaisa — never stock or the pata price", async () => {
+    await makeSessionBuyer();
+    await makeMedicine({ name: "Napa 500mg" });
+
+    const results = await searchMedicinesForBuyer("Napa");
+    expect(results).toHaveLength(1);
+    expect(results[0]).toEqual({
+      id: expect.any(String),
+      name: "Napa 500mg",
+      boxPricePaisa: 12000,
+    });
+    // Structural guarantee: no stockPatas/pataPricePaisa key leaked onto
+    // the object at all, not just left unrendered by the UI.
+    expect(Object.keys(results[0]).sort()).toEqual(["boxPricePaisa", "id", "name"]);
+  });
+
+  it("matches by generic name too, and returns [] for a blank query", async () => {
+    await makeSessionBuyer();
+    await makeMedicine({ name: "Napa 500mg", genericName: "Paracetamol" });
+
+    expect(await searchMedicinesForBuyer("Paracetamol")).toHaveLength(1);
+    expect(await searchMedicinesForBuyer("   ")).toEqual([]);
+  });
+
+  it("excludes a deactivated medicine", async () => {
+    await makeSessionBuyer();
+    await makeMedicine({ name: "Old Med", active: false });
+    expect(await searchMedicinesForBuyer("Old Med")).toEqual([]);
+  });
+
+  it("rejects an unauthenticated caller", async () => {
+    clearSessionCookie(cookieStore);
+    await expect(searchMedicinesForBuyer("napa")).rejects.toThrow(BUYER_ONLY_ERROR);
+  });
+
+  it("rejects an admin caller", async () => {
+    setSessionCookie(cookieStore, await adminToken());
+    await expect(searchMedicinesForBuyer("napa")).rejects.toThrow(BUYER_ONLY_ERROR);
   });
 });
