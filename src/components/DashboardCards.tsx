@@ -44,6 +44,16 @@ export function DashboardCards({ summary }: { summary: DashboardSummary }) {
           </div>
           <div className="mt-1 text-xs text-slate-500">ta medicine</div>
         </Link>
+
+        {summary.pendingOrderCount > 0 && (
+          <Link href="/orders" className="rounded-xl bg-amber-50 p-4 shadow-sm hover:bg-amber-100">
+            <div className="text-xs text-amber-700">Pending order</div>
+            <div className="text-2xl font-semibold text-amber-900">
+              {summary.pendingOrderCount}
+            </div>
+            <div className="mt-1 text-xs text-amber-700">ta approve korar opekkhay</div>
+          </Link>
+        )}
       </div>
 
       {summary.lowStock.length > 0 && (

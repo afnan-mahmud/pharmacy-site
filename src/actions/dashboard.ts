@@ -7,6 +7,7 @@ import { listBuyerDues } from "@/actions/due";
 import { splitDueTotals } from "@/lib/dueDisplay";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { MedicineModel, type MedicineDoc } from "@/models/Medicine";
+import { OrderModel } from "@/models/Order";
 
 export type LowStockRow = {
   medicineId: string;
@@ -27,6 +28,8 @@ export type DashboardSummary = {
   /** Sum of credit the pharmacy owes buyers, as a positive number. */
   totalCreditPaisa: number;
   lowStock: LowStockRow[];
+  /** Orders awaiting the owner's approval or rejection. */
+  pendingOrderCount: number;
 };
 
 /**
@@ -47,7 +50,7 @@ export async function dashboardSummary(): Promise<DashboardSummary> {
   const today = dhakaToday();
   const { start, end } = dhakaDayBounds(today);
 
-  const [todaySales, dues, lowStockDocs] = await Promise.all([
+  const [todaySales, dues, lowStockDocs, pendingOrderCount] = await Promise.all([
     SaleModel.find({
       createdAt: { $gte: start, $lt: end },
       status: "active",
@@ -62,6 +65,7 @@ export async function dashboardSummary(): Promise<DashboardSummary> {
     })
       .sort({ stockPatas: 1 })
       .lean<MedicineDoc[]>(),
+    OrderModel.countDocuments({ status: "pending" }),
   ]);
 
   const sumBy = (type: "retail" | "wholesale") =>
@@ -91,5 +95,6 @@ export async function dashboardSummary(): Promise<DashboardSummary> {
       patasPerBox: medicine.patasPerBox,
       lowStockThreshold: medicine.lowStockThreshold,
     })),
+    pendingOrderCount,
   };
 }

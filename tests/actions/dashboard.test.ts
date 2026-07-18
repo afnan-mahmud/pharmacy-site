@@ -12,6 +12,7 @@ import { ADMIN_ONLY_ERROR } from "@/lib/session";
 import { dashboardSummary } from "@/actions/dashboard";
 import { SaleModel } from "@/models/Sale";
 import { MedicineModel } from "@/models/Medicine";
+import { OrderModel } from "@/models/Order";
 
 const cookieStore = createMockCookieStore();
 vi.mock("next/headers", () => ({
@@ -88,6 +89,15 @@ async function makeMedicine(overrides: Record<string, unknown> = {}) {
     lowStockThreshold: 20,
     active: true,
     ...overrides,
+  });
+}
+
+async function makePendingOrder() {
+  return OrderModel.create({
+    buyerId: new mongoose.Types.ObjectId(),
+    buyerName: "Karim",
+    items: [{ medicineId: MEDICINE_ID, medicineName: "Napa", boxes: 1, boxPricePaisa: 12000 }],
+    status: "pending",
   });
 }
 
@@ -200,5 +210,21 @@ describe("dashboardSummary", () => {
   it("rejects a buyer-role session", async () => {
     setSessionCookie(cookieStore, await buyerToken());
     await expect(dashboardSummary()).rejects.toThrow(ADMIN_ONLY_ERROR);
+  });
+});
+
+describe("dashboardSummary — pending orders", () => {
+  it("counts only pending orders", async () => {
+    await makePendingOrder();
+    await makePendingOrder();
+    const resolved = await makePendingOrder();
+    await OrderModel.updateOne({ _id: resolved._id }, { $set: { status: "approved" } });
+
+    const summary = await dashboardSummary();
+    expect(summary.pendingOrderCount).toBe(2);
+  });
+
+  it("is zero when there are no pending orders", async () => {
+    expect((await dashboardSummary()).pendingOrderCount).toBe(0);
   });
 });

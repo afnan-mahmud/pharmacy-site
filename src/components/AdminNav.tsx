@@ -5,6 +5,7 @@ const LINKS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/sell", label: "Khuchra Bikri" },
   { href: "/wholesale", label: "Wholesale Bikri" },
+  { href: "/orders", label: "Pending Order" },
   { href: "/medicines", label: "Medicine" },
   { href: "/stock", label: "Stock In" },
   { href: "/buyers", label: "Buyer" },
