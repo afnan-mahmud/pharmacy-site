@@ -14,6 +14,9 @@ export type MedicineInput = {
   patasPerBox: number;
   boxPricePaisa: number;
   pataPricePaisa: number;
+  // Optional list price (MRP) per box for the struck-through display; omitted
+  // or 0 means no MRP. When present it must sit at or above boxPricePaisa.
+  mrpBoxPricePaisa?: number;
   lowStockThreshold: number;
 };
 
@@ -72,7 +75,16 @@ function validate(input: MedicineInput): void {
   }
   validateNonNegativeInteger(input.boxPricePaisa, "boxPricePaisa");
   validateNonNegativeInteger(input.pataPricePaisa, "pataPricePaisa");
+  const mrp = input.mrpBoxPricePaisa ?? 0;
+  validateNonNegativeInteger(mrp, "mrpBoxPricePaisa");
   validateNonNegativeInteger(input.lowStockThreshold, "lowStockThreshold");
+
+  // MRP is the struck-through "was" price, so it must sit above the selling
+  // box price — an MRP below it would show a negative discount. 0 is the
+  // "no MRP" sentinel and is always allowed.
+  if (mrp > 0 && mrp < input.boxPricePaisa) {
+    throw new Error("MRP box rate er cheye kom hote parbe na");
+  }
 }
 
 function toFields(input: MedicineInput) {
@@ -85,6 +97,7 @@ function toFields(input: MedicineInput) {
     patasPerBox: input.patasPerBox,
     boxPricePaisa: input.boxPricePaisa,
     pataPricePaisa: input.pataPricePaisa,
+    mrpBoxPricePaisa: input.mrpBoxPricePaisa ?? 0,
     lowStockThreshold: input.lowStockThreshold,
   };
 }

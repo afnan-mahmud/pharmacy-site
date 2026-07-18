@@ -6,6 +6,7 @@ import { connectDb } from "@/lib/db";
 import { requireBuyerAction } from "@/lib/session";
 import { toPlain, toPlainList, type Serialized } from "@/lib/serialize";
 import { computeBuyerDue, loadBuyerLedger } from "@/lib/dueComputation";
+import { stockStatus, type StockStatus } from "@/lib/stockStatus";
 import { BuyerModel } from "@/models/Buyer";
 import { MedicineModel } from "@/models/Medicine";
 import { OrderModel, type OrderDoc } from "@/models/Order";
@@ -25,7 +26,16 @@ function escapeRegex(input: string): string {
   return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-export type BuyerMedicineOption = { id: string; name: string; boxPricePaisa: number };
+export type BuyerMedicineOption = {
+  id: string;
+  name: string;
+  company: string;
+  boxPricePaisa: number;
+  // The struck-through list price, or 0 for none. Never the internal cost.
+  mrpBoxPricePaisa: number;
+  // A three-way availability signal, never the exact stock count.
+  availability: StockStatus;
+};
 
 /**
  * A buyer never sees stock or the pata/retail price (see the domain rule in
@@ -50,19 +60,35 @@ export async function searchMedicinesForBuyer(
   if (!term) return [];
 
   const pattern = { $regex: escapeRegex(term), $options: "i" };
+  // stockPatas and lowStockThreshold are read only to derive the three-way
+  // availability signal below — they are never returned to the client. The
+  // exact count stays on the server; the buyer sees "in / low / out" only.
   const docs = await MedicineModel.find({
     active: true,
     $or: [{ name: pattern }, { genericName: pattern }],
   })
-    .select("name boxPricePaisa")
+    .select("name company boxPricePaisa mrpBoxPricePaisa stockPatas lowStockThreshold")
     .sort({ name: 1 })
-    .limit(10)
-    .lean<{ _id: mongoose.Types.ObjectId; name: string; boxPricePaisa: number }[]>();
+    .limit(20)
+    .lean<
+      {
+        _id: mongoose.Types.ObjectId;
+        name: string;
+        company: string;
+        boxPricePaisa: number;
+        mrpBoxPricePaisa: number;
+        stockPatas: number;
+        lowStockThreshold: number;
+      }[]
+    >();
 
   return docs.map((m) => ({
     id: String(m._id),
     name: m.name,
+    company: m.company,
     boxPricePaisa: m.boxPricePaisa,
+    mrpBoxPricePaisa: m.mrpBoxPricePaisa ?? 0,
+    availability: stockStatus(m.stockPatas, m.lowStockThreshold),
   }));
 }
 

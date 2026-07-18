@@ -8,6 +8,8 @@ import { SettingsModel, type SettingsDoc } from "@/models/Settings";
 
 export type SettingsInput = {
   pharmacyName: string;
+  // Optional; omitted behaves like the schema default. See Settings.tagline.
+  tagline?: string;
   address: string;
   phone: string;
   invoicePrefix: string;
@@ -141,6 +143,7 @@ export async function readSettings(): Promise<SettingsDoc> {
  */
 function validate(input: SettingsInput): {
   pharmacyName: string;
+  tagline: string;
   address: string;
   phone: string;
   invoicePrefix: string;
@@ -150,6 +153,7 @@ function validate(input: SettingsInput): {
   }
   const pharmacyName = input.pharmacyName.trim();
 
+  const tagline = toOptionalString(input.tagline, "tagline").trim();
   const address = toOptionalString(input.address, "address").trim();
   const phone = toOptionalString(input.phone, "phone").trim();
 
@@ -158,20 +162,20 @@ function validate(input: SettingsInput): {
   }
   const invoicePrefix = validateInvoicePrefix(input.invoicePrefix.trim());
 
-  return { pharmacyName, address, phone, invoicePrefix };
+  return { pharmacyName, tagline, address, phone, invoicePrefix };
 }
 
 export async function updateSettings(input: SettingsInput): Promise<Serialized<SettingsDoc>> {
   await requireAdminAction();
   await connectDb();
 
-  const { pharmacyName, address, phone, invoicePrefix } = validate(input);
+  const { pharmacyName, tagline, address, phone, invoicePrefix } = validate(input);
 
   const settings = await withDuplicateKeyRetry(() =>
     SettingsModel.findOneAndUpdate(
       { key: "singleton" },
       {
-        $set: { pharmacyName, invoicePrefix, address, phone },
+        $set: { pharmacyName, tagline, invoicePrefix, address, phone },
         $setOnInsert: { key: "singleton" },
       },
       { upsert: true, new: true, setDefaultsOnInsert: true },

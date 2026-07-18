@@ -309,20 +309,46 @@ describe("myDueBalance and myLedger — buyer-scoped reads", () => {
 });
 
 describe("searchMedicinesForBuyer", () => {
-  it("returns only id, name, and boxPricePaisa — never stock or the pata price", async () => {
+  it("returns the buyer-safe fields — availability, never the raw stock or pata price", async () => {
     await makeSessionBuyer();
-    await makeMedicine({ name: "Napa 500mg" });
+    await makeMedicine({ name: "Napa 500mg", mrpBoxPricePaisa: 15000 });
 
     const results = await searchMedicinesForBuyer("Napa");
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
       id: expect.any(String),
       name: "Napa 500mg",
+      company: "Beximco",
       boxPricePaisa: 12000,
+      mrpBoxPricePaisa: 15000,
+      // 500 patas, threshold 20 -> comfortably in stock, as a signal only.
+      availability: "in",
     });
-    // Structural guarantee: no stockPatas/pataPricePaisa key leaked onto
-    // the object at all, not just left unrendered by the UI.
-    expect(Object.keys(results[0]).sort()).toEqual(["boxPricePaisa", "id", "name"]);
+    // Structural guarantee: neither the exact stock count nor the pata/retail
+    // price leaks onto the object at all, only the three-way availability.
+    const keys = Object.keys(results[0]).sort();
+    expect(keys).not.toContain("stockPatas");
+    expect(keys).not.toContain("pataPricePaisa");
+    expect(keys).not.toContain("lowStockThreshold");
+    expect(keys).toEqual([
+      "availability",
+      "boxPricePaisa",
+      "company",
+      "id",
+      "mrpBoxPricePaisa",
+      "name",
+    ]);
+  });
+
+  it("reports low and out availability without revealing the number", async () => {
+    await makeSessionBuyer();
+    await makeMedicine({ name: "LowMed", stockPatas: 10, lowStockThreshold: 20 });
+    await makeMedicine({ name: "OutMed", stockPatas: 0, lowStockThreshold: 20 });
+
+    const low = await searchMedicinesForBuyer("LowMed");
+    const out = await searchMedicinesForBuyer("OutMed");
+    expect(low[0].availability).toBe("low");
+    expect(out[0].availability).toBe("out");
   });
 
   it("matches by generic name too, and returns [] for a blank query", async () => {

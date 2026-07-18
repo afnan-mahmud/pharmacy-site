@@ -11,6 +11,10 @@ const medicineSchema = new Schema(
     patasPerBox: { type: Number, required: true, min: 1 },
     boxPricePaisa: { type: Number, required: true, min: 0 },
     pataPricePaisa: { type: Number, required: true, min: 0 },
+    // Optional list price (MRP) per box, for the struck-through "was" price
+    // and a discount badge. 0 means no MRP — nothing struck through. When set,
+    // it is kept at or above boxPricePaisa (a discount, not a markup).
+    mrpBoxPricePaisa: { type: Number, required: true, default: 0, min: 0 },
     // Canonical stock. Always patas, never boxes. See src/lib/units.ts.
     stockPatas: { type: Number, required: true, default: 0, min: 0 },
     lowStockThreshold: { type: Number, required: true, default: 0, min: 0 },
