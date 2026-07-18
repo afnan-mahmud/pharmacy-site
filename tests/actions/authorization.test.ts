@@ -98,6 +98,7 @@ describe("every action module export requires an admin session", () => {
     // repo-layout change), every test below would silently vanish instead
     // of failing loudly. This pins the count so that can't happen quietly.
     expect(modulePaths).toEqual([
+      "/src/actions/adminOrders.ts",
       "/src/actions/auth.ts",
       "/src/actions/buyerOrders.ts",
       "/src/actions/buyers.ts",
