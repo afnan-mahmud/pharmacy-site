@@ -14,6 +14,7 @@ import {
   getOrderForAdmin,
   approveOrder,
   rejectOrder,
+  currentBoxPrices,
 } from "@/actions/adminOrders";
 import { BuyerModel } from "@/models/Buyer";
 import { MedicineModel } from "@/models/Medicine";
@@ -80,6 +81,34 @@ async function makeOrder(
 
 beforeEach(async () => {
   setSessionCookie(cookieStore, await adminToken());
+});
+
+describe("currentBoxPrices", () => {
+  it("returns each medicine's current box price, not any snapshot", async () => {
+    const a = await makeMedicine();
+    const b = await makeMedicine({ name: "Ace", boxPricePaisa: 5000 });
+    // Raise A's price after it was made — the current price is what matters.
+    await MedicineModel.updateOne({ _id: a._id }, { $set: { boxPricePaisa: 13000 } });
+
+    const prices = await currentBoxPrices([String(a._id), String(b._id)]);
+    expect(prices[String(a._id)]).toBe(13000);
+    expect(prices[String(b._id)]).toBe(5000);
+  });
+
+  it("omits a deactivated or unknown medicine so the caller falls back to the snapshot", async () => {
+    const gone = await makeMedicine({ active: false });
+    const prices = await currentBoxPrices([
+      String(gone._id),
+      "507f1f77bcf86cd799439011",
+      "not-an-id",
+    ]);
+    expect(prices).toEqual({});
+  });
+
+  it("rejects a buyer caller", async () => {
+    setSessionCookie(cookieStore, await buyerToken());
+    await expect(currentBoxPrices([])).rejects.toThrow(ADMIN_ONLY_ERROR);
+  });
 });
 
 describe("listPendingOrders", () => {

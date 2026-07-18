@@ -8,6 +8,7 @@ import { writeWholesaleSale } from "@/lib/writeWholesaleSale";
 import { toPlain, toPlainList, type Serialized } from "@/lib/serialize";
 import { OrderModel, type OrderDoc } from "@/models/Order";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
+import { MedicineModel } from "@/models/Medicine";
 
 export type ApprovalItemInput = { medicineId: string; boxes: number };
 
@@ -20,6 +21,41 @@ export async function listPendingOrders(): Promise<Serialized<OrderDoc>[]> {
     .sort({ createdAt: 1 })
     .lean<OrderDoc[]>();
   return toPlainList(orders);
+}
+
+/**
+ * The current box price of each given medicine, keyed by medicine id.
+ *
+ * An order snapshots the price the buyer saw, but approval bills at the
+ * medicine's *current* price (see approveOrder → writeWholesaleSale). The
+ * pending-orders screen shows this map so its preview total matches the
+ * invoice the owner is about to create — a snapshot-priced preview would
+ * quietly disagree with the sale whenever a price changed since the order.
+ * A medicine that no longer exists or is deactivated is simply absent; the
+ * caller falls back to the order's snapshot for display.
+ */
+export async function currentBoxPrices(
+  medicineIds: string[],
+): Promise<Record<string, number>> {
+  await requireAdminAction();
+  await connectDb();
+
+  if (!Array.isArray(medicineIds)) return {};
+  const validIds = medicineIds.filter((id) =>
+    mongoose.Types.ObjectId.isValid(id),
+  );
+  if (validIds.length === 0) return {};
+
+  const medicines = await MedicineModel.find({
+    _id: { $in: validIds },
+    active: true,
+  })
+    .select("boxPricePaisa")
+    .lean<{ _id: mongoose.Types.ObjectId; boxPricePaisa: number }[]>();
+
+  return Object.fromEntries(
+    medicines.map((m) => [m._id.toString(), m.boxPricePaisa]),
+  );
 }
 
 export async function getOrderForAdmin(
