@@ -32,7 +32,7 @@ export function Brand({
   );
 }
 
-function CapsuleMark({ className }: { className?: string }) {
+export function CapsuleMark({ className }: { className?: string }) {
   return (
     <svg
       viewBox="0 0 40 40"

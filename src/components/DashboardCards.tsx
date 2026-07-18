@@ -2,92 +2,119 @@ import Link from "next/link";
 import type { DashboardSummary } from "@/actions/dashboard";
 import { formatTaka } from "@/lib/money";
 import { formatStock } from "@/lib/units";
+import { card, pageTitle, thead, th, td, trow } from "@/components/ui";
 
 export function DashboardCards({ summary }: { summary: DashboardSummary }) {
   return (
-    <div className="space-y-4">
-      <h1 className="text-lg font-semibold text-slate-900">Dashboard</h1>
+    <div className="space-y-5">
+      <h1 className={pageTitle}>Dashboard</h1>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <div className="rounded-xl bg-teal-50 p-4 shadow-sm">
-          <div className="text-xs text-teal-700">Aj ker bikri</div>
-          <div className="text-2xl font-semibold text-teal-900">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        {/* Today's sales — the hero figure, on the brand gradient. */}
+        <div className="rounded-2xl bg-gradient-to-br from-brand to-brand-deep p-5 text-white shadow-sm sm:col-span-2 lg:col-span-1">
+          <div className="text-xs font-semibold text-white/80">Aj ker bikri</div>
+          <div className="mt-1 font-display text-3xl font-extrabold">
             {formatTaka(summary.todayTotalPaisa)}
           </div>
-          <div className="mt-1 text-xs text-teal-700">
+          <div className="mt-2 text-xs text-white/85">
             {summary.todaySaleCount} ta bikri · khuchra{" "}
             {formatTaka(summary.todayRetailPaisa)} · wholesale{" "}
             {formatTaka(summary.todayWholesalePaisa)}
           </div>
         </div>
 
-        <Link href="/due" className="rounded-xl bg-white p-4 shadow-sm hover:bg-slate-50">
-          <div className="text-xs text-slate-500">Mot baki</div>
-          <div className={`text-2xl font-semibold ${
-            summary.totalDuePaisa > 0 ? "text-red-600" : "text-slate-400"
-          }`}>
+        <StatCard href="/due" label="Mot baki" accent={summary.totalDuePaisa > 0 ? "danger" : "muted"}>
+          <div className={`font-display text-2xl font-extrabold ${summary.totalDuePaisa > 0 ? "text-danger" : "text-muted"}`}>
             {formatTaka(summary.totalDuePaisa)}
           </div>
           {summary.totalCreditPaisa > 0 && (
-            <div className="mt-1 text-xs text-teal-700">
+            <div className="mt-1 text-xs font-medium text-brand-strong">
               Buyer der joma ache {formatTaka(summary.totalCreditPaisa)}
             </div>
           )}
-        </Link>
+        </StatCard>
 
-        <Link href="/medicines" className="rounded-xl bg-white p-4 shadow-sm hover:bg-slate-50">
-          <div className="text-xs text-slate-500">Stock kom</div>
-          <div className={`text-2xl font-semibold ${
-            summary.lowStock.length > 0 ? "text-amber-600" : "text-slate-400"
-          }`}>
+        <StatCard href="/medicines" label="Stock kom" accent={summary.lowStock.length > 0 ? "warn" : "muted"}>
+          <div className={`font-display text-2xl font-extrabold ${summary.lowStock.length > 0 ? "text-warn" : "text-muted"}`}>
             {summary.lowStock.length}
           </div>
-          <div className="mt-1 text-xs text-slate-500">ta medicine</div>
-        </Link>
+          <div className="mt-1 text-xs text-muted">ta medicine</div>
+        </StatCard>
 
-        {summary.pendingOrderCount > 0 && (
-          <Link href="/orders" className="rounded-xl bg-amber-50 p-4 shadow-sm hover:bg-amber-100">
-            <div className="text-xs text-amber-700">Pending order</div>
-            <div className="text-2xl font-semibold text-amber-900">
+        {summary.pendingOrderCount > 0 ? (
+          <StatCard href="/orders" label="Pending order" accent="warn">
+            <div className="font-display text-2xl font-extrabold text-warn">
               {summary.pendingOrderCount}
             </div>
-            <div className="mt-1 text-xs text-amber-700">ta approve korar opekkhay</div>
-          </Link>
+            <div className="mt-1 text-xs text-muted">ta approve korar opekkhay</div>
+          </StatCard>
+        ) : (
+          <StatCard href="/orders" label="Pending order" accent="muted">
+            <div className="font-display text-2xl font-extrabold text-muted">0</div>
+            <div className="mt-1 text-xs text-muted">sob approve kora</div>
+          </StatCard>
         )}
       </div>
 
       {summary.lowStock.length > 0 && (
-        <div>
-          <h2 className="mb-2 font-semibold text-slate-900">Stock kome geche</h2>
-          <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
-            <table className="w-full text-sm">
-              <thead className="border-b border-slate-200 text-left text-slate-500">
+        <section>
+          <h2 className="mb-2 font-display text-sm font-bold text-ink">
+            Stock kome geche
+          </h2>
+          <div className={`overflow-x-auto ${card}`}>
+            <table className="w-full">
+              <thead className={thead}>
                 <tr>
-                  <th className="p-3">Medicine</th>
-                  <th className="p-3">Ekhon ache</th>
-                  <th className="p-3">Alert level</th>
+                  <th className={th}>Medicine</th>
+                  <th className={th}>Ekhon ache</th>
+                  <th className={th}>Alert level</th>
                 </tr>
               </thead>
               <tbody>
                 {summary.lowStock.map((row) => (
-                  <tr key={row.medicineId} className="border-b border-slate-100">
-                    <td className="p-3 font-medium text-slate-900">{row.name}</td>
-                    <td className="p-3 font-medium text-amber-600">
+                  <tr key={row.medicineId} className={trow}>
+                    <td className={`${td} font-semibold`}>{row.name}</td>
+                    <td className={`${td} font-semibold text-warn`}>
                       {formatStock(row.stockPatas, row.patasPerBox)}
                     </td>
-                    <td className="p-3 text-slate-500">
-                      {row.lowStockThreshold} pata
-                    </td>
+                    <td className={`${td} text-muted`}>{row.lowStockThreshold} pata</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-muted">
             Stock In menu theke notun maal dhukao.
           </p>
-        </div>
+        </section>
       )}
     </div>
+  );
+}
+
+function StatCard({
+  href,
+  label,
+  accent,
+  children,
+}: {
+  href: string;
+  label: string;
+  accent: "danger" | "warn" | "muted";
+  children: React.ReactNode;
+}) {
+  const ring: Record<typeof accent, string> = {
+    danger: "hover:border-danger/30",
+    warn: "hover:border-warn/30",
+    muted: "hover:border-brand/30",
+  };
+  return (
+    <Link
+      href={href}
+      className={`${card} block p-5 transition hover:shadow-md ${ring[accent]}`}
+    >
+      <div className="text-xs font-semibold text-muted">{label}</div>
+      <div className="mt-1">{children}</div>
+    </Link>
   );
 }

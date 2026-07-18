@@ -12,6 +12,7 @@ export default async function MedicinesPage() {
     patasPerBox: m.patasPerBox,
     boxPricePaisa: m.boxPricePaisa,
     pataPricePaisa: m.pataPricePaisa,
+    mrpBoxPricePaisa: m.mrpBoxPricePaisa ?? 0,
     lowStockThreshold: m.lowStockThreshold,
     stockPatas: m.stockPatas,
   }));

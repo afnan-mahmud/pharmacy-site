@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { buyerLogin } from "@/actions/auth";
+import { CapsuleMark } from "@/components/Brand";
+import { input, btnPrimary, label as labelCls, errorBox } from "@/components/ui";
 
 export default function BuyerLoginPage() {
   const router = useRouter();
@@ -26,30 +28,55 @@ export default function BuyerLoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
-      <form onSubmit={handleSubmit}
-        className="w-full max-w-sm space-y-4 rounded-xl bg-white p-8 shadow-sm">
-        <h1 className="text-xl font-semibold text-slate-900">Buyer Login</h1>
-
-        <div className="space-y-1">
-          <label htmlFor="phone" className="text-sm text-slate-700">Phone</label>
-          <input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)}
-            autoComplete="username" required
-            className="w-full rounded-lg border border-slate-300 px-3 py-2" />
+    <main className="flex min-h-screen items-center justify-center bg-gradient-to-b from-brand-tint to-canvas p-4">
+      <form
+        onSubmit={handleSubmit}
+        className="w-full max-w-sm space-y-5 rounded-3xl border border-line bg-surface p-8 shadow-sm"
+      >
+        <div className="flex flex-col items-center gap-2 text-center">
+          <CapsuleMark className="h-11 w-11" />
+          <h1 className="font-display text-xl font-extrabold text-ink">
+            Buyer Login
+          </h1>
+          <p className="text-xs text-muted">Phone number diye login koro</p>
         </div>
 
-        <div className="space-y-1">
-          <label htmlFor="password" className="text-sm text-slate-700">Password</label>
-          <input id="password" type="password" value={password}
+        <div className="space-y-1.5">
+          <label htmlFor="phone" className={labelCls}>
+            Phone
+          </label>
+          <input
+            id="phone"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            autoComplete="username"
+            required
+            className={input}
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <label htmlFor="password" className={labelCls}>
+            Password
+          </label>
+          <input
+            id="password"
+            type="password"
+            value={password}
             onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password" required
-            className="w-full rounded-lg border border-slate-300 px-3 py-2" />
+            autoComplete="current-password"
+            required
+            className={input}
+          />
         </div>
 
-        {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+        {error && (
+          <p role="alert" className={errorBox}>
+            {error}
+          </p>
+        )}
 
-        <button type="submit" disabled={busy}
-          className="w-full rounded-lg bg-teal-700 py-2 font-medium text-white disabled:opacity-50">
+        <button type="submit" disabled={busy} className={`w-full ${btnPrimary} py-3`}>
           {busy ? "Wait..." : "Login"}
         </button>
       </form>

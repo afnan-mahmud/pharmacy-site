@@ -42,9 +42,9 @@ export default async function AdminLayout({
   const settings = await getCachedSettings();
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <AdminNav pharmacyName={settings.pharmacyName} />
-      <main className="mx-auto max-w-6xl p-4">{children}</main>
+    <div className="min-h-screen bg-canvas">
+      <AdminNav pharmacyName={settings.pharmacyName} tagline={settings.tagline} />
+      <main className="mx-auto max-w-6xl p-4 sm:p-6">{children}</main>
     </div>
   );
 }
