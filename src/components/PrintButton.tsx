@@ -4,7 +4,7 @@ export function PrintButton() {
   return (
     <button
       onClick={() => window.print()}
-      className="no-print rounded-lg border border-slate-300 px-4 py-2 text-sm hover:bg-slate-50"
+      className="no-print rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-strong"
     >
       Print / PDF koro
     </button>

@@ -68,8 +68,8 @@ export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
   if (orders.length === 0) {
     return (
       <div>
-        <h1 className="mb-3 text-lg font-semibold text-slate-900">Pending Order</h1>
-        <p className="rounded-xl bg-white p-6 text-center text-slate-400 shadow-sm">
+        <h1 className="mb-3 font-display text-lg font-extrabold text-ink">Pending Order</h1>
+        <p className="rounded-2xl border border-line bg-surface p-6 text-center text-muted shadow-sm">
           Kono pending order nai.
         </p>
       </div>
@@ -78,8 +78,8 @@ export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-lg font-semibold text-slate-900">Pending Order</h1>
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      <h1 className="font-display text-lg font-extrabold text-ink">Pending Order</h1>
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
 
       {orders.map((order) => {
         const total = order.items.reduce(
@@ -87,17 +87,17 @@ export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
           0,
         );
         return (
-          <div key={order.id} className="rounded-xl bg-white p-4 shadow-sm">
+          <div key={order.id} className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
             <div className="flex items-center justify-between">
               <div>
-                <div className="font-medium text-slate-900">{order.buyerName}</div>
-                <div className="text-xs text-slate-500">{order.buyerShopName}</div>
+                <div className="font-medium text-ink">{order.buyerName}</div>
+                <div className="text-xs text-muted">{order.buyerShopName}</div>
               </div>
-              <span className="text-xs text-slate-500">{formatDhakaDateTime(order.createdAt)}</span>
+              <span className="text-xs text-muted">{formatDhakaDateTime(order.createdAt)}</span>
             </div>
 
             <table className="mt-3 w-full text-sm">
-              <thead className="text-left text-slate-500">
+              <thead className="text-left text-muted">
                 <tr>
                   <th className="py-1">Medicine</th>
                   <th className="py-1">Box rate</th>
@@ -110,14 +110,14 @@ export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
                 {order.items.map((item) => {
                   const boxes = edits[order.id]?.[item.medicineId] ?? item.boxes;
                   return (
-                    <tr key={item.medicineId} className="border-t border-slate-100">
-                      <td className="py-2 font-medium text-slate-900">{item.medicineName}</td>
+                    <tr key={item.medicineId} className="border-t border-line">
+                      <td className="py-2 font-medium text-ink">{item.medicineName}</td>
                       <td className="py-2">{formatTaka(item.boxPricePaisa)}</td>
-                      <td className="py-2 text-slate-500">{item.boxes}</td>
+                      <td className="py-2 text-muted">{item.boxes}</td>
                       <td className="py-2">
                         <input type="number" min={0} value={boxes}
                           onChange={(e) => setBoxes(order.id, item.medicineId, Number(e.target.value))}
-                          className="w-20 rounded-lg border border-slate-300 px-2 py-1" />
+                          className="w-20 rounded-lg border border-line px-2 py-1" />
                       </td>
                       <td className="py-2 text-right">{formatTaka(item.boxPricePaisa * boxes)}</td>
                     </tr>
@@ -126,15 +126,15 @@ export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
               </tbody>
             </table>
 
-            <div className="mt-3 flex items-center justify-between border-t border-slate-100 pt-3">
+            <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
               <span className="font-medium">Mot {formatTaka(total)}</span>
               <div className="flex gap-2">
                 <button onClick={() => handleReject(order)} disabled={busyId === order.id}
-                  className="rounded-lg border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50">
+                  className="rounded-lg border border-danger/50 px-4 py-2 text-sm text-danger hover:bg-danger-bg disabled:opacity-50">
                   Reject
                 </button>
                 <button onClick={() => handleApprove(order)} disabled={busyId === order.id}
-                  className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+                  className="rounded-full bg-brand hover:bg-brand-strong px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
                   {busyId === order.id ? "Wait..." : "Approve ar invoice"}
                 </button>
               </div>

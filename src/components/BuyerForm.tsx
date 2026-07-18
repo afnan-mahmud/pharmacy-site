@@ -58,12 +58,12 @@ export function BuyerForm({
     }
   }
 
-  const field = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm";
-  const label = "text-sm text-slate-700";
+  const field = "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm";
+  const label = "text-sm text-ink";
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 rounded-xl bg-white p-5 shadow-sm">
-      <h2 className="font-semibold text-slate-900">
+    <form onSubmit={handleSubmit} className="space-y-3 rounded-2xl border border-line bg-surface p-5 shadow-sm">
+      <h2 className="font-display font-bold text-ink">
         {editing ? "Buyer edit" : "Notun buyer"}
       </h2>
 
@@ -95,21 +95,21 @@ export function BuyerForm({
           <input id="buyerPassword" type="password" className={field}
             required={!editing} value={password} autoComplete="new-password"
             onChange={(e) => setPassword(e.target.value)} />
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-muted">
             Ei password diye buyer nijer portal e login korbe.
           </p>
         </div>
       </div>
 
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
 
       <div className="flex gap-2">
         <button type="submit" disabled={busy}
-          className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+          className="rounded-full bg-brand hover:bg-brand-strong px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
           {busy ? "Wait..." : "Save"}
         </button>
         <button type="button" onClick={onDone}
-          className="rounded-lg border border-slate-300 px-4 py-2 text-sm">
+          className="rounded-full border border-line px-4 py-2 text-sm font-semibold text-muted">
           Cancel
         </button>
       </div>

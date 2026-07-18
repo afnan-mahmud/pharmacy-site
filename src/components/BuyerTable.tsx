@@ -45,18 +45,18 @@ export function BuyerTable({ buyers }: { buyers: BuyerRow[] }) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-slate-900">Wholesale Buyer</h1>
+        <h1 className="font-display text-lg font-extrabold text-ink">Wholesale Buyer</h1>
         <button onClick={() => setAdding(true)}
-          className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white">
+          className="rounded-full bg-brand hover:bg-brand-strong px-4 py-2 text-sm font-semibold text-white">
           + Notun buyer
         </button>
       </div>
 
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
 
-      <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
+      <div className="overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm">
         <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 text-left text-slate-500">
+          <thead className="border-b border-line text-left text-muted">
             <tr>
               <th className="p-3">Nam</th>
               <th className="p-3">Dokan</th>
@@ -69,30 +69,30 @@ export function BuyerTable({ buyers }: { buyers: BuyerRow[] }) {
           <tbody>
             {buyers.length === 0 && (
               <tr>
-                <td colSpan={6} className="p-6 text-center text-slate-400">
+                <td colSpan={6} className="p-6 text-center text-muted">
                   Kono buyer nai. Upor theke add koro.
                 </td>
               </tr>
             )}
             {buyers.map((row) => (
-              <tr key={row.id} className="border-b border-slate-100">
-                <td className="p-3 font-medium text-slate-900">{row.name}</td>
-                <td className="p-3 text-slate-600">{row.shopName}</td>
-                <td className="p-3 text-slate-600">{row.phone}</td>
-                <td className="p-3 text-slate-500">{row.address}</td>
+              <tr key={row.id} className="border-b border-line">
+                <td className="p-3 font-medium text-ink">{row.name}</td>
+                <td className="p-3 text-muted">{row.shopName}</td>
+                <td className="p-3 text-muted">{row.phone}</td>
+                <td className="p-3 text-muted">{row.address}</td>
                 <td className="p-3">
-                  <span className={row.active ? "text-teal-700" : "text-slate-400"}>
+                  <span className={row.active ? "text-brand-strong" : "text-muted"}>
                     {row.active ? "Chalu" : "Bondho"}
                   </span>
                 </td>
                 <td className="p-3 text-right">
                   <button onClick={() => setEditing(row)}
-                    className="text-teal-700 hover:underline">
+                    className="text-brand-strong hover:underline">
                     Edit
                   </button>
                   <button onClick={() => handleToggle(row)}
                     disabled={togglingId === row.id}
-                    className="ml-3 text-slate-400 hover:text-red-600 disabled:opacity-50">
+                    className="ml-3 text-muted hover:text-danger disabled:opacity-50">
                     {row.active ? "Bondho" : "Chalu"}
                   </button>
                 </td>

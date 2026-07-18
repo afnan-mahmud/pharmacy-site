@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { searchMedicines } from "@/actions/medicines";
 import { formatStock } from "@/lib/units";
+import { input } from "@/components/ui";
 
 export type PickedMedicine = {
   id: string;
@@ -75,10 +76,10 @@ export function MedicinePicker({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+        className={input}
       />
       {results.length > 0 && (
-        <ul className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+        <ul className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-2xl border border-line bg-surface p-1 shadow-lg">
           {results.map((medicine) => (
             <li key={medicine.id}>
               <button
@@ -88,15 +89,15 @@ export function MedicinePicker({
                   setQuery("");
                   setResults([]);
                 }}
-                className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50"
+                className="flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition hover:bg-brand-tint"
               >
-                <span>
-                  <span className="font-medium text-slate-900">{medicine.name}</span>
-                  <span className="ml-2 text-xs text-slate-500">
+                <span className="min-w-0">
+                  <span className="font-semibold text-ink">{medicine.name}</span>
+                  <span className="ml-2 text-xs text-muted">
                     {medicine.genericName}
                   </span>
                 </span>
-                <span className="text-xs text-slate-500">
+                <span className="shrink-0 text-xs font-medium text-muted">
                   {formatStock(medicine.stockPatas, medicine.patasPerBox)}
                 </span>
               </button>
@@ -105,7 +106,7 @@ export function MedicinePicker({
         </ul>
       )}
       {error && (
-        <p role="alert" className="mt-1 text-xs text-red-600">
+        <p role="alert" className="mt-1.5 text-xs text-danger">
           {error}
         </p>
       )}

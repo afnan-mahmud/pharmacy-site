@@ -11,10 +11,10 @@ export default async function StockPage() {
       <StockInForm />
 
       <div>
-        <h2 className="mb-2 font-semibold text-slate-900">Ager stock entry</h2>
-        <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
+        <h2 className="mb-2 font-display text-sm font-bold text-ink">Ager stock entry</h2>
+        <div className="overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm">
           <table className="w-full text-sm">
-            <thead className="border-b border-slate-200 text-left text-slate-500">
+            <thead className="border-b border-line text-left text-muted">
               <tr>
                 <th className="p-3">Date</th>
                 <th className="p-3">Medicine</th>
@@ -26,22 +26,22 @@ export default async function StockPage() {
             <tbody>
               {entries.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-6 text-center text-slate-400">
+                  <td colSpan={5} className="p-6 text-center text-muted">
                     Ekhono kono stock entry nai.
                   </td>
                 </tr>
               )}
               {entries.map((entry) => (
-                <tr key={entry._id} className="border-b border-slate-100">
-                  <td className="p-3 text-slate-600">
+                <tr key={entry._id} className="border-b border-line">
+                  <td className="p-3 text-muted">
                     {new Date(entry.createdAt).toLocaleDateString("en-GB", {
                       timeZone: "Asia/Dhaka",
                     })}
                   </td>
-                  <td className="p-3 font-medium text-slate-900">{entry.medicineName}</td>
+                  <td className="p-3 font-medium text-ink">{entry.medicineName}</td>
                   <td className="p-3">{entry.boxes}</td>
-                  <td className="p-3 text-slate-600">{entry.patasAdded}</td>
-                  <td className="p-3 text-slate-500">{entry.note}</td>
+                  <td className="p-3 text-muted">{entry.patasAdded}</td>
+                  <td className="p-3 text-muted">{entry.note}</td>
                 </tr>
               ))}
             </tbody>

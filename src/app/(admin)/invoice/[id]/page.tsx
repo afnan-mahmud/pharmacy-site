@@ -40,11 +40,11 @@ export default async function InvoicePage({
               name="reason"
               required
               placeholder="Cancel korar karon"
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm"
             />
             <button
               type="submit"
-              className="rounded-lg border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+              className="rounded-full border border-danger/50 px-4 py-2 text-sm font-semibold text-danger hover:bg-danger-bg"
             >
               Cancel bikri
             </button>

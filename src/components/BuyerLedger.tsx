@@ -6,6 +6,7 @@ import { formatTaka } from "@/lib/money";
 import { describeDue } from "@/lib/dueDisplay";
 import { recordPayment, type BuyerLedgerResult } from "@/actions/due";
 import Link from "next/link";
+import { card, input, btnPrimary, thead, th, td as tdCls, trow, errorBox } from "@/components/ui";
 
 type Props = {
   buyerId: string;
@@ -92,83 +93,80 @@ export function BuyerLedger({ buyerId, buyerName, buyerShopName, duePaisa, ledge
     }
   }
 
-  const field = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm";
-  const td = "px-3 py-2 text-sm";
+  const td = tdCls;
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <div>
-          <h2 className="text-lg font-semibold text-slate-900">{buyerName}</h2>
-          {buyerShopName && <p className="text-sm text-slate-500">{buyerShopName}</p>}
-          <p className={`text-sm font-medium ${currentDue.className}`}>
+          <button
+            onClick={onClose}
+            className="mb-1 text-xs font-semibold text-muted hover:text-brand-strong"
+          >
+            ← Baki Khata
+          </button>
+          <h2 className="font-display text-lg font-extrabold text-ink">{buyerName}</h2>
+          {buyerShopName && <p className="text-sm text-muted">{buyerShopName}</p>}
+          <p className={`text-sm font-semibold ${currentDue.className}`}>
             {currentDue.label !== "Baki nei"
               ? `${currentDue.label}: ${currentDue.amountText}`
               : currentDue.label}
           </p>
         </div>
-        <button onClick={onClose} className="text-slate-400 hover:text-slate-600">
-          × Bondho
-        </button>
       </div>
 
-      <div className="rounded-xl bg-white p-5 shadow-sm">
-        <h3 className="mb-3 text-sm font-medium text-slate-900">Joma Nin</h3>
+      <div className={`${card} p-5`}>
+        <h3 className="mb-3 font-display text-sm font-bold text-ink">Joma nin</h3>
         <form onSubmit={handlePayment} className="grid gap-3 sm:grid-cols-4 sm:items-end">
-          <div className="space-y-1">
-            <label className="text-xs text-slate-500">Taka</label>
-            <input type="number" step="0.01" min={0} required className={field}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted">Taka</label>
+            <input type="number" step="0.01" min={0} required className={input}
               value={payAmount} onChange={(e) => setPayAmount(e.target.value)} />
           </div>
-          <div className="space-y-1 sm:col-span-2">
-            <label className="text-xs text-slate-500">Note</label>
-            <input type="text" className={field} placeholder="Cash / Bank"
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className="text-xs font-medium text-muted">Note</label>
+            <input type="text" className={input} placeholder="Cash / Bank"
               value={payNote} onChange={(e) => setPayNote(e.target.value)} />
           </div>
-          <button type="submit" disabled={busy || !payAmount}
-            className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+          <button type="submit" disabled={busy || !payAmount} className={btnPrimary}>
             {busy ? "Wait..." : "Joma add koro"}
           </button>
         </form>
-        {error && (
-          <p role="alert" className="mt-2 text-sm text-red-600">
-            {error}
-          </p>
-        )}
+        {error && <p role="alert" className={`mt-3 ${errorBox}`}>{error}</p>}
       </div>
 
-      <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 text-left text-slate-500">
+      <div className={`overflow-x-auto ${card}`}>
+        <table className="w-full">
+          <thead className={thead}>
             <tr>
-              <th className={td}>Date</th>
-              <th className={td}>Biboron</th>
-              <th className={`${td} text-right`}>Baki (৳)</th>
-              <th className={`${td} text-right`}>Joma (৳)</th>
-              <th className={`${td} text-right font-semibold`}>Balance (৳)</th>
+              <th className={th}>Date</th>
+              <th className={th}>Biboron</th>
+              <th className={`${th} text-right`}>Baki (৳)</th>
+              <th className={`${th} text-right`}>Joma (৳)</th>
+              <th className={`${th} text-right`}>Balance (৳)</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => {
               const rowBalance = describeDue(r.balance);
               return (
-                <tr key={r.id} className="border-b border-slate-100">
-                  <td className={td}>
+                <tr key={r.id} className={trow}>
+                  <td className={`${td} text-muted`}>
                     {r.date.toLocaleDateString("en-GB", { timeZone: "Asia/Dhaka" })}
                   </td>
                   <td className={td}>
                     {r.link ? (
-                      <Link href={r.link} className="text-teal-700 hover:underline">
+                      <Link href={r.link} className="font-medium text-brand-strong hover:underline">
                         {r.desc}
                       </Link>
                     ) : (
                       r.desc
                     )}
                   </td>
-                  <td className={`${td} text-right text-red-600`}>
+                  <td className={`${td} text-right text-danger`}>
                     {r.debit > 0 ? formatTaka(r.debit) : "—"}
                   </td>
-                  <td className={`${td} text-right text-teal-700`}>
+                  <td className={`${td} text-right text-brand-strong`}>
                     {r.credit > 0 ? formatTaka(r.credit) : "—"}
                   </td>
                   <td className={`${td} text-right font-medium ${rowBalance.className}`}>
@@ -181,7 +179,7 @@ export function BuyerLedger({ buyerId, buyerName, buyerShopName, duePaisa, ledge
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={5} className="p-6 text-center text-slate-400">
+                <td colSpan={5} className="p-8 text-center text-sm text-muted">
                   Kono record nai.
                 </td>
               </tr>

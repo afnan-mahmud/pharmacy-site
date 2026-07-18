@@ -6,6 +6,7 @@ import { describeDue, splitDueTotals } from "@/lib/dueDisplay";
 import type { DueRow } from "@/actions/due";
 import type { BuyerLedgerResult } from "@/actions/due";
 import { BuyerLedger } from "./BuyerLedger";
+import { card, pageTitle, thead, th, td as tdCls, trow, errorBox } from "@/components/ui";
 
 type Props = {
   dues: DueRow[];
@@ -55,7 +56,7 @@ export function DueTable({ dues, fetchLedger }: Props) {
     );
   }
 
-  const td = "px-3 py-3 text-sm";
+  const td = tdCls;
   // "Mot baki" only sums what buyers actually owe — folding in negative
   // (credit) balances would understate the real total outstanding and mask
   // it behind buyers who happen to be in credit. Credit is called out
@@ -66,43 +67,42 @@ export function DueTable({ dues, fetchLedger }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-slate-900">Baki Khata</h1>
+      <div className="flex items-center justify-between gap-4">
+        <h1 className={pageTitle}>Baki Khata</h1>
         <div className="text-right text-sm">
-          <div>
-            Mot baki: <span className="font-bold text-red-600">{formatTaka(totalDuePaisa)}</span>
+          <div className="text-muted">
+            Mot baki:{" "}
+            <span className="font-display font-extrabold text-danger">
+              {formatTaka(totalDuePaisa)}
+            </span>
           </div>
           {totalCreditPaisa > 0 && (
-            <div className="text-xs text-teal-700">
+            <div className="text-xs text-brand-strong">
               Buyer der total joma ache: {formatTaka(totalCreditPaisa)}
             </div>
           )}
         </div>
       </div>
 
-      {error && (
-        <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-600">
-          {error}
-        </p>
-      )}
+      {error && <p role="alert" className={errorBox}>{error}</p>}
 
-      <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="border-b border-slate-200 text-left text-slate-500">
+      <div className={`overflow-x-auto ${card}`}>
+        <table className="w-full">
+          <thead className={thead}>
             <tr>
-              <th className={td}>Buyer</th>
-              <th className={`${td} text-right`}>Hisab (৳)</th>
-              <th className={td}></th>
+              <th className={th}>Buyer</th>
+              <th className={`${th} text-right`}>Hisab (৳)</th>
+              <th className={th}></th>
             </tr>
           </thead>
           <tbody>
             {dues.map((row) => {
               const due = describeDue(row.duePaisa);
               return (
-                <tr key={row.buyerId} className="border-b border-slate-100">
+                <tr key={row.buyerId} className={trow}>
                   <td className={td}>
-                    <div className="font-medium text-slate-900">{row.buyerName}</div>
-                    <div className="text-xs text-slate-500">{row.buyerShopName}</div>
+                    <div className="font-semibold text-ink">{row.buyerName}</div>
+                    <div className="text-xs text-muted">{row.buyerShopName}</div>
                   </td>
                   <td className={`${td} text-right font-medium ${due.className}`}>
                     {due.label !== "Baki nei" ? `${due.label} ${due.amountText}` : due.label}
@@ -111,7 +111,7 @@ export function DueTable({ dues, fetchLedger }: Props) {
                     <button
                       onClick={() => handleOpen(row)}
                       disabled={loadingId === row.buyerId}
-                      className="text-teal-700 hover:underline disabled:opacity-50"
+                      className="rounded-full px-3 py-1 text-xs font-semibold text-brand-strong hover:bg-brand-tint disabled:opacity-50"
                     >
                       {loadingId === row.buyerId ? "Khulche..." : "Hisab dekhun"}
                     </button>
@@ -121,7 +121,7 @@ export function DueTable({ dues, fetchLedger }: Props) {
             })}
             {dues.length === 0 && (
               <tr>
-                <td colSpan={3} className="p-6 text-center text-slate-400">
+                <td colSpan={3} className="p-8 text-center text-sm text-muted">
                   Kono baki nai.
                 </td>
               </tr>
