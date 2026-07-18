@@ -1,6 +1,7 @@
 import { requireBuyer } from "@/lib/session";
 import { readSettings } from "@/actions/settings";
 import { BuyerNav } from "@/components/BuyerNav";
+import { BuyerBottomNav } from "@/components/BuyerBottomNav";
 
 export default async function BuyerLayout({
   children,
@@ -11,9 +12,15 @@ export default async function BuyerLayout({
   const settings = await readSettings();
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <BuyerNav pharmacyName={settings.pharmacyName} buyerName={session.name} />
-      <main className="mx-auto max-w-4xl p-4">{children}</main>
+    <div className="min-h-screen bg-canvas">
+      <BuyerNav
+        pharmacyName={settings.pharmacyName}
+        tagline={settings.tagline}
+        buyerName={session.name}
+      />
+      {/* Bottom padding leaves room for the fixed mobile tab bar. */}
+      <main className="mx-auto max-w-4xl px-4 pb-24 pt-4 md:pb-8">{children}</main>
+      <BuyerBottomNav />
     </div>
   );
 }

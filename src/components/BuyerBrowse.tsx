@@ -2,16 +2,22 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { searchMedicinesForBuyer, submitOrder } from "@/actions/buyerOrders";
+import {
+  searchMedicinesForBuyer,
+  submitOrder,
+  type BuyerMedicineOption,
+} from "@/actions/buyerOrders";
 import { formatTaka } from "@/lib/money";
+import { discountPercent } from "@/lib/discount";
+import { stockStatusLabel, type StockStatus } from "@/lib/stockStatus";
 
-type Pick = { id: string; name: string; boxPricePaisa: number };
-type CartLine = { medicine: Pick; boxes: number };
+type CartLine = { medicine: BuyerMedicineOption; boxes: number };
 
 export function BuyerBrowse() {
   const router = useRouter();
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Pick[]>([]);
+  const [results, setResults] = useState<BuyerMedicineOption[]>([]);
+  const [searching, setSearching] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
@@ -20,19 +26,22 @@ export function BuyerBrowse() {
   useEffect(() => {
     if (!query.trim()) {
       setResults([]);
+      setSearching(false);
       return;
     }
+    setSearching(true);
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
-        // searchMedicinesForBuyer (src/actions/buyerOrders.ts) already
-        // returns only { id, name, boxPricePaisa } — no stock, no pata
-        // price ever leaves the server for this screen.
+        // Only availability, box rate and MRP come back — never the raw stock
+        // count or the retail (pata) price. See searchMedicinesForBuyer.
         const found = await searchMedicinesForBuyer(query);
         if (cancelled) return;
         setResults(found);
       } catch {
         if (!cancelled) setError("Medicine khoja jacche na, abar chesta koro");
+      } finally {
+        if (!cancelled) setSearching(false);
       }
     }, 250);
     return () => {
@@ -41,8 +50,9 @@ export function BuyerBrowse() {
     };
   }, [query]);
 
-  function add(medicine: Pick) {
+  function add(medicine: BuyerMedicineOption) {
     setDone("");
+    setError("");
     setCart((current) => {
       const existing = current.find((l) => l.medicine.id === medicine.id);
       if (existing) {
@@ -52,11 +62,21 @@ export function BuyerBrowse() {
       }
       return [...current, { medicine, boxes: 1 }];
     });
-    setQuery("");
-    setResults([]);
   }
 
-  const total = cart.reduce((sum, l) => sum + l.medicine.boxPricePaisa * l.boxes, 0);
+  function setBoxes(id: string, boxes: number) {
+    setCart((current) =>
+      current.map((l) =>
+        l.medicine.id === id ? { ...l, boxes: Math.max(1, boxes) } : l,
+      ),
+    );
+  }
+
+  const total = cart.reduce(
+    (sum, l) => sum + l.medicine.boxPricePaisa * l.boxes,
+    0,
+  );
+  const inCart = new Set(cart.map((l) => l.medicine.id));
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -65,7 +85,9 @@ export function BuyerBrowse() {
     setError("");
     setDone("");
     try {
-      await submitOrder(cart.map((l) => ({ medicineId: l.medicine.id, boxes: l.boxes })));
+      await submitOrder(
+        cart.map((l) => ({ medicineId: l.medicine.id, boxes: l.boxes })),
+      );
       setDone("Order pathano hoyeche. Malik approve korle janiye deya hobe.");
       setCart([]);
       router.refresh();
@@ -76,91 +98,253 @@ export function BuyerBrowse() {
     }
   }
 
-  const field = "w-full rounded-lg border border-slate-300 px-3 py-2 text-sm";
+  return (
+    <form onSubmit={handleSubmit} className="space-y-5">
+      {/* Hero + search */}
+      <section className="rounded-3xl bg-gradient-to-br from-brand to-brand-deep px-5 py-6 text-white shadow-sm">
+        <h1 className="font-display text-xl font-extrabold">Order dao</h1>
+        <p className="mt-0.5 text-sm text-white/85">
+          Medicine khuje cart-e dao, malik approve korbe.
+        </p>
+        <div className="relative mt-4">
+          <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Medicine er nam likho..."
+            className="w-full rounded-full border-0 bg-white py-3 pl-12 pr-4 text-sm text-ink shadow-sm placeholder:text-muted focus:ring-2 focus:ring-white/60"
+          />
+        </div>
+      </section>
+
+      {/* Search results */}
+      {query.trim() && (
+        <section className="space-y-2.5">
+          {searching && results.length === 0 ? (
+            <p className="px-1 text-sm text-muted">Khoja hocche...</p>
+          ) : results.length === 0 ? (
+            <p className="px-1 text-sm text-muted">
+              &ldquo;{query}&rdquo; naame kono medicine pawa jay ni.
+            </p>
+          ) : (
+            results.map((m) => (
+              <ProductCard
+                key={m.id}
+                medicine={m}
+                inCart={inCart.has(m.id)}
+                onAdd={() => add(m)}
+              />
+            ))
+          )}
+        </section>
+      )}
+
+      {/* Cart */}
+      {cart.length > 0 && (
+        <section className="space-y-2.5">
+          <h2 className="px-1 font-display text-sm font-bold text-ink">
+            Cart · {cart.length} ta
+          </h2>
+          {cart.map((line) => (
+            <div
+              key={line.medicine.id}
+              className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-3.5 shadow-sm"
+            >
+              <div className="min-w-0 flex-1">
+                <div className="truncate font-display text-sm font-bold text-ink">
+                  {line.medicine.name}
+                </div>
+                <div className="text-xs text-muted">
+                  {formatTaka(line.medicine.boxPricePaisa)}/box ·{" "}
+                  <span className="font-semibold text-brand-strong">
+                    {formatTaka(line.medicine.boxPricePaisa * line.boxes)}
+                  </span>
+                </div>
+              </div>
+              <Stepper
+                value={line.boxes}
+                onChange={(v) => setBoxes(line.medicine.id, v)}
+              />
+              <button
+                type="button"
+                onClick={() =>
+                  setCart((c) => c.filter((l) => l.medicine.id !== line.medicine.id))
+                }
+                aria-label="Bad dao"
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted hover:bg-danger-bg hover:text-danger"
+              >
+                <TrashIcon />
+              </button>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {error && (
+        <p role="alert" className="rounded-xl bg-danger-bg px-4 py-2.5 text-sm text-danger">
+          {error}
+        </p>
+      )}
+      {done && (
+        <p className="rounded-xl bg-brand-tint px-4 py-2.5 text-sm font-medium text-brand-strong">
+          {done}
+        </p>
+      )}
+
+      {/* Sticky order bar */}
+      {cart.length > 0 && (
+        <div className="sticky bottom-20 z-20 md:bottom-4">
+          <button
+            type="submit"
+            disabled={busy}
+            className="flex w-full items-center justify-between rounded-full bg-brand px-6 py-3.5 font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong disabled:opacity-60"
+          >
+            <span>{busy ? "Wait..." : "Order pathao"}</span>
+            <span className="font-display text-lg font-extrabold">
+              {formatTaka(total)}
+            </span>
+          </button>
+        </div>
+      )}
+    </form>
+  );
+}
+
+function ProductCard({
+  medicine,
+  inCart,
+  onAdd,
+}: {
+  medicine: BuyerMedicineOption;
+  inCart: boolean;
+  onAdd: () => void;
+}) {
+  const off = discountPercent(medicine.mrpBoxPricePaisa, medicine.boxPricePaisa);
+  const out = medicine.availability === "out";
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="rounded-xl bg-white p-5 shadow-sm">
-        <h1 className="mb-3 font-semibold text-slate-900">Order dao</h1>
-        <div className="relative">
-          <input value={query} onChange={(e) => setQuery(e.target.value)}
-            placeholder="Medicine er nam likho..." className={field} />
-          {results.length > 0 && (
-            <ul className="absolute z-10 mt-1 max-h-64 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
-              {results.map((m) => (
-                <li key={m.id}>
-                  <button type="button" onClick={() => add(m)}
-                    className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50">
-                    <span className="font-medium text-slate-900">{m.name}</span>
-                    <span className="text-slate-600">{formatTaka(m.boxPricePaisa)}/box</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
+    <div
+      className={`flex items-center gap-3 rounded-2xl border border-line bg-surface p-3.5 shadow-sm ${
+        out ? "opacity-70" : ""
+      }`}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="truncate font-display text-sm font-bold text-ink">
+            {medicine.name}
+          </span>
+          <AvailabilityBadge status={medicine.availability} />
+        </div>
+        {medicine.company ? (
+          <div className="text-xs text-muted">{medicine.company}</div>
+        ) : null}
+        <div className="mt-1 flex items-center gap-2">
+          <span className="font-display text-base font-extrabold text-brand-strong">
+            {formatTaka(medicine.boxPricePaisa)}
+          </span>
+          {off > 0 && (
+            <>
+              <span className="text-xs text-muted line-through">
+                {formatTaka(medicine.mrpBoxPricePaisa)}
+              </span>
+              <span className="rounded-full bg-warm/15 px-2 py-0.5 text-[11px] font-bold text-warm">
+                -{off}%
+              </span>
+            </>
           )}
+          <span className="text-[11px] text-muted">/box</span>
         </div>
       </div>
 
-      {cart.length > 0 && (
-        <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
-          <table className="w-full text-sm">
-            <thead className="border-b border-slate-200 text-left text-slate-500">
-              <tr>
-                <th className="p-3">Medicine</th>
-                <th className="p-3">Box rate</th>
-                <th className="p-3">Koto box</th>
-                <th className="p-3">Total</th>
-                <th className="p-3"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {cart.map((line) => (
-                <tr key={line.medicine.id} className="border-b border-slate-100">
-                  <td className="p-3 font-medium text-slate-900">{line.medicine.name}</td>
-                  <td className="p-3">{formatTaka(line.medicine.boxPricePaisa)}</td>
-                  <td className="p-3">
-                    <input type="number" min={1} value={line.boxes}
-                      onChange={(e) =>
-                        setCart((current) =>
-                          current.map((l) =>
-                            l.medicine.id === line.medicine.id
-                              ? { ...l, boxes: Number(e.target.value) }
-                              : l,
-                          ),
-                        )
-                      }
-                      className="w-20 rounded-lg border border-slate-300 px-2 py-1" />
-                  </td>
-                  <td className="p-3 font-medium">
-                    {formatTaka(line.medicine.boxPricePaisa * line.boxes)}
-                  </td>
-                  <td className="p-3 text-right">
-                    <button type="button"
-                      onClick={() =>
-                        setCart((current) => current.filter((l) => l.medicine.id !== line.medicine.id))
-                      }
-                      className="text-slate-400 hover:text-red-600">Bad dao</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="flex items-center justify-between border-t border-slate-200 p-4">
-            <span className="text-slate-600">Mot</span>
-            <span className="text-lg font-semibold">{formatTaka(total)}</span>
-          </div>
-        </div>
-      )}
+      <button
+        type="button"
+        onClick={onAdd}
+        disabled={out}
+        className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition ${
+          out
+            ? "cursor-not-allowed bg-line text-muted"
+            : inCart
+              ? "bg-brand-tint-2 text-brand-strong"
+              : "bg-brand text-white hover:bg-brand-strong"
+        }`}
+      >
+        {out ? "Nai" : inCart ? "✓ Add" : "+ Add"}
+      </button>
+    </div>
+  );
+}
 
-      {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
-      {done && <p className="text-sm text-teal-700">{done}</p>}
+function AvailabilityBadge({ status }: { status: StockStatus }) {
+  const style: Record<StockStatus, string> = {
+    in: "bg-brand-tint-2 text-brand-strong",
+    low: "bg-warn-bg text-warn",
+    out: "bg-danger-bg text-danger",
+  };
+  const dot: Record<StockStatus, string> = {
+    in: "bg-brand",
+    low: "bg-warn",
+    out: "bg-danger",
+  };
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${style[status]}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${dot[status]}`} />
+      {stockStatusLabel(status)}
+    </span>
+  );
+}
 
-      {cart.length > 0 && (
-        <button type="submit" disabled={busy}
-          className="rounded-lg bg-teal-700 px-6 py-3 font-medium text-white disabled:opacity-50">
-          {busy ? "Wait..." : "Order pathao"}
-        </button>
-      )}
-    </form>
+function Stepper({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex shrink-0 items-center rounded-full border border-line bg-canvas">
+      <button
+        type="button"
+        onClick={() => onChange(value - 1)}
+        aria-label="Kom"
+        className="grid h-8 w-8 place-items-center rounded-full text-brand-strong hover:bg-brand-tint-2"
+      >
+        −
+      </button>
+      <input
+        type="number"
+        min={1}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-label="Box"
+        className="w-9 border-0 bg-transparent p-0 text-center text-sm font-semibold text-ink [appearance:textfield] focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none"
+      />
+      <button
+        type="button"
+        onClick={() => onChange(value + 1)}
+        aria-label="Beshi"
+        className="grid h-8 w-8 place-items-center rounded-full text-brand-strong hover:bg-brand-tint-2"
+      >
+        +
+      </button>
+    </div>
+  );
+}
+
+function SearchIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0-1 13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1L6 7" />
+    </svg>
   );
 }

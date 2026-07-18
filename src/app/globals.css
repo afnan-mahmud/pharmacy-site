@@ -1,28 +1,56 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+ * Design tokens for the green-storefront look. A fresh medical green on a
+ * green-tinged off-white, warm orange reserved for promos, amber/red for the
+ * low/out stock signals. The pill/capsule is the signature motif — carried by
+ * the logo mark, the search bar, availability badges, discount chips and the
+ * quantity stepper — grounded in the pharmacy's own core artifact.
+ */
+@theme {
+  --color-brand: #16a34a;
+  --color-brand-strong: #15803d;
+  --color-brand-deep: #166534;
+  --color-brand-tint: #ecfdf5;
+  --color-brand-tint-2: #dcfce7;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-ink: #0f172a;
+  --color-muted: #64748b;
+  --color-line: #e6ebe8;
+  --color-surface: #ffffff;
+  --color-canvas: #f4f7f5;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-warm: #f97316;
+  --color-warm-2: #fb923c;
+  --color-warn: #b45309;
+  --color-warn-bg: #fef3c7;
+  --color-danger: #dc2626;
+  --color-danger-bg: #fee2e2;
+
+  --font-display: var(--font-display), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-pill: 999px;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-display);
+}
+
+/* A subtle green focus ring on every interactive element, respected by both
+   mouse and keyboard, for the quality floor. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
 }
 
 /*
