@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { cancelMyOrder } from "@/actions/buyerOrders";
 import { formatTaka } from "@/lib/money";
+import { formatDhakaDate } from "@/lib/dhakaDate";
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "Pending",
@@ -70,9 +71,7 @@ export function BuyerOrderList({ orders }: { orders: OrderRow[] }) {
           <div key={order.id} className="rounded-xl bg-white p-4 shadow-sm">
             <div className="flex items-center justify-between">
               <span className="text-xs text-slate-500">
-                {new Date(order.createdAt).toLocaleDateString("en-GB", {
-                  timeZone: "Asia/Dhaka",
-                })}
+                {formatDhakaDate(order.createdAt)}
               </span>
               <span className={`text-sm font-medium ${STATUS_CLASS[order.status]}`}>
                 {STATUS_LABEL[order.status]}
