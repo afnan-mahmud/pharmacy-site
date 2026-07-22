@@ -89,6 +89,7 @@ export async function stockIn(input: StockInInput): Promise<void> {
             medicineName: medicine.name,
             boxes: input.boxes,
             patasAdded,
+            form: medicine.form,
             note: input.note.trim(),
             createdBy: new mongoose.Types.ObjectId(adminSession.userId),
           },

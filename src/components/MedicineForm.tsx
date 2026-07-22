@@ -7,7 +7,11 @@ import { takaToPaisa, paisaToTaka } from "@/lib/money";
 // Aliased: `MedicineForm` is this file's component (a <form>), while the
 // imported type is the dosage form (tablet, syrup, ...).
 import {
+  MEDICINE_FORMS,
   DEFAULT_MEDICINE_FORM,
+  unitLabelsFor,
+  toMedicineForm,
+  capitalize,
   type MedicineForm as DosageForm,
 } from "@/lib/unitLabels";
 import { card, input, label as labelCls, btnPrimary, btnGhost, errorBox } from "@/components/ui";
@@ -56,6 +60,7 @@ export function MedicineForm({
   );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const labels = unitLabelsFor(form);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -95,6 +100,21 @@ export function MedicineForm({
       </h2>
 
       <div className="grid gap-3.5 sm:grid-cols-2">
+        <div className="space-y-1.5 sm:col-span-2">
+          <label htmlFor="form" className={labelCls}>Medicine er dhoron</label>
+          <select id="form" className={input} value={form}
+            onChange={(e) => setForm(toMedicineForm(e.target.value))}>
+            {MEDICINE_FORMS.map((option) => (
+              <option key={option} value={option}>
+                {unitLabelsFor(option).formLabel}
+              </option>
+            ))}
+          </select>
+          <p className="text-xs text-muted">
+            Ei medicine {labels.outer} ar {labels.inner} hishebe cholbe — shob
+            screen e oi naam e dekhabe.
+          </p>
+        </div>
         <div className="space-y-1.5">
           <label htmlFor="name" className={labelCls}>Nam</label>
           <input id="name" className={input} value={name}
@@ -111,30 +131,41 @@ export function MedicineForm({
             onChange={(e) => setCompany(e.target.value)} />
         </div>
         <div className="space-y-1.5">
-          <label htmlFor="ppb" className={labelCls}>1 box e koto pata</label>
+          <label htmlFor="ppb" className={labelCls}>
+            1 {labels.outer} e koto {labels.inner}
+          </label>
           <input id="ppb" type="number" min={1} className={input} value={patasPerBox}
             onChange={(e) => setPatasPerBox(e.target.value)} required />
         </div>
         <div className="space-y-1.5">
-          <label htmlFor="boxPrice" className={labelCls}>Box rate (৳) — wholesale</label>
+          <label htmlFor="boxPrice" className={labelCls}>
+            {capitalize(labels.outer)} rate (৳) — wholesale
+          </label>
           <input id="boxPrice" type="number" step="0.01" min={0} className={input}
             value={boxPrice} onChange={(e) => setBoxPrice(e.target.value)} required />
         </div>
         <div className="space-y-1.5">
-          <label htmlFor="mrp" className={labelCls}>MRP box rate (৳) — optional</label>
+          <label htmlFor="mrp" className={labelCls}>
+            MRP {labels.outer} rate (৳) — optional
+          </label>
           <input id="mrp" type="number" step="0.01" min={0} className={input}
             value={mrp} onChange={(e) => setMrp(e.target.value)} placeholder="Kata dam dekhate hole" />
           <p className="text-xs text-muted">
-            Box rate er cheye beshi dile buyer &ldquo;kata dam&rdquo; ar discount dekhbe.
+            {capitalize(labels.outer)} rate er cheye beshi dile buyer
+            &ldquo;kata dam&rdquo; ar discount dekhbe.
           </p>
         </div>
         <div className="space-y-1.5">
-          <label htmlFor="pataPrice" className={labelCls}>Pata rate (৳) — khuchra</label>
+          <label htmlFor="pataPrice" className={labelCls}>
+            {capitalize(labels.inner)} rate (৳) — khuchra
+          </label>
           <input id="pataPrice" type="number" step="0.01" min={0} className={input}
             value={pataPrice} onChange={(e) => setPataPrice(e.target.value)} required />
         </div>
         <div className="space-y-1.5">
-          <label htmlFor="threshold" className={labelCls}>Stock kom alert (pata)</label>
+          <label htmlFor="threshold" className={labelCls}>
+            Stock kom alert ({labels.inner})
+          </label>
           <input id="threshold" type="number" min={0} className={input} value={threshold}
             onChange={(e) => setThreshold(e.target.value)} />
         </div>

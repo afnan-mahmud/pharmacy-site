@@ -72,9 +72,9 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
             <tr>
               <th className={th}>Nam</th>
               <th className={th}>Company</th>
-              <th className={th}>1 box</th>
-              <th className={th}>Box rate</th>
-              <th className={th}>Pata rate</th>
+              <th className={th}>Pack</th>
+              <th className={th}>Pack rate</th>
+              <th className={th}>Khuchra rate</th>
               <th className={th}>Stock</th>
               <th className={th}></th>
             </tr>
@@ -96,7 +96,10 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
                     <div className="text-xs text-muted">{row.genericName}</div>
                   </td>
                   <td className={`${td} text-muted`}>{row.company}</td>
-                  <td className={`${td} text-muted`}>{row.patasPerBox} pata</td>
+                  <td className={`${td} text-muted`}>
+                    {row.patasPerBox} {unitLabelsFor(row.form).inner}/
+                    {unitLabelsFor(row.form).outer}
+                  </td>
                   <td className={`${td} font-medium`}>{formatTaka(row.boxPricePaisa)}</td>
                   <td className={td}>{formatTaka(row.pataPricePaisa)}</td>
                   <td className={`${td} ${low ? "font-semibold text-danger" : ""}`}>

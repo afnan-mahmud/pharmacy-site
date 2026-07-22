@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { stockIn } from "@/actions/stock";
 import { formatStock, boxesToPatas } from "@/lib/units";
+import { unitLabelsFor } from "@/lib/unitLabels";
 import { MedicinePicker, type PickedMedicine } from "./MedicinePicker";
 import { card, input, label as labelCls, btnPrimary, errorBox, successBox } from "@/components/ui";
 
@@ -15,6 +16,9 @@ export function StockInForm() {
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
   const [busy, setBusy] = useState(false);
+  // Safe before a medicine is picked: unitLabelsFor(undefined) is tablet
+  // wording, and none of these labels renders until `medicine` is set.
+  const labels = unitLabelsFor(medicine?.form);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -30,7 +34,7 @@ export function StockInForm() {
         boxes: Number(boxes),
         note,
       });
-      setDone(`${medicine.name} — ${boxes} box stock e dhuklo`);
+      setDone(`${medicine.name} — ${boxes} ${labels.outer} stock e dhuklo`);
       setMedicine(null);
       setBoxes("");
       setNote("");
@@ -54,7 +58,7 @@ export function StockInForm() {
             <div className="text-sm font-semibold text-ink">{medicine.name}</div>
             <div className="text-xs text-muted">
               Ekhon ache: {formatStock(medicine.stockPatas, medicine.patasPerBox, medicine.form)}
-              {" · "}1 box = {medicine.patasPerBox} pata
+              {" · "}1 {labels.outer} = {medicine.patasPerBox} {labels.inner}
             </div>
           </div>
           <button
@@ -70,12 +74,14 @@ export function StockInForm() {
       {medicine && (
         <>
           <div className="space-y-1.5">
-            <label htmlFor="boxes" className={labelCls}>Koto box dhuklo</label>
+            <label htmlFor="boxes" className={labelCls}>
+              Koto {labels.outer} dhuklo
+            </label>
             <input id="boxes" type="number" min={1} value={boxes} required
               onChange={(e) => setBoxes(e.target.value)} className={input} />
             {boxes && Number.isInteger(Number(boxes)) && Number(boxes) > 0 && (
               <p className="text-xs text-muted">
-                = {boxesToPatas(Number(boxes), medicine.patasPerBox)} pata
+                = {boxesToPatas(Number(boxes), medicine.patasPerBox)} {labels.inner}
               </p>
             )}
           </div>

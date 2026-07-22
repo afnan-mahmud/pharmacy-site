@@ -1,6 +1,7 @@
 import { requireAdmin } from "@/lib/session";
 import { listStockEntries } from "@/actions/stock";
 import { StockInForm } from "@/components/StockInForm";
+import { unitLabelsFor } from "@/lib/unitLabels";
 
 export default async function StockPage() {
   await requireAdmin();
@@ -18,8 +19,8 @@ export default async function StockPage() {
               <tr>
                 <th className="p-3">Date</th>
                 <th className="p-3">Medicine</th>
-                <th className="p-3">Box</th>
-                <th className="p-3">Pata</th>
+                <th className="p-3">Pack</th>
+                <th className="p-3">Unit</th>
                 <th className="p-3">Note</th>
               </tr>
             </thead>
@@ -39,8 +40,12 @@ export default async function StockPage() {
                     })}
                   </td>
                   <td className="p-3 font-medium text-ink">{entry.medicineName}</td>
-                  <td className="p-3">{entry.boxes}</td>
-                  <td className="p-3 text-muted">{entry.patasAdded}</td>
+                  <td className="p-3">
+                    {entry.boxes} {unitLabelsFor(entry.form).outer}
+                  </td>
+                  <td className="p-3 text-muted">
+                    {entry.patasAdded} {unitLabelsFor(entry.form).inner}
+                  </td>
                   <td className="p-3 text-muted">{entry.note}</td>
                 </tr>
               ))}
