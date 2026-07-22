@@ -63,6 +63,7 @@ export default async function InvoicePage({
         items={sale.items.map((item) => ({
           medicineName: item.medicineName,
           unit: item.unit,
+          form: item.form,
           quantity: item.quantity,
           ratePaisa: item.ratePaisa,
           lineTotalPaisa: item.lineTotalPaisa,

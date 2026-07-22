@@ -1,4 +1,5 @@
 import { formatTaka } from "@/lib/money";
+import { unitLabelsFor } from "@/lib/unitLabels";
 
 type InvoiceProps = {
   pharmacyName: string;
@@ -11,6 +12,9 @@ type InvoiceProps = {
   items: {
     medicineName: string;
     unit: string;
+    // Absent on sales written before medicine forms existed; unitLabelsFor
+    // renders those as the box/pata wording they were printed with.
+    form?: string;
     quantity: number;
     ratePaisa: number;
     lineTotalPaisa: number;
@@ -98,17 +102,20 @@ export function Invoice({
           </tr>
         </thead>
         <tbody>
-          {items.map((item, idx) => (
-            <tr key={idx} className="border-b border-dashed border-slate-200">
-              <td className="py-1 pr-1">{item.medicineName}</td>
-              <td className="py-1 text-right">
-                {item.quantity}
-                {item.unit === "box" ? "bx" : "pc"}
-              </td>
-              <td className="py-1 text-right">{formatTaka(item.ratePaisa)}</td>
-              <td className="py-1 text-right">{formatTaka(item.lineTotalPaisa)}</td>
-            </tr>
-          ))}
+          {items.map((item, idx) => {
+            const labels = unitLabelsFor(item.form);
+            return (
+              <tr key={idx} className="border-b border-dashed border-slate-200">
+                <td className="py-1 pr-1">{item.medicineName}</td>
+                <td className="py-1 text-right">
+                  {item.quantity}
+                  {item.unit === "box" ? labels.outerShort : labels.innerShort}
+                </td>
+                <td className="py-1 text-right">{formatTaka(item.ratePaisa)}</td>
+                <td className="py-1 text-right">{formatTaka(item.lineTotalPaisa)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 

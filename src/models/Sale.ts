@@ -17,6 +17,14 @@ const saleLineSchema = new Schema(
     // cancellation can return exactly what was taken, even if the
     // medicine's pack size changed in between.
     patasDeducted: { type: Number, required: true, min: 1 },
+    // Which unit words this line prints with, snapshotted for the same reason
+    // medicineName and ratePaisa are: an invoice printed last month must not
+    // re-word itself because the medicine's form was corrected today. The
+    // form rather than a rendered label, because the invoice needs "btl"
+    // while a screen needs "bottle" — both derive from this, neither derives
+    // from the other. No enum: a snapshot must not fail validation over a
+    // value the medicine model no longer offers. See src/lib/unitLabels.ts.
+    form: { type: String, default: "tablet" },
   },
   { _id: false },
 );

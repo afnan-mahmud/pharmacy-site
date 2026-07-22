@@ -623,3 +623,60 @@ describe("cancelSale", () => {
     ).rejects.toThrow();
   });
 });
+
+describe("sale lines snapshot the medicine form", () => {
+  it("records the form on a retail line", async () => {
+    const syrup = await makeMedicine({
+      name: "Napa Syrup",
+      form: "syrup",
+      patasPerBox: 12,
+    });
+
+    const sale = await recordRetailSale({
+      items: [{ medicineId: syrup._id, patas: 3 }],
+    });
+
+    expect(sale.items[0].form).toBe("syrup");
+    // The tier marker is untouched: it says which tier was sold, not what
+    // that tier is called.
+    expect(sale.items[0].unit).toBe("pata");
+  });
+
+  it("records the form on a wholesale line", async () => {
+    const syrup = await makeMedicine({
+      name: "Ace Syrup",
+      form: "syrup",
+      patasPerBox: 12,
+    });
+    const buyer = await makeBuyer();
+
+    const sale = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: syrup._id, boxes: 2 }],
+      discountPaisa: 0,
+      paidPaisa: 0,
+    });
+
+    expect(sale.items[0].form).toBe("syrup");
+    expect(sale.items[0].unit).toBe("box");
+  });
+
+  it("keeps the old form on a past sale after the medicine changes form", async () => {
+    const syrup = await makeMedicine({
+      name: "Napa Syrup Plus",
+      form: "syrup",
+      patasPerBox: 12,
+    });
+    const sale = await recordRetailSale({
+      items: [{ medicineId: syrup._id, patas: 1 }],
+    });
+
+    await MedicineModel.updateOne(
+      { _id: syrup._id },
+      { $set: { form: "tablet" } },
+    );
+
+    const reread = await SaleModel.findById(sale._id).lean();
+    expect(reread?.items[0].form).toBe("syrup");
+  });
+});

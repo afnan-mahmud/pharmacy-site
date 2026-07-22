@@ -89,6 +89,7 @@ export async function recordRetailSale(
         lines.push({
           medicineId: medicine._id,
           medicineName: medicine.name,
+          form: medicine.form,
           unit: "pata" as const,
           quantity: item.patas,
           ratePaisa: medicine.pataPricePaisa,

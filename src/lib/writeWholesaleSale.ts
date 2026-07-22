@@ -55,6 +55,7 @@ export async function writeWholesaleSale(
     lines.push({
       medicineId: medicine._id,
       medicineName: medicine.name,
+      form: medicine.form,
       unit: "box" as const,
       quantity: item.boxes,
       ratePaisa: medicine.boxPricePaisa,
