@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { recordRetailSale } from "@/actions/sales";
 import { MedicinePicker, type PickedMedicine } from "./MedicinePicker";
 import { formatTaka } from "@/lib/money";
+import { unitLabelsFor } from "@/lib/unitLabels";
 
 type CartLine = {
   medicine: PickedMedicine;
@@ -83,7 +84,7 @@ export function RetailSaleForm() {
               <tr>
                 <th className={td}>Medicine</th>
                 <th className={td}>Rate</th>
-                <th className={td}>Pata</th>
+                <th className={td}>Poriman</th>
                 <th className={`${td} text-right`}>Mot</th>
                 <th className={td}></th>
               </tr>
@@ -95,7 +96,10 @@ export function RetailSaleForm() {
                     <div className="font-medium text-ink">{line.medicine.name}</div>
                     <div className="text-xs text-muted">{line.medicine.genericName}</div>
                   </td>
-                  <td className={td}>{formatTaka(line.medicine.pataPricePaisa)}/pata</td>
+                  <td className={td}>
+                    {formatTaka(line.medicine.pataPricePaisa)}/
+                    {unitLabelsFor(line.medicine.form).inner}
+                  </td>
                   <td className={td}>
                     <input
                       type="number"
@@ -106,7 +110,8 @@ export function RetailSaleForm() {
                       className="w-20 rounded border border-line px-2 py-1 text-sm"
                     />
                     <span className="ml-1 text-xs text-muted">
-                      / {line.medicine.stockPatas}
+                      {unitLabelsFor(line.medicine.form).inner} /{" "}
+                      {line.medicine.stockPatas}
                     </span>
                   </td>
                   <td className={`${td} text-right font-medium text-ink`}>

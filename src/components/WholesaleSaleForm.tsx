@@ -7,6 +7,7 @@ import { recordWholesaleSale } from "@/actions/sales";
 import { MedicinePicker, type PickedMedicine } from "./MedicinePicker";
 import { formatTaka, takaToPaisa } from "@/lib/money";
 import { computeTotals } from "@/lib/saleTotals";
+import { unitLabelsFor } from "@/lib/unitLabels";
 
 type BuyerOption = {
   id: string;
@@ -163,8 +164,8 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
               <thead className="border-b border-line text-left text-muted">
                 <tr>
                   <th className={td}>Medicine</th>
-                  <th className={td}>Box rate</th>
-                  <th className={td}>Box</th>
+                  <th className={td}>Pack rate</th>
+                  <th className={td}>Poriman</th>
                   <th className={`${td} text-right`}>Mot</th>
                   <th className={td}></th>
                 </tr>
@@ -175,7 +176,9 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
                     <td className={td}>
                       <div className="font-medium text-ink">{line.medicine.name}</div>
                       <div className="text-xs text-muted">
-                        {line.medicine.patasPerBox} pata/box
+                        {line.medicine.patasPerBox}{" "}
+                        {unitLabelsFor(line.medicine.form).inner}/
+                        {unitLabelsFor(line.medicine.form).outer}
                       </div>
                     </td>
                     <td className={td}>{formatTaka(line.medicine.boxPricePaisa)}</td>
@@ -187,6 +190,9 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
                         onChange={(e) => updateBoxes(idx, e.target.value)}
                         className="w-20 rounded border border-line px-2 py-1 text-sm"
                       />
+                      <span className="ml-1 text-xs text-muted">
+                        {unitLabelsFor(line.medicine.form).outer}
+                      </span>
                     </td>
                     <td className={`${td} text-right font-medium text-ink`}>
                       {formatTaka(line.medicine.boxPricePaisa * line.boxes)}
