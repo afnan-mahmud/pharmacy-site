@@ -150,9 +150,12 @@ export function MedicineForm({
           </label>
           <input id="mrp" type="number" step="0.01" min={0} className={input}
             value={mrp} onChange={(e) => setMrp(e.target.value)} placeholder="Kata dam dekhate hole" />
+          {/* Explicit {" "}: relying on JSX's whitespace handling between an
+              expression and the text after it rendered "Cartonrate" here. */}
           <p className="text-xs text-muted">
-            {capitalize(labels.outer)} rate er cheye beshi dile buyer
-            &ldquo;kata dam&rdquo; ar discount dekhbe.
+            {capitalize(labels.outer)}{" "}
+            rate er cheye beshi dile buyer &ldquo;kata dam&rdquo; ar discount
+            dekhbe.
           </p>
         </div>
         <div className="space-y-1.5">
