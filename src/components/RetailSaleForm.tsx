@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { recordRetailSale } from "@/actions/sales";
+import { recordRetailSale, lookupRetailCustomer } from "@/actions/sales";
 import { MedicinePicker, type PickedMedicine } from "./MedicinePicker";
 import { formatTaka } from "@/lib/money";
 import { unitLabelsFor } from "@/lib/unitLabels";
@@ -16,6 +16,11 @@ type CartLine = {
 export function RetailSaleForm() {
   const router = useRouter();
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [customerName, setCustomerName] = useState("");
+  const [customerPhone, setCustomerPhone] = useState("");
+  // Set when the name below was filled from a past sale rather than typed, so
+  // the owner can see why the text changed instead of wondering.
+  const [nameFromHistory, setNameFromHistory] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
@@ -24,6 +29,36 @@ export function RetailSaleForm() {
     (sum, line) => sum + line.medicine.pataPricePaisa * line.patas,
     0,
   );
+
+  // Debounced for the same reason MedicinePicker debounces its type-ahead:
+  // otherwise this is one query per keystroke.
+  useEffect(() => {
+    const phone = customerPhone.trim();
+    if (!phone) {
+      setNameFromHistory(false);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const found = await lookupRetailCustomer(phone);
+        if (cancelled || !found) return;
+        // Overwrites whatever is in the field: one phone, one remembered
+        // name. The field stays editable, so a correction is still possible.
+        setCustomerName(found.name);
+        setNameFromHistory(true);
+      } catch {
+        // A broken convenience must never block a counter sale. The owner
+        // types the name themselves and the sale goes through unchanged.
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [customerPhone]);
 
   function addMedicine(medicine: PickedMedicine) {
     // Don't allow a duplicate line — see the "one medicine once" rule.
@@ -51,14 +86,23 @@ export function RetailSaleForm() {
       setError("Cart khali");
       return;
     }
+    if (!customerName.trim()) {
+      setError("Customer nam likhte hobe");
+      return;
+    }
     setError("");
     setBusy(true);
 
     try {
       await recordRetailSale({
         items: cart.map((l) => ({ medicineId: l.medicine.id, patas: l.patas })),
+        customerName,
+        customerPhone,
       });
       setCart([]);
+      setCustomerName("");
+      setCustomerPhone("");
+      setNameFromHistory(false);
       setDone("Bikri record kora hoyeche.");
       router.refresh();
     } catch (err) {
@@ -73,6 +117,39 @@ export function RetailSaleForm() {
   return (
     <div className="space-y-4">
       <h1 className="font-display text-lg font-extrabold text-ink">Khuchra Bikri</h1>
+
+      <div className="grid gap-3 rounded-2xl border border-line bg-surface p-4 shadow-sm sm:grid-cols-2">
+        <div className="space-y-1">
+          <label htmlFor="customerPhone" className="text-sm text-ink">
+            Customer phone (optional)
+          </label>
+          <input
+            id="customerPhone"
+            value={customerPhone}
+            onChange={(e) => setCustomerPhone(e.target.value)}
+            placeholder="01XXXXXXXXX"
+            className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm"
+          />
+        </div>
+        <div className="space-y-1">
+          <label htmlFor="customerName" className="text-sm text-ink">
+            Customer nam
+          </label>
+          <input
+            id="customerName"
+            value={customerName}
+            onChange={(e) => {
+              setCustomerName(e.target.value);
+              setNameFromHistory(false);
+            }}
+            placeholder="Nam likho"
+            className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm"
+          />
+          {nameFromHistory && (
+            <p className="text-xs text-muted">Ager naam — bodlano jabe</p>
+          )}
+        </div>
+      </div>
 
       <div className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
         <MedicinePicker onPick={addMedicine} />
@@ -151,7 +228,7 @@ export function RetailSaleForm() {
       <form onSubmit={handleSubmit}>
         <button
           type="submit"
-          disabled={busy || cart.length === 0}
+          disabled={busy || cart.length === 0 || !customerName.trim()}
           className="rounded-full bg-brand hover:bg-brand-strong px-6 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           {busy ? "Wait..." : "Bikri confirm koro"}

@@ -15,7 +15,24 @@ import { BuyerModel } from "@/models/Buyer";
 
 export type RetailSaleInput = {
   items: { medicineId: string; patas: number }[];
+  /** Required. A counter sale must say who it was to. */
+  customerName: string;
+  /** Optional — the customer may decline to give one. */
+  customerPhone?: string;
 };
+
+/**
+ * Mirrors the convention in src/actions/medicines.ts: an optional string may
+ * be absent or null and becomes "", but any other type is a malformed payload
+ * on a network-reachable boundary and is rejected rather than stringified.
+ */
+function toOptionalString(value: unknown, label: string): string {
+  if (value === undefined || value === null) return "";
+  if (typeof value !== "string") {
+    throw new Error(`${label} must be a string`);
+  }
+  return value;
+}
 
 /**
  * Network-reachable trust boundary — same convention as
@@ -27,6 +44,12 @@ function validateRetail(input: RetailSaleInput): void {
   if (!Array.isArray(input.items) || input.items.length === 0) {
     throw new Error("Cart khali");
   }
+
+  if (typeof input.customerName !== "string" || !input.customerName.trim()) {
+    throw new Error("Customer nam likhte hobe");
+  }
+  // Validated for its side effect; the value is re-derived at the write.
+  toOptionalString(input.customerPhone, "customerPhone");
 
   const seen = new Set<string>();
   for (const item of input.items) {
@@ -118,6 +141,11 @@ export async function recordRetailSale(
           {
             type: "retail",
             buyerId: null,
+            buyerName: input.customerName.trim(),
+            buyerPhone: toOptionalString(
+              input.customerPhone,
+              "customerPhone",
+            ).trim(),
             invoiceNo: null,
             items: lines,
             subtotalPaisa,
@@ -220,7 +248,12 @@ export async function recordWholesaleSale(
 
       const sale = await writeWholesaleSale({
         session,
-        buyer: { id: buyer._id, name: buyer.name, shopName: buyer.shopName },
+        buyer: {
+          id: buyer._id,
+          name: buyer.name,
+          shopName: buyer.shopName,
+          phone: buyer.phone,
+        },
         items: input.items,
         discountPercent: input.discountPercent,
         paidPaisa: input.paidPaisa,
@@ -316,4 +349,41 @@ export async function cancelSale(id: string, reason: string): Promise<void> {
 
   revalidatePath("/medicines");
   revalidatePath("/due");
+}
+
+/**
+ * The name last used at the counter for a phone number, so the owner does not
+ * retype a regular customer's name on every visit.
+ *
+ * Only retail sales are searched. A wholesale buyer is a managed record with
+ * its own screen, and letting a shop's name autofill the walk-in counter would
+ * put the wrong name on a cash sale.
+ *
+ * Returns null rather than throwing when nothing matches: this is a
+ * convenience, and its failure mode has to be "type the name yourself", never
+ * "you cannot sell".
+ */
+export async function lookupRetailCustomer(
+  phone: string,
+): Promise<{ name: string } | null> {
+  await requireAdminAction();
+
+  if (typeof phone !== "string") return null;
+  const trimmed = phone.trim();
+  // Guard before touching the database: "" is the value every sale without a
+  // phone carries, so an empty query would match a great many rows.
+  if (!trimmed) return null;
+
+  await connectDb();
+
+  const sale = await SaleModel.findOne({
+    type: "retail",
+    buyerPhone: trimmed,
+    buyerName: { $gt: "" },
+  })
+    .sort({ createdAt: -1 })
+    .select("buyerName")
+    .lean<{ buyerName: string }>();
+
+  return sale ? { name: sale.buyerName } : null;
 }

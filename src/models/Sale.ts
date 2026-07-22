@@ -41,6 +41,11 @@ const saleSchema = new Schema(
     buyerId: { type: Schema.Types.ObjectId, ref: "Buyer", default: null },
     buyerName: { type: String, default: "" },
     buyerShopName: { type: String, default: "" },
+    // Set for both sale types: copied from the buyer document on a wholesale
+    // sale, typed at the counter on a retail one. A field named buyerPhone
+    // that only ever held a value for one of the two would be a trap.
+    // Optional at the counter, so "" is a normal value.
+    buyerPhone: { type: String, default: "", trim: true },
     // Set for wholesale only; retail sales print nothing and need no number.
     invoiceNo: { type: String, default: null },
     orderId: { type: Schema.Types.ObjectId, ref: "Order", default: null },
@@ -84,6 +89,15 @@ const saleSchema = new Schema(
 saleSchema.index(
   { invoiceNo: 1 },
   { unique: true, partialFilterExpression: { invoiceNo: { $type: "string" } } },
+);
+// Partial on purpose. Every sale made before this field existed, and every
+// counter sale where the customer declines to give a number, carries
+// buyerPhone: "". A plain index would pile all of them onto the single ""
+// key — a large entry lookupRetailCustomer would never read. Filtering to
+// non-empty values keeps the index to the rows the lookup actually searches.
+saleSchema.index(
+  { buyerPhone: 1, createdAt: -1 },
+  { partialFilterExpression: { buyerPhone: { $gt: "" } } },
 );
 saleSchema.index({ buyerId: 1, status: 1 });
 saleSchema.index({ createdAt: -1 });

@@ -11,6 +11,7 @@ export type SalesReportRow = {
   type: "retail" | "wholesale";
   invoiceNo: string | null;
   buyerName: string;
+  buyerPhone: string;
   totalPaisa: number;
   paidPaisa: number;
   duePaisa: number;
@@ -66,6 +67,7 @@ export async function salesReport(
     type: sale.type as "retail" | "wholesale",
     invoiceNo: sale.invoiceNo ?? null,
     buyerName: sale.buyerName,
+    buyerPhone: sale.buyerPhone ?? "",
     totalPaisa: sale.totalPaisa,
     paidPaisa: sale.paidPaisa,
     duePaisa: sale.duePaisa,

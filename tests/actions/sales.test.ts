@@ -8,7 +8,12 @@ import {
 } from "../helpers/auth";
 import { ADMIN_ONLY_ERROR } from "@/lib/session";
 import { createMedicine } from "@/actions/medicines";
-import { recordRetailSale, recordWholesaleSale, cancelSale } from "@/actions/sales";
+import {
+  recordRetailSale,
+  recordWholesaleSale,
+  cancelSale,
+  lookupRetailCustomer,
+} from "@/actions/sales";
 import { createBuyer } from "@/actions/buyers";
 import { MedicineModel } from "@/models/Medicine";
 import { SaleModel } from "@/models/Sale";
@@ -61,6 +66,7 @@ describe("recordRetailSale", () => {
     const medicine = await makeMedicine();
     const sale = await recordRetailSale({
       items: [{ medicineId: medicine._id, patas: 2 }],
+      customerName: "Walk-in",
     });
 
     expect(sale.type).toBe("retail");
@@ -73,6 +79,7 @@ describe("recordRetailSale", () => {
     const medicine = await makeMedicine();
     const sale = await recordRetailSale({
       items: [{ medicineId: medicine._id, patas: 2 }],
+      customerName: "Walk-in",
     });
     expect(sale.paidPaisa).toBe(2800);
     expect(sale.duePaisa).toBe(0);
@@ -82,6 +89,7 @@ describe("recordRetailSale", () => {
     const medicine = await makeMedicine();
     const sale = await recordRetailSale({
       items: [{ medicineId: medicine._id, patas: 1 }],
+      customerName: "Walk-in",
     });
     expect(sale.invoiceNo).toBeNull();
   });
@@ -90,9 +98,11 @@ describe("recordRetailSale", () => {
     const medicine = await makeMedicine({}, 100);
     const first = await recordRetailSale({
       items: [{ medicineId: medicine._id, patas: 1 }],
+      customerName: "Walk-in",
     });
     const second = await recordRetailSale({
       items: [{ medicineId: medicine._id, patas: 1 }],
+      customerName: "Walk-in",
     });
     expect(first.invoiceNo).toBeNull();
     expect(second.invoiceNo).toBeNull();
@@ -103,6 +113,7 @@ describe("recordRetailSale", () => {
     const medicine = await makeMedicine();
     const sale = await recordRetailSale({
       items: [{ medicineId: medicine._id, patas: 1 }],
+      customerName: "Walk-in",
     });
     expect(sale.buyerId).toBeNull();
   });
@@ -111,6 +122,7 @@ describe("recordRetailSale", () => {
     const medicine = await makeMedicine();
     const sale = await recordRetailSale({
       items: [{ medicineId: medicine._id, patas: 2 }],
+      customerName: "Walk-in",
     });
     expect(sale.items[0].medicineName).toBe("Napa 500mg");
     expect(sale.items[0].ratePaisa).toBe(1400);
@@ -122,6 +134,7 @@ describe("recordRetailSale", () => {
     const medicine = await makeMedicine();
     const sale = await recordRetailSale({
       items: [{ medicineId: medicine._id, patas: 2 }],
+      customerName: "Walk-in",
     });
     await MedicineModel.updateOne(
       { _id: medicine._id },
@@ -140,6 +153,7 @@ describe("recordRetailSale", () => {
         { medicineId: a._id, patas: 2 },
         { medicineId: b._id, patas: 3 },
       ],
+      customerName: "Walk-in",
     });
     expect(sale.totalPaisa).toBe(2800 + 3000);
     expect(sale.items).toHaveLength(2);
@@ -148,7 +162,7 @@ describe("recordRetailSale", () => {
   it("refuses to sell more than the stock and changes nothing", async () => {
     const medicine = await makeMedicine({}, 5);
     await expect(
-      recordRetailSale({ items: [{ medicineId: medicine._id, patas: 6 }] }),
+      recordRetailSale({ items: [{ medicineId: medicine._id, patas: 6 }], customerName: "Walk-in" }),
     ).rejects.toThrow("Napa 500mg — stock e ache 5 pata, lagbe 6 pata");
 
     const after = await MedicineModel.findById(medicine._id);
@@ -168,6 +182,7 @@ describe("recordRetailSale", () => {
           { medicineId: a._id, patas: 2 },
           { medicineId: b._id, patas: 5 },
         ],
+        customerName: "Walk-in",
       }),
     ).rejects.toThrow("stock e ache");
 
@@ -179,14 +194,14 @@ describe("recordRetailSale", () => {
   it("stock can never go negative through this path", async () => {
     const medicine = await makeMedicine({}, 3);
     await expect(
-      recordRetailSale({ items: [{ medicineId: medicine._id, patas: 1000 }] }),
+      recordRetailSale({ items: [{ medicineId: medicine._id, patas: 1000 }], customerName: "Walk-in" }),
     ).rejects.toThrow();
     const after = await MedicineModel.findById(medicine._id);
     expect(after!.stockPatas).toBeGreaterThanOrEqual(0);
   });
 
   it("rejects an empty sale", async () => {
-    await expect(recordRetailSale({ items: [] })).rejects.toThrow(
+    await expect(recordRetailSale({ items: [], customerName: "Walk-in" })).rejects.toThrow(
       "Cart khali",
     );
   });
@@ -194,20 +209,20 @@ describe("recordRetailSale", () => {
   it("rejects a zero quantity", async () => {
     const medicine = await makeMedicine();
     await expect(
-      recordRetailSale({ items: [{ medicineId: medicine._id, patas: 0 }] }),
+      recordRetailSale({ items: [{ medicineId: medicine._id, patas: 0 }], customerName: "Walk-in" }),
     ).rejects.toThrow("Poriman 1 er kom hote parbe na");
   });
 
   it("rejects a fractional quantity", async () => {
     const medicine = await makeMedicine();
     await expect(
-      recordRetailSale({ items: [{ medicineId: medicine._id, patas: 1.5 }] }),
+      recordRetailSale({ items: [{ medicineId: medicine._id, patas: 1.5 }], customerName: "Walk-in" }),
     ).rejects.toThrow("Poriman 1 er kom hote parbe na");
   });
 
   it("rejects a malformed medicine id", async () => {
     await expect(
-      recordRetailSale({ items: [{ medicineId: "not-an-id", patas: 1 }] }),
+      recordRetailSale({ items: [{ medicineId: "not-an-id", patas: 1 }], customerName: "Walk-in" }),
     ).rejects.toThrow("Medicine pawa jay ni");
   });
 
@@ -215,6 +230,7 @@ describe("recordRetailSale", () => {
     await expect(
       recordRetailSale({
         items: [{ medicineId: "507f1f77bcf86cd799439011", patas: 1 }],
+        customerName: "Walk-in",
       }),
     ).rejects.toThrow("Medicine pawa jay ni");
   });
@@ -229,6 +245,7 @@ describe("recordRetailSale", () => {
           { medicineId: medicine._id, patas: 2 },
           { medicineId: medicine._id, patas: 2 },
         ],
+        customerName: "Walk-in",
       }),
     ).rejects.toThrow("ekbar er beshi");
   });
@@ -236,7 +253,7 @@ describe("recordRetailSale", () => {
   it("rejects an unauthenticated caller", async () => {
     clearSessionCookie(cookieStore);
     await expect(
-      recordRetailSale({ items: [{ medicineId: "507f1f77bcf86cd799439011", patas: 1 }] }),
+      recordRetailSale({ items: [{ medicineId: "507f1f77bcf86cd799439011", patas: 1 }], customerName: "Walk-in" }),
     ).rejects.toThrow();
   });
 });
@@ -592,6 +609,7 @@ describe("cancelSale", () => {
     const medicine = await makeMedicine({}, 500);
     const sale = await recordRetailSale({
       items: [{ medicineId: medicine._id, patas: 4 }],
+      customerName: "Walk-in",
     });
     expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(496);
 
@@ -608,6 +626,7 @@ describe("cancelSale", () => {
         { medicineId: a._id, patas: 2 },
         { medicineId: b._id, patas: 3 },
       ],
+      customerName: "Walk-in",
     });
 
     await cancelSale(sale._id, "test");
@@ -620,6 +639,7 @@ describe("cancelSale", () => {
     const medicine = await makeMedicine({}, 500);
     const sale = await recordRetailSale({
       items: [{ medicineId: medicine._id, patas: 4 }],
+      customerName: "Walk-in",
     });
 
     await cancelSale(sale._id, "first");
@@ -669,6 +689,7 @@ describe("cancelSale", () => {
     const medicine = await makeMedicine();
     const sale = await recordRetailSale({
       items: [{ medicineId: medicine._id, patas: 1 }],
+      customerName: "Walk-in",
     });
     await expect(cancelSale(sale._id, "   ")).rejects.toThrow(
       "Cancel korar karon likhte hobe",
@@ -693,6 +714,7 @@ describe("sale lines snapshot the medicine form", () => {
 
     const sale = await recordRetailSale({
       items: [{ medicineId: syrup._id, patas: 3 }],
+      customerName: "Walk-in",
     });
 
     expect(sale.items[0].form).toBe("syrup");
@@ -728,6 +750,7 @@ describe("sale lines snapshot the medicine form", () => {
     });
     const sale = await recordRetailSale({
       items: [{ medicineId: syrup._id, patas: 1 }],
+      customerName: "Walk-in",
     });
 
     await MedicineModel.updateOne(
@@ -823,7 +846,147 @@ describe("zero-quantity wholesale lines", () => {
     const medicine = await makeMedicine();
 
     await expect(
-      recordRetailSale({ items: [{ medicineId: medicine._id, patas: 0 }] }),
+      recordRetailSale({ items: [{ medicineId: medicine._id, patas: 0 }], customerName: "Walk-in" }),
     ).rejects.toThrow("Poriman 1 er kom hote parbe na");
+  });
+});
+
+describe("retail customer details", () => {
+  it("stores the customer name and phone on the sale", async () => {
+    const medicine = await makeMedicine();
+
+    const sale = await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 2 }],
+      customerName: "Karim Uddin",
+      customerPhone: "01711111111",
+    });
+
+    expect(sale.buyerName).toBe("Karim Uddin");
+    expect(sale.buyerPhone).toBe("01711111111");
+    // A walk-in is still not a tracked entity.
+    expect(sale.buyerId).toBeNull();
+  });
+
+  it("trims both", async () => {
+    const medicine = await makeMedicine();
+
+    const sale = await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 1 }],
+      customerName: "  Karim Uddin  ",
+      customerPhone: "  01711111111  ",
+    });
+
+    expect(sale.buyerName).toBe("Karim Uddin");
+    expect(sale.buyerPhone).toBe("01711111111");
+  });
+
+  it("treats the phone as optional", async () => {
+    const medicine = await makeMedicine();
+
+    const sale = await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 1 }],
+      customerName: "Karim Uddin",
+    });
+
+    expect(sale.buyerName).toBe("Karim Uddin");
+    expect(sale.buyerPhone).toBe("");
+  });
+
+  it("rejects a missing or blank name", async () => {
+    const medicine = await makeMedicine();
+
+    for (const customerName of ["", "   ", undefined as never]) {
+      await expect(
+        recordRetailSale({
+          items: [{ medicineId: medicine._id, patas: 1 }],
+          customerName,
+        }),
+      ).rejects.toThrow("Customer nam likhte hobe");
+    }
+  });
+
+  it("rejects a phone that is not a string", async () => {
+    const medicine = await makeMedicine();
+
+    await expect(
+      recordRetailSale({
+        items: [{ medicineId: medicine._id, patas: 1 }],
+        customerName: "Karim Uddin",
+        customerPhone: 1711111111 as never,
+      }),
+    ).rejects.toThrow("customerPhone must be a string");
+  });
+
+  it("leaves the money and the stock alone", async () => {
+    const medicine = await makeMedicine();
+
+    const sale = await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 5 }],
+      customerName: "Karim Uddin",
+      customerPhone: "01711111111",
+    });
+
+    expect(sale.totalPaisa).toBe(7000);
+    expect(sale.duePaisa).toBe(0);
+    const after = await MedicineModel.findById(medicine._id);
+    expect(after?.stockPatas).toBe(495);
+  });
+});
+
+describe("lookupRetailCustomer", () => {
+  it("returns the name last used for that phone", async () => {
+    const medicine = await makeMedicine();
+    await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 1 }],
+      customerName: "Karim",
+      customerPhone: "01711111111",
+    });
+    await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 1 }],
+      customerName: "Karim Uddin",
+      customerPhone: "01711111111",
+    });
+
+    // The most recent wins, so a correction sticks for next time.
+    expect(await lookupRetailCustomer("01711111111")).toEqual({
+      name: "Karim Uddin",
+    });
+  });
+
+  it("returns null for a phone never seen", async () => {
+    expect(await lookupRetailCustomer("01999999999")).toBeNull();
+  });
+
+  it("returns null for a blank phone without matching the many sales that have none", async () => {
+    const medicine = await makeMedicine();
+    await recordRetailSale({
+      items: [{ medicineId: medicine._id, patas: 1 }],
+      customerName: "Nameless Walk-in",
+    });
+
+    expect(await lookupRetailCustomer("")).toBeNull();
+    expect(await lookupRetailCustomer("   ")).toBeNull();
+  });
+
+  it("ignores wholesale sales on the same phone", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer({ phone: "01733333333" });
+    await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 1 }],
+      discountPercent: 0,
+      paidPaisa: 0,
+    });
+
+    // The wholesale sale carries that phone, but a shop's name must not
+    // autofill the walk-in counter.
+    expect(await lookupRetailCustomer("01733333333")).toBeNull();
+  });
+
+  it("rejects a non-admin caller", async () => {
+    clearSessionCookie(cookieStore);
+    await expect(lookupRetailCustomer("01711111111")).rejects.toThrow(
+      ADMIN_ONLY_ERROR,
+    );
   });
 });

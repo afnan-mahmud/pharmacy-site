@@ -136,8 +136,19 @@ export function ReportView({
                   ) : (
                     <span className="text-muted">—</span>
                   )}
-                  {row.buyerName && (
-                    <span className="ml-2 text-xs text-muted">{row.buyerName}</span>
+                  {row.buyerName ? (
+                    <span className="ml-2 text-xs text-muted">
+                      {row.buyerName}
+                      {row.buyerPhone ? ` · ${row.buyerPhone}` : ""}
+                    </span>
+                  ) : (
+                    // Retail sales made before the counter asked for a
+                    // customer have no name and cannot be backfilled.
+                    row.type === "retail" && (
+                      <span className="ml-2 text-xs text-muted/70">
+                        (naam nai)
+                      </span>
+                    )
                   )}
                 </td>
                 <td className={`p-3 text-right ${row.cancelled ? "line-through" : ""}`}>

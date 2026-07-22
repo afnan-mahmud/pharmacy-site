@@ -28,7 +28,12 @@ async function makeMedicine(overrides = {}, stockPatas = 500) {
 }
 
 async function run(params: {
-  buyer: { id: mongoose.Types.ObjectId; name: string; shopName: string };
+  buyer: {
+    id: mongoose.Types.ObjectId;
+    name: string;
+    shopName: string;
+    phone?: string;
+  };
   items: { medicineId: string; boxes: number }[];
   discountPercent?: number;
   paidPaisa?: number;
@@ -40,7 +45,7 @@ async function run(params: {
     await session.withTransaction(async () => {
       const sale = await writeWholesaleSale({
         session,
-        buyer: params.buyer,
+        buyer: { ...params.buyer, phone: params.buyer.phone ?? "" },
         items: params.items,
         discountPercent: params.discountPercent ?? 0,
         paidPaisa: params.paidPaisa ?? 0,

@@ -10,7 +10,12 @@ import { SaleModel, type SaleDoc } from "@/models/Sale";
 
 export type WriteWholesaleSaleParams = {
   session: ClientSession;
-  buyer: { id: mongoose.Types.ObjectId; name: string; shopName: string };
+  buyer: {
+    id: mongoose.Types.ObjectId;
+    name: string;
+    shopName: string;
+    phone: string;
+  };
   items: { medicineId: string; boxes: number }[];
   /** A percentage of the subtotal, 0-100. May be fractional. */
   discountPercent: number;
@@ -108,6 +113,7 @@ export async function writeWholesaleSale(
         buyerId: params.buyer.id,
         buyerName: params.buyer.name,
         buyerShopName: params.buyer.shopName,
+        buyerPhone: params.buyer.phone,
         invoiceNo: formatInvoiceNo(prefix, seq),
         orderId: params.orderId ?? null,
         items: lines,

@@ -9,6 +9,7 @@ import { toPlain, toPlainList, type Serialized } from "@/lib/serialize";
 import { OrderModel, type OrderDoc } from "@/models/Order";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { MedicineModel } from "@/models/Medicine";
+import { BuyerModel } from "@/models/Buyer";
 
 export type ApprovalItemInput = { medicineId: string; boxes: number };
 
@@ -140,12 +141,21 @@ export async function approveOrder(
         }
       }
 
+      // The order denormalises the buyer's name and shop but not the phone,
+      // so it is read here rather than left blank — a wholesale sale created
+      // from an order should carry the same details as one created from the
+      // form. A buyer deleted between ordering and approval leaves the phone
+      // empty rather than failing the approval, since the order's own
+      // snapshot is what the sale is really built from.
+      const buyerDoc = await BuyerModel.findById(order.buyerId).session(session);
+
       const sale = await writeWholesaleSale({
         session,
         buyer: {
           id: order.buyerId,
           name: order.buyerName,
           shopName: order.buyerShopName,
+          phone: buyerDoc?.phone ?? "",
         },
         items,
         discountPercent: 0,
