@@ -12,6 +12,7 @@ import { writeWholesaleSale } from "@/lib/writeWholesaleSale";
 import { MedicineModel } from "@/models/Medicine";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { BuyerModel } from "@/models/Buyer";
+import { actionResult, type ActionResult } from "@/lib/actionResult";
 
 export type RetailSaleInput = {
   items: { medicineId: string; patas: number }[];
@@ -74,102 +75,104 @@ function validateRetail(input: RetailSaleInput): void {
 
 export async function recordRetailSale(
   input: RetailSaleInput,
-): Promise<Serialized<SaleDoc>> {
-  const adminSession = await requireAdminAction();
-  await connectDb();
-  validateRetail(input);
+): Promise<ActionResult<Serialized<SaleDoc>>> {
+  return actionResult(async () => {
+    const adminSession = await requireAdminAction();
+    await connectDb();
+    validateRetail(input);
 
-  const session = await mongoose.startSession();
-  let saleId: mongoose.Types.ObjectId | null = null;
+    const session = await mongoose.startSession();
+    let saleId: mongoose.Types.ObjectId | null = null;
 
-  try {
-    await session.withTransaction(async () => {
-      const lines = [];
+    try {
+      await session.withTransaction(async () => {
+        const lines = [];
 
-      for (const item of input.items) {
-        // Read inside the transaction: withTransaction retries this callback
-        // from the top on a TransientTransactionError, and a read taken
-        // outside would not be re-evaluated by that retry.
-        const medicine = await MedicineModel.findById(item.medicineId).session(
-          session,
-        );
-        if (!medicine) throw new Error("Medicine pawa jay ni");
+        for (const item of input.items) {
+          // Read inside the transaction: withTransaction retries this callback
+          // from the top on a TransientTransactionError, and a read taken
+          // outside would not be re-evaluated by that retry.
+          const medicine = await MedicineModel.findById(
+            item.medicineId,
+          ).session(session);
+          if (!medicine) throw new Error("Medicine pawa jay ni");
 
-        // The precondition lives in applyStockDelta's update filter, so the
-        // check and the write are one atomic operation. See
-        // src/lib/stockTransaction.ts for why a pre-read is not a substitute.
-        const unit = unitLabelsFor(medicine.form).inner;
-        const ok = await applyStockDelta(medicine._id, -item.patas, session);
-        if (!ok) {
-          // Re-read inside the same transaction to tell the owner what is
-          // actually available, rather than a bare "not enough".
-          const current = await MedicineModel.findById(item.medicineId).session(
-            session,
-          );
-          throw new Error(
-            `${medicine.name} — stock e ache ${current?.stockPatas ?? 0} ${unit}, lagbe ${item.patas} ${unit}`,
-          );
+          // The precondition lives in applyStockDelta's update filter, so the
+          // check and the write are one atomic operation. See
+          // src/lib/stockTransaction.ts for why a pre-read is not a substitute.
+          const unit = unitLabelsFor(medicine.form).inner;
+          const ok = await applyStockDelta(medicine._id, -item.patas, session);
+          if (!ok) {
+            // Re-read inside the same transaction to tell the owner what is
+            // actually available, rather than a bare "not enough".
+            const current = await MedicineModel.findById(
+              item.medicineId,
+            ).session(session);
+            throw new Error(
+              `${medicine.name} — stock e ache ${current?.stockPatas ?? 0} ${unit}, lagbe ${item.patas} ${unit}`,
+            );
+          }
+
+          lines.push({
+            medicineId: medicine._id,
+            medicineName: medicine.name,
+            form: medicine.form,
+            unit: "pata" as const,
+            quantity: item.patas,
+            ratePaisa: medicine.pataPricePaisa,
+            lineTotalPaisa: lineTotal({
+              ratePaisa: medicine.pataPricePaisa,
+              quantity: item.patas,
+            }),
+            patasDeducted: item.patas,
+          });
         }
 
-        lines.push({
-          medicineId: medicine._id,
-          medicineName: medicine.name,
-          form: medicine.form,
-          unit: "pata" as const,
-          quantity: item.patas,
-          ratePaisa: medicine.pataPricePaisa,
-          lineTotalPaisa: lineTotal({
-            ratePaisa: medicine.pataPricePaisa,
-            quantity: item.patas,
-          }),
-          patasDeducted: item.patas,
-        });
-      }
+        const subtotal = lines.reduce((sum, l) => sum + l.lineTotalPaisa, 0);
+        // Retail is cash at the counter: no discount, always paid in full.
+        // A walk-in customer leaving with credit is not a flow this system
+        // supports (see the spec's "Pricing" section).
+        const { subtotalPaisa, totalPaisa, duePaisa } = computeTotals(
+          lines.map((l) => ({ ratePaisa: l.ratePaisa, quantity: l.quantity })),
+          0,
+          subtotal,
+        );
 
-      const subtotal = lines.reduce((sum, l) => sum + l.lineTotalPaisa, 0);
-      // Retail is cash at the counter: no discount, always paid in full.
-      // A walk-in customer leaving with credit is not a flow this system
-      // supports (see the spec's "Pricing" section).
-      const { subtotalPaisa, totalPaisa, duePaisa } = computeTotals(
-        lines.map((l) => ({ ratePaisa: l.ratePaisa, quantity: l.quantity })),
-        0,
-        subtotal,
-      );
+        const [sale] = await SaleModel.create(
+          [
+            {
+              type: "retail",
+              buyerId: null,
+              buyerName: input.customerName.trim(),
+              buyerPhone: toOptionalString(
+                input.customerPhone,
+                "customerPhone",
+              ).trim(),
+              invoiceNo: null,
+              items: lines,
+              subtotalPaisa,
+              discountPaisa: 0,
+              totalPaisa,
+              paidPaisa: totalPaisa,
+              duePaisa,
+              status: "active",
+              createdBy: new mongoose.Types.ObjectId(adminSession.userId),
+            },
+          ],
+          { session },
+        );
+        saleId = sale._id;
+      });
+    } finally {
+      await session.endSession();
+    }
 
-      const [sale] = await SaleModel.create(
-        [
-          {
-            type: "retail",
-            buyerId: null,
-            buyerName: input.customerName.trim(),
-            buyerPhone: toOptionalString(
-              input.customerPhone,
-              "customerPhone",
-            ).trim(),
-            invoiceNo: null,
-            items: lines,
-            subtotalPaisa,
-            discountPaisa: 0,
-            totalPaisa,
-            paidPaisa: totalPaisa,
-            duePaisa,
-            status: "active",
-            createdBy: new mongoose.Types.ObjectId(adminSession.userId),
-          },
-        ],
-        { session },
-      );
-      saleId = sale._id;
-    });
-  } finally {
-    await session.endSession();
-  }
+    revalidatePath("/medicines");
+    revalidatePath("/sell");
 
-  revalidatePath("/medicines");
-  revalidatePath("/sell");
-
-  const sale = await SaleModel.findById(saleId).lean<SaleDoc>();
-  return toPlain(sale!);
+    const sale = await SaleModel.findById(saleId).lean<SaleDoc>();
+    return toPlain(sale!);
+  });
 }
 
 export type WholesaleSaleInput = {
@@ -232,46 +235,48 @@ function validateWholesale(input: WholesaleSaleInput): void {
 
 export async function recordWholesaleSale(
   input: WholesaleSaleInput,
-): Promise<Serialized<SaleDoc>> {
-  const adminSession = await requireAdminAction();
-  await connectDb();
-  validateWholesale(input);
+): Promise<ActionResult<Serialized<SaleDoc>>> {
+  return actionResult(async () => {
+    const adminSession = await requireAdminAction();
+    await connectDb();
+    validateWholesale(input);
 
-  const session = await mongoose.startSession();
-  let saleId: mongoose.Types.ObjectId | null = null;
+    const session = await mongoose.startSession();
+    let saleId: mongoose.Types.ObjectId | null = null;
 
-  try {
-    await session.withTransaction(async () => {
-      const buyer = await BuyerModel.findById(input.buyerId).session(session);
-      if (!buyer) throw new Error("Buyer pawa jay ni");
-      if (!buyer.active) throw new Error("Buyer ta bondho ache");
+    try {
+      await session.withTransaction(async () => {
+        const buyer = await BuyerModel.findById(input.buyerId).session(session);
+        if (!buyer) throw new Error("Buyer pawa jay ni");
+        if (!buyer.active) throw new Error("Buyer ta bondho ache");
 
-      const sale = await writeWholesaleSale({
-        session,
-        buyer: {
-          id: buyer._id,
-          name: buyer.name,
-          shopName: buyer.shopName,
-          phone: buyer.phone,
-        },
-        items: input.items,
-        discountPercent: input.discountPercent,
-        paidPaisa: input.paidPaisa,
-        createdBy: adminSession.userId,
-        orderId: null,
+        const sale = await writeWholesaleSale({
+          session,
+          buyer: {
+            id: buyer._id,
+            name: buyer.name,
+            shopName: buyer.shopName,
+            phone: buyer.phone,
+          },
+          items: input.items,
+          discountPercent: input.discountPercent,
+          paidPaisa: input.paidPaisa,
+          createdBy: adminSession.userId,
+          orderId: null,
+        });
+        saleId = sale._id;
       });
-      saleId = sale._id;
-    });
-  } finally {
-    await session.endSession();
-  }
+    } finally {
+      await session.endSession();
+    }
 
-  revalidatePath("/medicines");
-  revalidatePath("/wholesale");
-  revalidatePath("/due");
+    revalidatePath("/medicines");
+    revalidatePath("/wholesale");
+    revalidatePath("/due");
 
-  const sale = await SaleModel.findById(saleId).lean<SaleDoc>();
-  return toPlain(sale!);
+    const sale = await SaleModel.findById(saleId).lean<SaleDoc>();
+    return toPlain(sale!);
+  });
 }
 
 export async function getSale(id: string): Promise<Serialized<SaleDoc> | null> {
@@ -295,60 +300,65 @@ export async function getSale(id: string): Promise<Serialized<SaleDoc> | null> {
  * not from recomputing boxes x patasPerBox — if the pack size changed after
  * the sale, recomputing would return a different quantity than went out.
  */
-export async function cancelSale(id: string, reason: string): Promise<void> {
-  await requireAdminAction();
-  await connectDb();
+export async function cancelSale(
+  id: string,
+  reason: string,
+): Promise<ActionResult<void>> {
+  return actionResult(async () => {
+    await requireAdminAction();
+    await connectDb();
 
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    throw new Error("Bikri pawa jay ni");
-  }
-  if (typeof reason !== "string" || !reason.trim()) {
-    throw new Error("Cancel korar karon likhte hobe");
-  }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new Error("Bikri pawa jay ni");
+    }
+    if (typeof reason !== "string" || !reason.trim()) {
+      throw new Error("Cancel korar karon likhte hobe");
+    }
 
-  const session = await mongoose.startSession();
-  try {
-    await session.withTransaction(async () => {
-      const sale = await SaleModel.findById(id).session(session);
-      if (!sale) throw new Error("Bikri pawa jay ni");
-      if (sale.status === "cancelled") {
-        throw new Error("Ei bikri age theke cancel kora");
-      }
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const sale = await SaleModel.findById(id).session(session);
+        if (!sale) throw new Error("Bikri pawa jay ni");
+        if (sale.status === "cancelled") {
+          throw new Error("Ei bikri age theke cancel kora");
+        }
 
-      // Flip the status with the guard in the filter, so two concurrent
-      // cancels cannot both pass and return the stock twice.
-      const flipped = await SaleModel.updateOne(
-        { _id: sale._id, status: "active" },
-        {
-          $set: {
-            status: "cancelled",
-            cancelledAt: new Date(),
-            cancelReason: reason.trim(),
+        // Flip the status with the guard in the filter, so two concurrent
+        // cancels cannot both pass and return the stock twice.
+        const flipped = await SaleModel.updateOne(
+          { _id: sale._id, status: "active" },
+          {
+            $set: {
+              status: "cancelled",
+              cancelledAt: new Date(),
+              cancelReason: reason.trim(),
+            },
           },
-        },
-        { session },
-      );
-      if (flipped.matchedCount === 0) {
-        throw new Error("Ei bikri age theke cancel kora");
-      }
-
-      for (const line of sale.items) {
-        // A positive delta: the "enough stock" half of applyStockDelta's
-        // precondition can never fail on a return, only "still exists".
-        const ok = await applyStockDelta(
-          line.medicineId,
-          line.patasDeducted,
-          session,
+          { session },
         );
-        if (!ok) throw new Error("Medicine pawa jay ni");
-      }
-    });
-  } finally {
-    await session.endSession();
-  }
+        if (flipped.matchedCount === 0) {
+          throw new Error("Ei bikri age theke cancel kora");
+        }
 
-  revalidatePath("/medicines");
-  revalidatePath("/due");
+        for (const line of sale.items) {
+          // A positive delta: the "enough stock" half of applyStockDelta's
+          // precondition can never fail on a return, only "still exists".
+          const ok = await applyStockDelta(
+            line.medicineId,
+            line.patasDeducted,
+            session,
+          );
+          if (!ok) throw new Error("Medicine pawa jay ni");
+        }
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    revalidatePath("/medicines");
+    revalidatePath("/due");
+  });
 }
 
 /**

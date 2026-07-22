@@ -10,6 +10,7 @@ import { OrderModel, type OrderDoc } from "@/models/Order";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { MedicineModel } from "@/models/Medicine";
 import { BuyerModel } from "@/models/Buyer";
+import { actionResult, type ActionResult } from "@/lib/actionResult";
 
 export type ApprovalItemInput = { medicineId: string; boxes: number };
 
@@ -108,118 +109,134 @@ function validateApproval(items: ApprovalItemInput[]): void {
 export async function approveOrder(
   orderId: string,
   items: ApprovalItemInput[],
-): Promise<Serialized<SaleDoc>> {
-  const adminSession = await requireAdminAction();
-  await connectDb();
+): Promise<ActionResult<Serialized<SaleDoc>>> {
+  return actionResult(async () => {
+    const adminSession = await requireAdminAction();
+    await connectDb();
 
-  if (!mongoose.Types.ObjectId.isValid(orderId)) {
-    throw new Error("Order pawa jay ni");
-  }
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      throw new Error("Order pawa jay ni");
+    }
 
-  const session = await mongoose.startSession();
-  let saleId: mongoose.Types.ObjectId | null = null;
+    const session = await mongoose.startSession();
+    let saleId: mongoose.Types.ObjectId | null = null;
 
-  try {
-    await session.withTransaction(async () => {
-      const order = await OrderModel.findById(orderId).session(session);
-      if (!order) throw new Error("Order pawa jay ni");
-      if (order.status !== "pending") {
-        throw new Error("Ei order ar approve kora jabe na");
-      }
-
-      // Item shape/emptiness is checked only once we know which order we're
-      // approving, so an unknown order reports "not found" rather than
-      // "cart empty" when both are true of the call.
-      validateApproval(items);
-
-      // Every approved line must have been in the order — the owner adjusts
-      // quantities, he does not add products the buyer never asked for.
-      const ordered = new Set(order.items.map((line) => String(line.medicineId)));
-      for (const item of items) {
-        if (!ordered.has(item.medicineId)) {
-          throw new Error("Order er baire er medicine dewa jabe na");
+    try {
+      await session.withTransaction(async () => {
+        const order = await OrderModel.findById(orderId).session(session);
+        if (!order) throw new Error("Order pawa jay ni");
+        if (order.status !== "pending") {
+          throw new Error("Ei order ar approve kora jabe na");
         }
-      }
 
-      // The order denormalises the buyer's name and shop but not the phone,
-      // so it is read here rather than left blank — a wholesale sale created
-      // from an order should carry the same details as one created from the
-      // form. A buyer deleted between ordering and approval leaves the phone
-      // empty rather than failing the approval, since the order's own
-      // snapshot is what the sale is really built from.
-      const buyerDoc = await BuyerModel.findById(order.buyerId).session(session);
+        // Item shape/emptiness is checked only once we know which order we're
+        // approving, so an unknown order reports "not found" rather than
+        // "cart empty" when both are true of the call.
+        validateApproval(items);
 
-      const sale = await writeWholesaleSale({
-        session,
-        buyer: {
-          id: order.buyerId,
-          name: order.buyerName,
-          shopName: order.buyerShopName,
-          phone: buyerDoc?.phone ?? "",
-        },
-        items,
-        discountPercent: 0,
-        // The buyer pays nothing at order time; it is all due, collected
-        // later through the Baki Khata.
-        paidPaisa: 0,
-        createdBy: adminSession.userId,
-        orderId: String(order._id),
-      });
+        // Every approved line must have been in the order — the owner adjusts
+        // quantities, he does not add products the buyer never asked for.
+        const ordered = new Set(
+          order.items.map((line) => String(line.medicineId)),
+        );
+        for (const item of items) {
+          if (!ordered.has(item.medicineId)) {
+            throw new Error("Order er baire er medicine dewa jabe na");
+          }
+        }
 
-      // Guard the transition in the filter so a concurrent approval can't
-      // also pass and create a second sale.
-      const flipped = await OrderModel.updateOne(
-        { _id: order._id, status: "pending" },
-        {
-          $set: {
-            status: "approved",
-            saleId: sale._id,
-            resolvedAt: new Date(),
+        // The order denormalises the buyer's name and shop but not the phone,
+        // so it is read here rather than left blank — a wholesale sale created
+        // from an order should carry the same details as one created from the
+        // form. A buyer deleted between ordering and approval leaves the phone
+        // empty rather than failing the approval, since the order's own
+        // snapshot is what the sale is really built from.
+        const buyerDoc = await BuyerModel.findById(order.buyerId).session(
+          session,
+        );
+
+        const sale = await writeWholesaleSale({
+          session,
+          buyer: {
+            id: order.buyerId,
+            name: order.buyerName,
+            shopName: order.buyerShopName,
+            phone: buyerDoc?.phone ?? "",
           },
-        },
-        { session },
-      );
-      if (flipped.matchedCount === 0) {
-        throw new Error("Ei order ar approve kora jabe na");
-      }
+          items,
+          discountPercent: 0,
+          // The buyer pays nothing at order time; it is all due, collected
+          // later through the Baki Khata.
+          paidPaisa: 0,
+          createdBy: adminSession.userId,
+          orderId: String(order._id),
+        });
 
-      saleId = sale._id;
-    });
-  } finally {
-    await session.endSession();
-  }
+        // Guard the transition in the filter so a concurrent approval can't
+        // also pass and create a second sale.
+        const flipped = await OrderModel.updateOne(
+          { _id: order._id, status: "pending" },
+          {
+            $set: {
+              status: "approved",
+              saleId: sale._id,
+              resolvedAt: new Date(),
+            },
+          },
+          { session },
+        );
+        if (flipped.matchedCount === 0) {
+          throw new Error("Ei order ar approve kora jabe na");
+        }
 
-  revalidatePath("/orders");
-  revalidatePath("/medicines");
-  revalidatePath("/due");
+        saleId = sale._id;
+      });
+    } finally {
+      await session.endSession();
+    }
 
-  const sale = await SaleModel.findById(saleId).lean<SaleDoc>();
-  return toPlain(sale!);
+    revalidatePath("/orders");
+    revalidatePath("/medicines");
+    revalidatePath("/due");
+
+    const sale = await SaleModel.findById(saleId).lean<SaleDoc>();
+    return toPlain(sale!);
+  });
 }
 
 export async function rejectOrder(
   orderId: string,
   reason: string,
-): Promise<void> {
-  await requireAdminAction();
-  await connectDb();
+): Promise<ActionResult<void>> {
+  return actionResult(async () => {
+    await requireAdminAction();
+    await connectDb();
 
-  if (!mongoose.Types.ObjectId.isValid(orderId)) {
-    throw new Error("Order pawa jay ni");
-  }
-  if (typeof reason !== "string" || !reason.trim()) {
-    throw new Error("Reject korar karon likhte hobe");
-  }
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      throw new Error("Order pawa jay ni");
+    }
+    if (typeof reason !== "string" || !reason.trim()) {
+      throw new Error("Reject korar karon likhte hobe");
+    }
 
-  const result = await OrderModel.updateOne(
-    { _id: orderId, status: "pending" },
-    { $set: { status: "rejected", rejectReason: reason.trim(), resolvedAt: new Date() } },
-  );
-  if (result.matchedCount === 0) {
-    // Either the order doesn't exist or it isn't pending any more.
-    const exists = await OrderModel.exists({ _id: orderId });
-    throw new Error(exists ? "Ei order ar reject kora jabe na" : "Order pawa jay ni");
-  }
+    const result = await OrderModel.updateOne(
+      { _id: orderId, status: "pending" },
+      {
+        $set: {
+          status: "rejected",
+          rejectReason: reason.trim(),
+          resolvedAt: new Date(),
+        },
+      },
+    );
+    if (result.matchedCount === 0) {
+      // Either the order doesn't exist or it isn't pending any more.
+      const exists = await OrderModel.exists({ _id: orderId });
+      throw new Error(
+        exists ? "Ei order ar reject kora jabe na" : "Order pawa jay ni",
+      );
+    }
 
-  revalidatePath("/orders");
+    revalidatePath("/orders");
+  });
 }

@@ -30,7 +30,11 @@ export default async function InvoicePage({
               // cancelSale itself rejects a blank reason — the required
               // attribute below is just a client-side head start, not a
               // substitute for that server-side check.
-              await cancelSale(id, reason);
+              const result = await cancelSale(id, reason);
+              // This form has nowhere to render a message, so a failure is
+              // re-thrown rather than silently revalidating as if the sale
+              // had been cancelled. The reason still reaches the server log.
+              if (!result.ok) throw new Error(result.error);
               revalidatePath(`/invoice/${id}`);
             }}
             className="flex items-center gap-2"

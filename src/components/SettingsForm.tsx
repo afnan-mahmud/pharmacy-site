@@ -29,7 +29,13 @@ export function SettingsForm({
     setDone(false);
 
     try {
-      const saved = await updateSettings(values);
+      const result = await updateSettings(values);
+      if (!result.ok) {
+        setError(result.error);
+        setBusy(false);
+        return;
+      }
+      const saved = result.data;
       setValues({
         pharmacyName: saved.pharmacyName,
         tagline: saved.tagline ?? "",

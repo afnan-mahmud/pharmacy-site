@@ -81,7 +81,11 @@ export function BuyerLedger({ buyerId, buyerName, buyerShopName, duePaisa, ledge
     setError("");
     setBusy(true);
     try {
-      await recordPayment(buyerId, Number(payAmount), payNote);
+      const result = await recordPayment(buyerId, Number(payAmount), payNote);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
       setPayAmount("");
       setPayNote("");
       router.refresh();

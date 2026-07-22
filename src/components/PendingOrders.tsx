@@ -55,8 +55,13 @@ export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
         medicineId: i.medicineId,
         boxes: edits[order.id]?.[i.medicineId] ?? i.boxes,
       }));
-      const sale = await approveOrder(order.id, items);
-      router.push(`/invoice/${sale._id}`);
+      const result = await approveOrder(order.id, items);
+      if (!result.ok) {
+        setError(result.error);
+        setBusyId(null);
+        return;
+      }
+      router.push(`/invoice/${result.data._id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kichu ekta bhul holo");
       setBusyId(null);
@@ -69,7 +74,11 @@ export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
     setError("");
     setBusyId(order.id);
     try {
-      await rejectOrder(order.id, reason);
+      const result = await rejectOrder(order.id, reason);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kichu ekta bhul holo");

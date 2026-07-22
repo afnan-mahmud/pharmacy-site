@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import mongoose from "mongoose";
 import { setupTestDb } from "../helpers/db";
+import { unwrap } from "../helpers/action";
 import {
   createMockCookieStore,
   setSessionCookie,
@@ -77,9 +78,9 @@ describe("submitOrder", () => {
       patasPerBox: 12,
     });
 
-    const order = await submitOrder([
+    const order = await unwrap(submitOrder([
       { medicineId: String(syrup._id), boxes: 2 },
-    ]);
+    ]));
 
     expect(order.items[0].form).toBe("syrup");
   });
@@ -93,9 +94,9 @@ describe("submitOrder", () => {
       { $unset: { form: "" } },
     );
 
-    const order = await submitOrder([
+    const order = await unwrap(submitOrder([
       { medicineId: String(medicine._id), boxes: 1 },
-    ]);
+    ]));
 
     expect(order.items[0].form).toBe("tablet");
   });
@@ -104,9 +105,9 @@ describe("submitOrder", () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine();
 
-    const order = await submitOrder([
+    const order = await unwrap(submitOrder([
       { medicineId: String(medicine._id), boxes: 3 },
-    ]);
+    ]));
 
     expect(order.status).toBe("pending");
     expect(order.items[0].medicineName).toBe("Napa 500mg");
@@ -118,24 +119,24 @@ describe("submitOrder", () => {
   it("does not change stock (approval does that, not ordering)", async () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine();
-    await submitOrder([{ medicineId: String(medicine._id), boxes: 3 }]);
+    await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 3 }]));
     const after = await MedicineModel.findById(medicine._id);
     expect(after!.stockPatas).toBe(500);
   });
 
   it("rejects an empty cart", async () => {
     await makeSessionBuyer();
-    await expect(submitOrder([])).rejects.toThrow("Cart khali");
+    await expect(unwrap(submitOrder([]))).rejects.toThrow("Cart khali");
   });
 
   it("rejects a zero or fractional box count", async () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine();
     await expect(
-      submitOrder([{ medicineId: String(medicine._id), boxes: 0 }]),
+      unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 0 }])),
     ).rejects.toThrow("Poriman 1 er kom hote parbe na");
     await expect(
-      submitOrder([{ medicineId: String(medicine._id), boxes: 1.5 }]),
+      unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1.5 }])),
     ).rejects.toThrow("Poriman 1 er kom hote parbe na");
   });
 
@@ -143,20 +144,20 @@ describe("submitOrder", () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine();
     await expect(
-      submitOrder([
+      unwrap(submitOrder([
         { medicineId: String(medicine._id), boxes: 1 },
         { medicineId: String(medicine._id), boxes: 2 },
-      ]),
+      ])),
     ).rejects.toThrow("ekbar er beshi");
   });
 
   it("rejects an unknown or malformed medicine", async () => {
     await makeSessionBuyer();
     await expect(
-      submitOrder([{ medicineId: "not-an-id", boxes: 1 }]),
+      unwrap(submitOrder([{ medicineId: "not-an-id", boxes: 1 }])),
     ).rejects.toThrow("Medicine pawa jay ni");
     await expect(
-      submitOrder([{ medicineId: "507f1f77bcf86cd799439011", boxes: 1 }]),
+      unwrap(submitOrder([{ medicineId: "507f1f77bcf86cd799439011", boxes: 1 }])),
     ).rejects.toThrow("Medicine pawa jay ni");
   });
 
@@ -164,7 +165,7 @@ describe("submitOrder", () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine({ active: false });
     await expect(
-      submitOrder([{ medicineId: String(medicine._id), boxes: 1 }]),
+      unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1 }])),
     ).rejects.toThrow("Medicine pawa jay ni");
   });
 
@@ -172,18 +173,18 @@ describe("submitOrder", () => {
     await makeSessionBuyer({ active: false });
     const medicine = await makeMedicine();
     await expect(
-      submitOrder([{ medicineId: String(medicine._id), boxes: 1 }]),
+      unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1 }])),
     ).rejects.toThrow("Apnar account bondho ache");
   });
 
   it("rejects an unauthenticated caller", async () => {
     clearSessionCookie(cookieStore);
-    await expect(submitOrder([])).rejects.toThrow(BUYER_ONLY_ERROR);
+    await expect(unwrap(submitOrder([]))).rejects.toThrow(BUYER_ONLY_ERROR);
   });
 
   it("rejects an admin caller", async () => {
     setSessionCookie(cookieStore, await adminToken());
-    await expect(submitOrder([])).rejects.toThrow(BUYER_ONLY_ERROR);
+    await expect(unwrap(submitOrder([]))).rejects.toThrow(BUYER_ONLY_ERROR);
   });
 });
 
@@ -191,8 +192,8 @@ describe("listMyOrders", () => {
   it("returns only the session buyer's orders, newest first", async () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine();
-    await submitOrder([{ medicineId: String(medicine._id), boxes: 1 }]);
-    await submitOrder([{ medicineId: String(medicine._id), boxes: 2 }]);
+    await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1 }]));
+    await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 2 }]));
 
     // Another buyer's order must not appear.
     const other = new mongoose.Types.ObjectId();
@@ -213,7 +214,7 @@ describe("getMyOrder — ownership", () => {
   it("returns the buyer's own order", async () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine();
-    const created = await submitOrder([{ medicineId: String(medicine._id), boxes: 1 }]);
+    const created = await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1 }]));
     const fetched = await getMyOrder(created._id);
     expect(fetched!._id).toBe(created._id);
   });
@@ -240,8 +241,8 @@ describe("cancelMyOrder — ownership and status", () => {
   it("cancels the buyer's own pending order", async () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine();
-    const order = await submitOrder([{ medicineId: String(medicine._id), boxes: 1 }]);
-    await cancelMyOrder(order._id);
+    const order = await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1 }]));
+    await unwrap(cancelMyOrder(order._id));
     const after = await OrderModel.findById(order._id);
     expect(after!.status).toBe("cancelled");
   });
@@ -255,7 +256,7 @@ describe("cancelMyOrder — ownership and status", () => {
       buyerName: "Onno keu",
       items: [{ medicineId: medicine._id, medicineName: "Napa", boxes: 5, boxPricePaisa: 12000 }],
     });
-    await expect(cancelMyOrder(String(foreign._id))).rejects.toThrow(
+    await expect(unwrap(cancelMyOrder(String(foreign._id)))).rejects.toThrow(
       "Order pawa jay ni",
     );
     // and it stays pending
@@ -265,16 +266,16 @@ describe("cancelMyOrder — ownership and status", () => {
   it("refuses to cancel an order that is no longer pending", async () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine();
-    const order = await submitOrder([{ medicineId: String(medicine._id), boxes: 1 }]);
+    const order = await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1 }]));
     await OrderModel.updateOne({ _id: order._id }, { $set: { status: "approved" } });
-    await expect(cancelMyOrder(order._id)).rejects.toThrow(
+    await expect(unwrap(cancelMyOrder(order._id))).rejects.toThrow(
       "Ei order ar cancel kora jabe na",
     );
   });
 
   it("rejects an admin caller", async () => {
     setSessionCookie(cookieStore, await adminToken());
-    await expect(cancelMyOrder("507f1f77bcf86cd799439011")).rejects.toThrow(
+    await expect(unwrap(cancelMyOrder("507f1f77bcf86cd799439011"))).rejects.toThrow(
       BUYER_ONLY_ERROR,
     );
   });
@@ -297,21 +298,21 @@ describe("myDueBalance and myLedger — buyer-scoped reads", () => {
       passwordHash: "x",
       active: true,
     });
-    await recordWholesaleSale({
+    await unwrap(recordWholesaleSale({
       buyerId: String(otherBuyer._id),
       items: [{ medicineId: String(medicine._id), boxes: 5 }], // 60000 paisa
       discountPercent: 0,
       paidPaisa: 0,
-    });
+    }));
 
     // The session buyer's own sale, partially paid, plus a separate payment.
-    await recordWholesaleSale({
+    await unwrap(recordWholesaleSale({
       buyerId: BUYER_USER_ID,
       items: [{ medicineId: String(medicine._id), boxes: 1 }], // 12000 paisa
       discountPercent: 0,
       paidPaisa: 2000,
-    });
-    await recordPayment(BUYER_USER_ID, 10, "test"); // 1000 paisa
+    }));
+    await unwrap(recordPayment(BUYER_USER_ID, 10, "test")); // 1000 paisa
 
     // Back to the buyer session for the reads under test.
     setSessionCookie(cookieStore, await buyerToken());

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { setupTestDb } from "../helpers/db";
+import { unwrap } from "../helpers/action";
 import {
   createMockCookieStore,
   setSessionCookie,
@@ -44,12 +45,12 @@ describe("getSettings", () => {
   });
 
   it("returns the stored settings once they exist", async () => {
-    await updateSettings({
+    await unwrap(updateSettings({
       pharmacyName: "Real Pharmacy",
       address: "123 Road, Dhaka",
       phone: "01700000000",
       invoicePrefix: "RP",
-    });
+    }));
     const settings = await getSettings();
     expect(settings.pharmacyName).toBe("Real Pharmacy");
   });
@@ -71,12 +72,12 @@ describe("readSettings", () => {
   });
 
   it("returns the real stored values once an admin has saved them, with no session required", async () => {
-    await updateSettings({
+    await unwrap(updateSettings({
       pharmacyName: "Real Pharmacy",
       address: "123 Road, Dhaka",
       phone: "01700000000",
       invoicePrefix: "RP",
-    });
+    }));
 
     clearSessionCookie(cookieStore);
     const settings = await readSettings();
@@ -94,12 +95,12 @@ describe("readSettings", () => {
 describe("updateSettings", () => {
   it("updates the name without creating a duplicate", async () => {
     await getSettings();
-    await updateSettings({
+    await unwrap(updateSettings({
       pharmacyName: "New Name",
       address: "Somewhere",
       phone: "01800000000",
       invoicePrefix: "NN",
-    });
+    }));
     expect(await SettingsModel.countDocuments()).toBe(1);
     const settings = await getSettings();
     expect(settings.pharmacyName).toBe("New Name");
@@ -107,23 +108,23 @@ describe("updateSettings", () => {
 
   it("rejects an empty pharmacy name", async () => {
     await expect(
-      updateSettings({
+      unwrap(updateSettings({
         pharmacyName: "  ",
         address: "x",
         phone: "y",
         invoicePrefix: "Z",
-      }),
+      })),
     ).rejects.toThrow("Pharmacy name is required");
   });
 
   it("rejects an empty invoice prefix", async () => {
     await expect(
-      updateSettings({
+      unwrap(updateSettings({
         pharmacyName: "Name",
         address: "x",
         phone: "y",
         invoicePrefix: "",
-      }),
+      })),
     ).rejects.toThrow("Invoice prefix is required");
   });
 
@@ -132,12 +133,12 @@ describe("updateSettings", () => {
   // of a clean domain error.
   it("rejects a non-string pharmacyName instead of crashing on .trim()", async () => {
     await expect(
-      updateSettings({
+      unwrap(updateSettings({
         pharmacyName: 123 as unknown as string,
         address: "x",
         phone: "y",
         invoicePrefix: "NN",
-      }),
+      })),
     ).rejects.toThrow("Pharmacy name is required");
   });
 
@@ -145,75 +146,75 @@ describe("updateSettings", () => {
   // behave like a direct model write, not crash — same leniency
   // medicines.ts's toOptionalString gives genericName/company.
   it("accepts an omitted address and phone, saving them as empty strings", async () => {
-    const settings = await updateSettings({
+    const settings = await unwrap(updateSettings({
       pharmacyName: "No Address Pharmacy",
       invoicePrefix: "NN",
-    } as unknown as Parameters<typeof updateSettings>[0]);
+    } as unknown as Parameters<typeof updateSettings>[0]));
     expect(settings.address).toBe("");
     expect(settings.phone).toBe("");
   });
 
   it("rejects a non-string address instead of crashing on .trim()", async () => {
     await expect(
-      updateSettings({
+      unwrap(updateSettings({
         pharmacyName: "Name",
         address: 42 as unknown as string,
         phone: "y",
         invoicePrefix: "NN",
-      }),
+      })),
     ).rejects.toThrow("address must be a string");
   });
 
   describe("invoicePrefix charset/length", () => {
     it("rejects a prefix shorter than 2 characters", async () => {
       await expect(
-        updateSettings({
+        unwrap(updateSettings({
           pharmacyName: "Name",
           address: "",
           phone: "",
           invoicePrefix: "A",
-        }),
+        })),
       ).rejects.toThrow("Invoice prefix 2-8 character hote hobe");
     });
 
     it("rejects a prefix longer than 8 characters", async () => {
       await expect(
-        updateSettings({
+        unwrap(updateSettings({
           pharmacyName: "Name",
           address: "",
           phone: "",
           invoicePrefix: "ABCDEFGHI",
-        }),
+        })),
       ).rejects.toThrow("Invoice prefix 2-8 character hote hobe");
     });
 
     it("rejects a prefix containing a dash or space", async () => {
       await expect(
-        updateSettings({
+        unwrap(updateSettings({
           pharmacyName: "Name",
           address: "",
           phone: "",
           invoicePrefix: "AB-1",
-        }),
+        })),
       ).rejects.toThrow("Invoice prefix 2-8 character hote hobe");
 
       await expect(
-        updateSettings({
+        unwrap(updateSettings({
           pharmacyName: "Name",
           address: "",
           phone: "",
           invoicePrefix: "A B",
-        }),
+        })),
       ).rejects.toThrow("Invoice prefix 2-8 character hote hobe");
     });
 
     it("normalizes a lowercase prefix to uppercase instead of rejecting it", async () => {
-      const settings = await updateSettings({
+      const settings = await unwrap(updateSettings({
         pharmacyName: "Name",
         address: "",
         phone: "",
         invoicePrefix: "np",
-      });
+      }));
       expect(settings.invoicePrefix).toBe("NP");
     });
   });
@@ -250,14 +251,14 @@ describe("concurrent access", () => {
     };
 
     const results = await Promise.all([
-      updateSettings(input),
-      updateSettings(input),
-      updateSettings(input),
-      updateSettings(input),
-      updateSettings(input),
-      updateSettings(input),
-      updateSettings(input),
-      updateSettings(input),
+      unwrap(updateSettings(input)),
+      unwrap(updateSettings(input)),
+      unwrap(updateSettings(input)),
+      unwrap(updateSettings(input)),
+      unwrap(updateSettings(input)),
+      unwrap(updateSettings(input)),
+      unwrap(updateSettings(input)),
+      unwrap(updateSettings(input)),
     ]);
 
     const ids = new Set(results.map((r) => String((r as unknown as { _id: unknown })._id)));
@@ -310,12 +311,12 @@ describe("duplicate-key race handling (mocked)", () => {
       return original(...args);
     });
 
-    const settings = await updateSettings({
+    const settings = await unwrap(updateSettings({
       pharmacyName: "Retried Pharmacy",
       address: "2 Retry Avenue",
       phone: "01911111111",
       invoicePrefix: "RT",
-    });
+    }));
 
     expect(calls).toBe(2);
     expect(settings.pharmacyName).toBe("Retried Pharmacy");
@@ -341,24 +342,24 @@ describe("authorization", () => {
   it("updateSettings rejects an unauthenticated caller", async () => {
     clearSessionCookie(cookieStore);
     await expect(
-      updateSettings({
+      unwrap(updateSettings({
         pharmacyName: "Hacked Pharmacy",
         address: "",
         phone: "",
         invoicePrefix: "HK",
-      }),
+      })),
     ).rejects.toThrow(ADMIN_ONLY_ERROR);
   });
 
   it("updateSettings rejects a buyer-role session", async () => {
     setSessionCookie(cookieStore, await buyerToken());
     await expect(
-      updateSettings({
+      unwrap(updateSettings({
         pharmacyName: "Hacked Pharmacy",
         address: "",
         phone: "",
         invoicePrefix: "HK",
-      }),
+      })),
     ).rejects.toThrow(ADMIN_ONLY_ERROR);
   });
 });

@@ -37,7 +37,7 @@ async function makeMedicine(stockPatas = 500) {
 }
 
 async function makeBuyer(name = "Karim Uddin") {
-  return createBuyer(
+  return unwrap(createBuyer(
     {
       name,
       shopName: "Medical Hall",
@@ -45,7 +45,7 @@ async function makeBuyer(name = "Karim Uddin") {
       address: "Mirpur",
     },
     "secret123",
-  );
+  ));
 }
 
 beforeEach(async () => {
@@ -57,12 +57,12 @@ describe("computeBuyerDue", () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
 
-    await recordWholesaleSale({
+    await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 2 }], // 24000 paisa
       discountPercent: 0,
       paidPaisa: 0,
-    });
+    }));
 
     expect(await computeBuyerDue(buyer._id)).toBe(24000);
   });
@@ -76,16 +76,16 @@ describe("computeBuyerDue", () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
 
-    const sale = await recordWholesaleSale({
+    const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 2 }], // 24000 paisa
       discountPercent: 0,
       paidPaisa: 0,
-    });
-    await recordPayment(buyer._id, 240, "Cash"); // 24000 paisa, pays it off exactly
+    }));
+    await unwrap(recordPayment(buyer._id, 240, "Cash")); // 24000 paisa, pays it off exactly
     expect(await computeBuyerDue(buyer._id)).toBe(0);
 
-    await cancelSale(sale._id, "test cancel");
+    await unwrap(cancelSale(sale._id, "test cancel"));
 
     // The 24000 payment does not disappear with the cancelled sale — it
     // becomes credit, matching the worked example in due.ts's doc comment.
@@ -104,18 +104,18 @@ describe("loadBuyerLedger", () => {
     const buyer = await makeBuyer();
     const other = await makeBuyer("Rahim");
 
-    await recordWholesaleSale({
+    await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
       discountPercent: 0,
       paidPaisa: 0,
-    });
-    await recordWholesaleSale({
+    }));
+    await unwrap(recordWholesaleSale({
       buyerId: other._id,
       items: [{ medicineId: medicine._id, boxes: 5 }],
       discountPercent: 0,
       paidPaisa: 0,
-    });
+    }));
 
     const ledger = await loadBuyerLedger(buyer._id);
     expect(ledger.sales).toHaveLength(1);

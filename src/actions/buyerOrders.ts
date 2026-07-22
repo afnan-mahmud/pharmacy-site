@@ -13,6 +13,7 @@ import { OrderModel, type OrderDoc } from "@/models/Order";
 import { type PaymentDoc } from "@/models/Payment";
 import { type SaleDoc } from "@/models/Sale";
 import { toMedicineForm, type MedicineForm } from "@/lib/unitLabels";
+import { actionResult, type ActionResult } from "@/lib/actionResult";
 
 export type OrderItemInput = { medicineId: string; boxes: number };
 
@@ -71,7 +72,9 @@ export async function searchMedicinesForBuyer(
     active: true,
     $or: [{ name: pattern }, { genericName: pattern }],
   })
-    .select("name company form boxPricePaisa mrpBoxPricePaisa stockPatas lowStockThreshold")
+    .select(
+      "name company form boxPricePaisa mrpBoxPricePaisa stockPatas lowStockThreshold",
+    )
     .sort({ name: 1 })
     .limit(20)
     .lean<
@@ -127,41 +130,44 @@ function validateItems(items: OrderItemInput[]): void {
 
 export async function submitOrder(
   items: OrderItemInput[],
-): Promise<Serialized<OrderDoc>> {
-  const session = await requireBuyerAction();
-  await connectDb();
-  validateItems(items);
+): Promise<ActionResult<Serialized<OrderDoc>>> {
+  return actionResult(async () => {
+    const session = await requireBuyerAction();
+    await connectDb();
+    validateItems(items);
 
-  const buyer = await BuyerModel.findById(session.userId);
-  // The session could outlive the account being deactivated; re-check.
-  if (!buyer || !buyer.active) {
-    throw new Error("Apnar account bondho ache");
-  }
+    const buyer = await BuyerModel.findById(session.userId);
+    // The session could outlive the account being deactivated; re-check.
+    if (!buyer || !buyer.active) {
+      throw new Error("Apnar account bondho ache");
+    }
 
-  const lines = [];
-  for (const item of items) {
-    const medicine = await MedicineModel.findById(item.medicineId);
-    if (!medicine || !medicine.active) throw new Error("Medicine pawa jay ni");
-    lines.push({
-      medicineId: medicine._id,
-      medicineName: medicine.name,
-      form: medicine.form,
-      boxes: item.boxes,
-      // Snapshot the box price the buyer is ordering at.
-      boxPricePaisa: medicine.boxPricePaisa,
+    const lines = [];
+    for (const item of items) {
+      const medicine = await MedicineModel.findById(item.medicineId);
+      if (!medicine || !medicine.active)
+        throw new Error("Medicine pawa jay ni");
+      lines.push({
+        medicineId: medicine._id,
+        medicineName: medicine.name,
+        form: medicine.form,
+        boxes: item.boxes,
+        // Snapshot the box price the buyer is ordering at.
+        boxPricePaisa: medicine.boxPricePaisa,
+      });
+    }
+
+    const order = await OrderModel.create({
+      buyerId: buyer._id,
+      buyerName: buyer.name,
+      buyerShopName: buyer.shopName,
+      items: lines,
+      status: "pending",
     });
-  }
 
-  const order = await OrderModel.create({
-    buyerId: buyer._id,
-    buyerName: buyer.name,
-    buyerShopName: buyer.shopName,
-    items: lines,
-    status: "pending",
+    revalidatePath("/buyer/orders");
+    return toPlain(order.toObject());
   });
-
-  revalidatePath("/buyer/orders");
-  return toPlain(order.toObject());
 }
 
 export async function listMyOrders(): Promise<Serialized<OrderDoc>[]> {
@@ -191,33 +197,37 @@ export async function getMyOrder(
   return order ? toPlain(order) : null;
 }
 
-export async function cancelMyOrder(orderId: string): Promise<void> {
-  const session = await requireBuyerAction();
-  await connectDb();
+export async function cancelMyOrder(
+  orderId: string,
+): Promise<ActionResult<void>> {
+  return actionResult(async () => {
+    const session = await requireBuyerAction();
+    await connectDb();
 
-  if (!mongoose.Types.ObjectId.isValid(orderId)) {
-    throw new Error("Order pawa jay ni");
-  }
+    if (!mongoose.Types.ObjectId.isValid(orderId)) {
+      throw new Error("Order pawa jay ni");
+    }
 
-  // Confirm ownership first, with a message that does not reveal whether the
-  // order exists under a different buyer.
-  const order = await OrderModel.findOne({
-    _id: orderId,
-    buyerId: session.userId,
+    // Confirm ownership first, with a message that does not reveal whether the
+    // order exists under a different buyer.
+    const order = await OrderModel.findOne({
+      _id: orderId,
+      buyerId: session.userId,
+    });
+    if (!order) throw new Error("Order pawa jay ni");
+
+    // Only a pending order is cancelable; guard the transition in the filter so
+    // a race can't cancel an order the owner is mid-approving.
+    const result = await OrderModel.updateOne(
+      { _id: orderId, buyerId: session.userId, status: "pending" },
+      { $set: { status: "cancelled", resolvedAt: new Date() } },
+    );
+    if (result.matchedCount === 0) {
+      throw new Error("Ei order ar cancel kora jabe na");
+    }
+
+    revalidatePath("/buyer/orders");
   });
-  if (!order) throw new Error("Order pawa jay ni");
-
-  // Only a pending order is cancelable; guard the transition in the filter so
-  // a race can't cancel an order the owner is mid-approving.
-  const result = await OrderModel.updateOne(
-    { _id: orderId, buyerId: session.userId, status: "pending" },
-    { $set: { status: "cancelled", resolvedAt: new Date() } },
-  );
-  if (result.matchedCount === 0) {
-    throw new Error("Ei order ar cancel kora jabe na");
-  }
-
-  revalidatePath("/buyer/orders");
 }
 
 /**

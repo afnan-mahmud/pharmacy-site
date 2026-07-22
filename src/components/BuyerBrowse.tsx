@@ -86,9 +86,13 @@ export function BuyerBrowse() {
     setError("");
     setDone("");
     try {
-      await submitOrder(
+      const result = await submitOrder(
         cart.map((l) => ({ medicineId: l.medicine.id, boxes: l.boxes })),
       );
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
       setDone("Order pathano hoyeche. Malik approve korle janiye deya hobe.");
       setCart([]);
       router.refresh();

@@ -36,7 +36,11 @@ export function BuyerOrderList({ orders }: { orders: OrderRow[] }) {
     setError("");
     setCancellingId(id);
     try {
-      await cancelMyOrder(id);
+      const result = await cancelMyOrder(id);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kichu ekta bhul holo");

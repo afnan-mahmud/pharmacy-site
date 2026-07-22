@@ -43,12 +43,29 @@ export function BuyerForm({
       };
 
       if (initial?.id) {
-        await updateBuyer(initial.id, input);
+        const updated = await updateBuyer(initial.id, input);
+        if (!updated.ok) {
+          setError(updated.error);
+          setBusy(false);
+          return;
+        }
         // Blank means "leave the password alone" — the owner is editing
         // details, not resetting access.
-        if (password) await setBuyerPassword(initial.id, password);
+        if (password) {
+          const pw = await setBuyerPassword(initial.id, password);
+          if (!pw.ok) {
+            setError(pw.error);
+            setBusy(false);
+            return;
+          }
+        }
       } else {
-        await createBuyer(input, password);
+        const created = await createBuyer(input, password);
+        if (!created.ok) {
+          setError(created.error);
+          setBusy(false);
+          return;
+        }
       }
       router.refresh();
       onDone();

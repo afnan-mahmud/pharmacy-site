@@ -38,7 +38,7 @@ async function makeMedicine(stockPatas = 500) {
 }
 
 async function makeBuyer(name = "Karim Uddin") {
-  return createBuyer(
+  return unwrap(createBuyer(
     {
       name,
       shopName: "Medical Hall",
@@ -46,7 +46,7 @@ async function makeBuyer(name = "Karim Uddin") {
       address: "Mirpur",
     },
     "secret123",
-  );
+  ));
 }
 
 beforeEach(async () => {
@@ -59,19 +59,19 @@ describe("listBuyerDues", () => {
     const buyer = await makeBuyer();
     
     // Total: 360, paid 200, due 160
-    await recordWholesaleSale({
+    await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 3 }], // 36000
       discountPercent: 0,
       paidPaisa: 20000,
-    });
+    }));
     // Total: 240, paid 240, due 0
-    await recordWholesaleSale({
+    await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 2 }], // 24000
       discountPercent: 0,
       paidPaisa: 24000,
-    });
+    }));
 
     const dues = await listBuyerDues();
     expect(dues).toHaveLength(1);
@@ -83,13 +83,13 @@ describe("listBuyerDues", () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
     
-    await recordWholesaleSale({
+    await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 3 }],
       discountPercent: 0,
       paidPaisa: 20000, // Due 16000
-    });
-    await recordPayment(buyer._id, 100, "Cash"); // 10000 paisa
+    }));
+    await unwrap(recordPayment(buyer._id, 100, "Cash")); // 10000 paisa
     
     const dues = await listBuyerDues();
     expect(dues[0].duePaisa).toBe(6000);
@@ -99,14 +99,14 @@ describe("listBuyerDues", () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
     
-    const sale = await recordWholesaleSale({
+    const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 3 }],
       discountPercent: 0,
       paidPaisa: 0, // Due 36000
-    });
+    }));
     
-    await cancelSale(sale._id, "test");
+    await unwrap(cancelSale(sale._id, "test"));
     
     const dues = await listBuyerDues();
     expect(dues).toHaveLength(0); // Cancelled sale means 0 wholesale active sales, so filtered out
@@ -120,20 +120,20 @@ describe("listBuyerDues", () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
 
-    const saleA = await recordWholesaleSale({
+    const saleA = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 10 }], // 120000 paisa
       discountPercent: 0,
       paidPaisa: 0,
-    });
-    await recordWholesaleSale({
+    }));
+    await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 5 }], // 60000 paisa
       discountPercent: 0,
       paidPaisa: 0,
-    });
-    await recordPayment(buyer._id, 1200, "Cash");
-    await cancelSale(saleA._id, "Bhul order");
+    }));
+    await unwrap(recordPayment(buyer._id, 1200, "Cash"));
+    await unwrap(cancelSale(saleA._id, "Bhul order"));
 
     const dues = await listBuyerDues();
     expect(dues).toHaveLength(1);
@@ -145,18 +145,18 @@ describe("listBuyerDues", () => {
     const buyer1 = await makeBuyer("Karim");
     const buyer2 = await makeBuyer("Rahim");
 
-    await recordWholesaleSale({
+    await unwrap(recordWholesaleSale({
       buyerId: buyer1._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
       discountPercent: 0,
       paidPaisa: 10000, // Due 2000
-    });
-    await recordWholesaleSale({
+    }));
+    await unwrap(recordWholesaleSale({
       buyerId: buyer2._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
       discountPercent: 0,
       paidPaisa: 0, // Due 12000
-    });
+    }));
 
     const dues = await listBuyerDues();
     expect(dues).toHaveLength(2);
@@ -172,13 +172,13 @@ describe("buyerDueBalance", () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
 
-    await recordWholesaleSale({
+    await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
       discountPercent: 0,
       paidPaisa: 10000, // Due 2000
-    });
-    await recordPayment(buyer._id, 10, "test"); // 1000 paisa
+    }));
+    await unwrap(recordPayment(buyer._id, 10, "test")); // 1000 paisa
 
     const bal = await buyerDueBalance(buyer._id);
     expect(bal).toBe(1000);
@@ -207,23 +207,23 @@ describe("buyerDueBalance", () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
 
-    const saleA = await recordWholesaleSale({
+    const saleA = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 10 }], // 120000 paisa
       discountPercent: 0,
       paidPaisa: 0,
-    });
-    await recordWholesaleSale({
+    }));
+    await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 5 }], // 60000 paisa
       discountPercent: 0,
       paidPaisa: 0,
-    });
+    }));
 
-    await recordPayment(buyer._id, 1200, "Cash"); // 120000 paisa
+    await unwrap(recordPayment(buyer._id, 1200, "Cash")); // 120000 paisa
     expect(await buyerDueBalance(buyer._id)).toBe(60000); // 1800 - 1200 = 600 owed, pre-cancel
 
-    await cancelSale(saleA._id, "Bhul order");
+    await unwrap(cancelSale(saleA._id, "Bhul order"));
 
     // 600 (B's due) - 1200 (payment) = -600: the buyer is in credit, not
     // square and not still owing 600.
@@ -234,16 +234,16 @@ describe("buyerDueBalance", () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
 
-    const sale = await recordWholesaleSale({
+    const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 10 }], // 120000 paisa
       discountPercent: 0,
       paidPaisa: 0,
-    });
-    await recordPayment(buyer._id, 1200, "Cash"); // pays it off in full
+    }));
+    await unwrap(recordPayment(buyer._id, 1200, "Cash")); // pays it off in full
     expect(await buyerDueBalance(buyer._id)).toBe(0);
 
-    await cancelSale(sale._id, "Bhul order");
+    await unwrap(cancelSale(sale._id, "Bhul order"));
 
     // The 1200 payment doesn't disappear just because the sale it paid for
     // did — it becomes ৳1200 of credit, not a reset to 0.
@@ -256,14 +256,14 @@ describe("recordPayment", () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
     
-    await recordWholesaleSale({
+    await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
       discountPercent: 0,
       paidPaisa: 0, // Due 12000
-    });
+    }));
     
-    await recordPayment(buyer._id, 50, "Bank transfer"); // 5000 paisa
+    await unwrap(recordPayment(buyer._id, 50, "Bank transfer")); // 5000 paisa
     
     const count = await PaymentModel.countDocuments({ buyerId: buyer._id });
     expect(count).toBe(1);
@@ -276,21 +276,21 @@ describe("recordPayment", () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
     
-    await recordWholesaleSale({
+    await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
       discountPercent: 0,
       paidPaisa: 10000, // Due 2000
-    });
+    }));
 
     // 20 taka (2000 paisa) is allowed. 20.5 taka (2050 paisa) is not.
-    await expect(recordPayment(buyer._id, 25, "test")).rejects.toThrow(
+    await expect(unwrap(recordPayment(buyer._id, 25, "test"))).rejects.toThrow(
       "hote parbe na"
     );
   });
 
   it("rejects an invalid buyer", async () => {
-    await expect(recordPayment("507f1f77bcf86cd799439011", 50, "")).rejects.toThrow(
+    await expect(unwrap(recordPayment("507f1f77bcf86cd799439011", 50, ""))).rejects.toThrow(
       "Buyer pawa jay ni"
     );
   });
@@ -299,39 +299,39 @@ describe("recordPayment", () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
 
-    const sale = await recordWholesaleSale({
+    const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 10 }], // 120000 paisa
       discountPercent: 0,
       paidPaisa: 0,
-    });
-    await recordPayment(buyer._id, 1200, "Cash"); // pays it off exactly
-    await cancelSale(sale._id, "Bhul order"); // now buyer is 1200 in credit
+    }));
+    await unwrap(recordPayment(buyer._id, 1200, "Cash")); // pays it off exactly
+    await unwrap(cancelSale(sale._id, "Bhul order")); // now buyer is 1200 in credit
 
-    await expect(recordPayment(buyer._id, 10, "test")).rejects.toThrow(
+    await expect(unwrap(recordPayment(buyer._id, 10, "test"))).rejects.toThrow(
       "kono baki nei",
     );
   });
 
   it("rejects an unauthenticated caller", async () => {
     clearSessionCookie(cookieStore);
-    await expect(recordPayment("507f1f77bcf86cd799439011", 50, "")).rejects.toThrow();
+    await expect(unwrap(recordPayment("507f1f77bcf86cd799439011", 50, ""))).rejects.toThrow();
   });
 
   it("does not let two concurrent payments for the whole due both commit (a double-click must not halve the debt)", async () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
 
-    await recordWholesaleSale({
+    await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 1 }], // 12000 paisa due
       discountPercent: 0,
       paidPaisa: 0,
-    });
+    }));
 
     const results = await Promise.allSettled([
-      recordPayment(buyer._id, 120, "concurrent A"),
-      recordPayment(buyer._id, 120, "concurrent B"),
+      unwrap(recordPayment(buyer._id, 120, "concurrent A")),
+      unwrap(recordPayment(buyer._id, 120, "concurrent B")),
     ]);
 
     const fulfilled = results.filter((r) => r.status === "fulfilled");
@@ -350,13 +350,13 @@ describe("buyerLedger", () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
     
-    await recordWholesaleSale({
+    await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
       discountPercent: 0,
       paidPaisa: 0,
-    });
-    await recordPayment(buyer._id, 10, "test");
+    }));
+    await unwrap(recordPayment(buyer._id, 10, "test"));
     
     const ledger = await buyerLedger(buyer._id);
     expect(ledger.sales).toHaveLength(1);

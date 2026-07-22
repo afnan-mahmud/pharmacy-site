@@ -9,6 +9,7 @@ import { boxesToPatas } from "@/lib/units";
 import { applyStockDelta } from "@/lib/stockTransaction";
 import { MedicineModel } from "@/models/Medicine";
 import { StockEntryModel, type StockEntryDoc } from "@/models/StockEntry";
+import { actionResult, type ActionResult } from "@/lib/actionResult";
 
 export type StockInInput = {
   medicineId: string;
@@ -47,65 +48,75 @@ function validate(input: StockInInput): void {
   }
 }
 
-export async function stockIn(input: StockInInput): Promise<void> {
-  const adminSession = await requireAdminAction();
-  await connectDb();
-  validate(input);
+export async function stockIn(
+  input: StockInInput,
+): Promise<ActionResult<void>> {
+  return actionResult(async () => {
+    const adminSession = await requireAdminAction();
+    await connectDb();
+    validate(input);
 
-  // The stock increment and the audit record must both land or neither:
-  // an increment without a record is stock nobody can account for, and a
-  // record without an increment is a lie in the audit log.
-  const session = await mongoose.startSession();
-  try {
-    await session.withTransaction(async () => {
-      // The read lives *inside* withTransaction, not before it. MongoDB
-      // retries this callback from the top on a TransientTransactionError
-      // (e.g. a write conflict) — a read taken before the transaction opened
-      // would not be re-evaluated by that retry, so a retry could act on
-      // data that is already stale by the time it runs. Reading in here
-      // means every attempt, including retries, sees a fresh document.
-      const medicine = await MedicineModel.findById(input.medicineId).session(
-        session,
-      );
-      if (!medicine) throw new Error("Medicine not found");
+    // The stock increment and the audit record must both land or neither:
+    // an increment without a record is stock nobody can account for, and a
+    // record without an increment is a lie in the audit log.
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        // The read lives *inside* withTransaction, not before it. MongoDB
+        // retries this callback from the top on a TransientTransactionError
+        // (e.g. a write conflict) — a read taken before the transaction opened
+        // would not be re-evaluated by that retry, so a retry could act on
+        // data that is already stale by the time it runs. Reading in here
+        // means every attempt, including retries, sees a fresh document.
+        const medicine = await MedicineModel.findById(input.medicineId).session(
+          session,
+        );
+        if (!medicine) throw new Error("Medicine not found");
 
-      const patasAdded = boxesToPatas(input.boxes, medicine.patasPerBox);
+        const patasAdded = boxesToPatas(input.boxes, medicine.patasPerBox);
 
-      // See src/lib/stockTransaction.ts for why this goes through
-      // applyStockDelta rather than a bare `updateOne(..., { $inc })`, even
-      // though stockIn's delta is always positive and so can never fail the
-      // "enough stock" half of the precondition — only the "still exists"
-      // half. matchedCount === 0 here can only mean the medicine stopped
-      // existing in the (very small) window since the read above, which
-      // this treats as the same "not found" failure the read itself already
-      // guards against.
-      const matched = await applyStockDelta(medicine._id, patasAdded, session);
-      if (!matched) throw new Error("Medicine not found");
+        // See src/lib/stockTransaction.ts for why this goes through
+        // applyStockDelta rather than a bare `updateOne(..., { $inc })`, even
+        // though stockIn's delta is always positive and so can never fail the
+        // "enough stock" half of the precondition — only the "still exists"
+        // half. matchedCount === 0 here can only mean the medicine stopped
+        // existing in the (very small) window since the read above, which
+        // this treats as the same "not found" failure the read itself already
+        // guards against.
+        const matched = await applyStockDelta(
+          medicine._id,
+          patasAdded,
+          session,
+        );
+        if (!matched) throw new Error("Medicine not found");
 
-      await StockEntryModel.create(
-        [
-          {
-            medicineId: medicine._id,
-            medicineName: medicine.name,
-            boxes: input.boxes,
-            patasAdded,
-            form: medicine.form,
-            note: input.note.trim(),
-            createdBy: new mongoose.Types.ObjectId(adminSession.userId),
-          },
-        ],
-        { session },
-      );
-    });
-  } finally {
-    await session.endSession();
-  }
+        await StockEntryModel.create(
+          [
+            {
+              medicineId: medicine._id,
+              medicineName: medicine.name,
+              boxes: input.boxes,
+              patasAdded,
+              form: medicine.form,
+              note: input.note.trim(),
+              createdBy: new mongoose.Types.ObjectId(adminSession.userId),
+            },
+          ],
+          { session },
+        );
+      });
+    } finally {
+      await session.endSession();
+    }
 
-  revalidatePath("/stock");
-  revalidatePath("/medicines");
+    revalidatePath("/stock");
+    revalidatePath("/medicines");
+  });
 }
 
-export async function listStockEntries(limit = 50): Promise<Serialized<StockEntryDoc>[]> {
+export async function listStockEntries(
+  limit = 50,
+): Promise<Serialized<StockEntryDoc>[]> {
   await requireAdminAction();
   await connectDb();
   const docs = await StockEntryModel.find()

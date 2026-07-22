@@ -104,12 +104,18 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
     setBusy(true);
 
     try {
-      const sale = await recordWholesaleSale({
+      const result = await recordWholesaleSale({
         buyerId,
         items: cart.map((l) => ({ medicineId: l.medicine.id, boxes: l.boxes })),
         discountPercent: Number(discount || 0),
         paidPaisa: Math.round(takaToPaisa(paid || 0)),
       });
+      if (!result.ok) {
+        setError(result.error);
+        setBusy(false);
+        return;
+      }
+      const sale = result.data;
       setCart([]);
       setDiscount("");
       setPaid("");

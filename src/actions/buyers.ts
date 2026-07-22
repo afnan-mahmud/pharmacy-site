@@ -7,6 +7,7 @@ import { requireAdminAction } from "@/lib/session";
 import { hashPassword } from "@/lib/auth";
 import { toPlain, toPlainList, type Serialized } from "@/lib/serialize";
 import { BuyerModel, type PublicBuyerDoc } from "@/models/Buyer";
+import { actionResult, type ActionResult } from "@/lib/actionResult";
 
 export type BuyerInput = {
   name: string;
@@ -56,98 +57,116 @@ function isDuplicateKeyError(error: unknown): boolean {
 export async function createBuyer(
   input: BuyerInput,
   password: string,
-): Promise<Serialized<PublicBuyerDoc>> {
-  await requireAdminAction();
-  await connectDb();
-  validate(input);
+): Promise<ActionResult<Serialized<PublicBuyerDoc>>> {
+  return actionResult(async () => {
+    await requireAdminAction();
+    await connectDb();
+    validate(input);
 
-  // hashPassword enforces the 6-character minimum and throws below it.
-  const passwordHash = await hashPassword(password);
+    // hashPassword enforces the 6-character minimum and throws below it.
+    const passwordHash = await hashPassword(password);
 
-  try {
-    const buyer = await BuyerModel.create({ ...toFields(input), passwordHash });
-    revalidatePath("/buyers");
-    const { passwordHash: _omit, ...rest } = buyer.toObject();
-    return toPlain(rest as PublicBuyerDoc);
-  } catch (error) {
-    if (isDuplicateKeyError(error)) {
-      throw new Error(`Ei phone number (${input.phone.trim()}) already exists`);
+    try {
+      const buyer = await BuyerModel.create({
+        ...toFields(input),
+        passwordHash,
+      });
+      revalidatePath("/buyers");
+      const { passwordHash: _omit, ...rest } = buyer.toObject();
+      return toPlain(rest as PublicBuyerDoc);
+    } catch (error) {
+      if (isDuplicateKeyError(error)) {
+        throw new Error(
+          `Ei phone number (${input.phone.trim()}) already exists`,
+        );
+      }
+      throw error;
     }
-    throw error;
-  }
+  });
 }
 
 export async function updateBuyer(
   id: string,
   input: BuyerInput,
-): Promise<Serialized<PublicBuyerDoc>> {
-  await requireAdminAction();
-  await connectDb();
-  validate(input);
+): Promise<ActionResult<Serialized<PublicBuyerDoc>>> {
+  return actionResult(async () => {
+    await requireAdminAction();
+    await connectDb();
+    validate(input);
 
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    throw new Error("Buyer pawa jay ni");
-  }
-
-  try {
-    // passwordHash is deliberately absent: passwords change only through
-    // setBuyerPassword, never through the buyer form.
-    const buyer = await BuyerModel.findByIdAndUpdate(
-      id,
-      { $set: toFields(input) },
-      { new: true, runValidators: true },
-    )
-      .select(PUBLIC_FIELDS)
-      .lean<PublicBuyerDoc>();
-
-    if (!buyer) throw new Error("Buyer pawa jay ni");
-    revalidatePath("/buyers");
-    return toPlain(buyer);
-  } catch (error) {
-    if (isDuplicateKeyError(error)) {
-      throw new Error(`Ei phone number (${input.phone.trim()}) already exists`);
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new Error("Buyer pawa jay ni");
     }
-    throw error;
-  }
+
+    try {
+      // passwordHash is deliberately absent: passwords change only through
+      // setBuyerPassword, never through the buyer form.
+      const buyer = await BuyerModel.findByIdAndUpdate(
+        id,
+        { $set: toFields(input) },
+        { new: true, runValidators: true },
+      )
+        .select(PUBLIC_FIELDS)
+        .lean<PublicBuyerDoc>();
+
+      if (!buyer) throw new Error("Buyer pawa jay ni");
+      revalidatePath("/buyers");
+      return toPlain(buyer);
+    } catch (error) {
+      if (isDuplicateKeyError(error)) {
+        throw new Error(
+          `Ei phone number (${input.phone.trim()}) already exists`,
+        );
+      }
+      throw error;
+    }
+  });
 }
 
 export async function setBuyerPassword(
   id: string,
   password: string,
-): Promise<void> {
-  await requireAdminAction();
-  await connectDb();
+): Promise<ActionResult<void>> {
+  return actionResult(async () => {
+    await requireAdminAction();
+    await connectDb();
 
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    throw new Error("Buyer pawa jay ni");
-  }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new Error("Buyer pawa jay ni");
+    }
 
-  const passwordHash = await hashPassword(password);
-  const result = await BuyerModel.updateOne(
-    { _id: id },
-    { $set: { passwordHash } },
-  );
-  if (result.matchedCount === 0) throw new Error("Buyer pawa jay ni");
+    const passwordHash = await hashPassword(password);
+    const result = await BuyerModel.updateOne(
+      { _id: id },
+      { $set: { passwordHash } },
+    );
+    if (result.matchedCount === 0) throw new Error("Buyer pawa jay ni");
+  });
 }
 
 export async function setBuyerActive(
   id: string,
   active: boolean,
-): Promise<void> {
-  await requireAdminAction();
-  await connectDb();
+): Promise<ActionResult<void>> {
+  return actionResult(async () => {
+    await requireAdminAction();
+    await connectDb();
 
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    throw new Error("Buyer pawa jay ni");
-  }
-  if (typeof active !== "boolean") {
-    throw new Error("active must be a boolean");
-  }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new Error("Buyer pawa jay ni");
+    }
+    if (typeof active !== "boolean") {
+      throw new Error("active must be a boolean");
+    }
 
-  // Deactivated, never deleted: past sales and due history reference buyers.
-  const result = await BuyerModel.updateOne({ _id: id }, { $set: { active } });
-  if (result.matchedCount === 0) throw new Error("Buyer pawa jay ni");
-  revalidatePath("/buyers");
+    // Deactivated, never deleted: past sales and due history reference buyers.
+    const result = await BuyerModel.updateOne(
+      { _id: id },
+      { $set: { active } },
+    );
+    if (result.matchedCount === 0) throw new Error("Buyer pawa jay ni");
+    revalidatePath("/buyers");
+  });
 }
 
 export async function listBuyers(

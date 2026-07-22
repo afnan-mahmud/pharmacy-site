@@ -42,11 +42,11 @@ const napa = {
 describe("stockIn", () => {
   it("converts boxes to patas and increases stock", async () => {
     const medicine = await unwrap(createMedicine(napa));
-    await stockIn({
+    await unwrap(stockIn({
       medicineId: String(medicine._id),
       boxes: 50,
       note: "",
-    });
+    }));
 
     const updated = await MedicineModel.findById(medicine._id);
     expect(updated!.stockPatas).toBe(500);
@@ -55,8 +55,8 @@ describe("stockIn", () => {
   it("accumulates across entries", async () => {
     const medicine = await unwrap(createMedicine(napa));
     const entry = { medicineId: String(medicine._id), note: "" };
-    await stockIn({ ...entry, boxes: 50 });
-    await stockIn({ ...entry, boxes: 20 });
+    await unwrap(stockIn({ ...entry, boxes: 50 }));
+    await unwrap(stockIn({ ...entry, boxes: 20 }));
 
     const updated = await MedicineModel.findById(medicine._id);
     expect(updated!.stockPatas).toBe(700);
@@ -64,11 +64,11 @@ describe("stockIn", () => {
 
   it("records the entry with the snapshotted pata count", async () => {
     const medicine = await unwrap(createMedicine(napa));
-    await stockIn({
+    await unwrap(stockIn({
       medicineId: String(medicine._id),
       boxes: 50,
       note: "Beximco delivery",
-    });
+    }));
 
     const entries = await StockEntryModel.find();
     expect(entries).toHaveLength(1);
@@ -83,11 +83,11 @@ describe("stockIn", () => {
   // stockIn derives it itself from requireAdminAction()'s session.
   it("stamps createdBy from the session, not from the input", async () => {
     const medicine = await unwrap(createMedicine(napa));
-    await stockIn({
+    await unwrap(stockIn({
       medicineId: String(medicine._id),
       boxes: 50,
       note: "",
-    });
+    }));
 
     const entries = await StockEntryModel.find();
     expect(entries).toHaveLength(1);
@@ -96,22 +96,22 @@ describe("stockIn", () => {
 
   it("keeps the historical patasAdded when patasPerBox later changes, and a new entry uses the new pack size", async () => {
     const medicine = await unwrap(createMedicine(napa));
-    await stockIn({
+    await unwrap(stockIn({
       medicineId: String(medicine._id),
       boxes: 10,
       note: "",
-    });
+    }));
 
     // The pack size changes; history must not be retroactively rewritten.
     await MedicineModel.findByIdAndUpdate(medicine._id, {
       $set: { patasPerBox: 12 },
     });
 
-    await stockIn({
+    await unwrap(stockIn({
       medicineId: String(medicine._id),
       boxes: 10,
       note: "",
-    });
+    }));
 
     const entries = await StockEntryModel.find().sort({ createdAt: 1 });
     expect(entries).toHaveLength(2);
@@ -122,24 +122,24 @@ describe("stockIn", () => {
   it("rejects zero boxes", async () => {
     const medicine = await unwrap(createMedicine(napa));
     await expect(
-      stockIn({ medicineId: String(medicine._id), boxes: 0, note: "" }),
+      unwrap(stockIn({ medicineId: String(medicine._id), boxes: 0, note: "" })),
     ).rejects.toThrow("Poriman 1 er kom hote parbe na");
   });
 
   it("rejects negative boxes", async () => {
     const medicine = await unwrap(createMedicine(napa));
     await expect(
-      stockIn({ medicineId: String(medicine._id), boxes: -5, note: "" }),
+      unwrap(stockIn({ medicineId: String(medicine._id), boxes: -5, note: "" })),
     ).rejects.toThrow("Poriman 1 er kom hote parbe na");
   });
 
   it("rejects an unknown medicine and writes no entry", async () => {
     await expect(
-      stockIn({
+      unwrap(stockIn({
         medicineId: "507f1f77bcf86cd799439011",
         boxes: 5,
         note: "",
-      }),
+      })),
     ).rejects.toThrow("Medicine not found");
     expect(await StockEntryModel.countDocuments()).toBe(0);
   });
@@ -148,11 +148,11 @@ describe("stockIn", () => {
 describe("stockIn input validation", () => {
   it("rejects a malformed medicineId instead of throwing a raw CastError", async () => {
     await expect(
-      stockIn({
+      unwrap(stockIn({
         medicineId: "not-an-object-id",
         boxes: 5,
         note: "",
-      }),
+      })),
     ).rejects.toThrow("Medicine not found");
     expect(await StockEntryModel.countDocuments()).toBe(0);
   });
@@ -160,18 +160,18 @@ describe("stockIn input validation", () => {
   it("rejects non-integer boxes", async () => {
     const medicine = await unwrap(createMedicine(napa));
     await expect(
-      stockIn({ medicineId: String(medicine._id), boxes: 1.5, note: "" }),
+      unwrap(stockIn({ medicineId: String(medicine._id), boxes: 1.5, note: "" })),
     ).rejects.toThrow("Poriman 1 er kom hote parbe na");
   });
 
   it("rejects a non-string note instead of crashing on .trim()", async () => {
     const medicine = await unwrap(createMedicine(napa));
     await expect(
-      stockIn({
+      unwrap(stockIn({
         medicineId: String(medicine._id),
         boxes: 5,
         note: 12345 as unknown as string,
-      }),
+      })),
     ).rejects.toThrow("note must be a string");
     expect(await StockEntryModel.countDocuments()).toBe(0);
   });
@@ -190,11 +190,11 @@ describe("stockIn transactional rollback", () => {
     });
 
     await expect(
-      stockIn({
+      unwrap(stockIn({
         medicineId: String(medicine._id),
         boxes: 50,
         note: "",
-      }),
+      })),
     ).rejects.toThrow("Simulated failure after the increment landed");
 
     const updated = await MedicineModel.findById(medicine._id);
@@ -214,11 +214,11 @@ describe("stockIn transactional rollback", () => {
     });
 
     await expect(
-      stockIn({
+      unwrap(stockIn({
         medicineId: String(medicine._id),
         boxes: 50,
         note: "",
-      }),
+      })),
     ).rejects.toThrow("Medicine not found");
 
     expect(await StockEntryModel.countDocuments()).toBe(0);
@@ -229,8 +229,8 @@ describe("listStockEntries", () => {
   it("returns entries newest first", async () => {
     const medicine = await unwrap(createMedicine(napa));
     const base = { medicineId: String(medicine._id), note: "" };
-    await stockIn({ ...base, boxes: 1 });
-    await stockIn({ ...base, boxes: 2 });
+    await unwrap(stockIn({ ...base, boxes: 1 }));
+    await unwrap(stockIn({ ...base, boxes: 2 }));
 
     const entries = await listStockEntries();
     expect(entries[0].boxes).toBe(2);
@@ -249,7 +249,7 @@ describe("authorization", () => {
     clearSessionCookie(cookieStore);
 
     await expect(
-      stockIn({ medicineId: String(medicine._id), boxes: 5, note: "" }),
+      unwrap(stockIn({ medicineId: String(medicine._id), boxes: 5, note: "" })),
     ).rejects.toThrow(ADMIN_ONLY_ERROR);
     expect(await StockEntryModel.countDocuments()).toBe(0);
   });
@@ -259,7 +259,7 @@ describe("authorization", () => {
     setSessionCookie(cookieStore, await buyerToken());
 
     await expect(
-      stockIn({ medicineId: String(medicine._id), boxes: 5, note: "" }),
+      unwrap(stockIn({ medicineId: String(medicine._id), boxes: 5, note: "" })),
     ).rejects.toThrow(ADMIN_ONLY_ERROR);
     expect(await StockEntryModel.countDocuments()).toBe(0);
   });

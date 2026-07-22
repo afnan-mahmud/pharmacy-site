@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import mongoose from "mongoose";
 import { setupTestDb } from "../helpers/db";
+import { unwrap } from "../helpers/action";
 import {
   createMockCookieStore,
   setSessionCookie,
@@ -136,9 +137,9 @@ describe("approveOrder", () => {
     const medicine = await makeMedicine();
     const order = await makeOrder(buyer._id, medicine, 3);
 
-    const sale = await approveOrder(String(order._id), [
+    const sale = await unwrap(approveOrder(String(order._id), [
       { medicineId: String(medicine._id), boxes: 3 },
-    ]);
+    ]));
 
     expect(sale.type).toBe("wholesale");
     expect(sale.totalPaisa).toBe(36000);
@@ -160,9 +161,9 @@ describe("approveOrder", () => {
     const medicine = await makeMedicine({}, 60); // 6 boxes
     const order = await makeOrder(buyer._id, medicine, 10);
 
-    const sale = await approveOrder(String(order._id), [
+    const sale = await unwrap(approveOrder(String(order._id), [
       { medicineId: String(medicine._id), boxes: 6 },
-    ]);
+    ]));
     expect(sale.items[0].quantity).toBe(6);
     expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(0);
     // The order preserves what the buyer originally asked for.
@@ -176,7 +177,7 @@ describe("approveOrder", () => {
     const order = await makeOrder(buyer._id, medicine, 3);
 
     await expect(
-      approveOrder(String(order._id), [{ medicineId: String(other._id), boxes: 1 }]),
+      unwrap(approveOrder(String(order._id), [{ medicineId: String(other._id), boxes: 1 }])),
     ).rejects.toThrow("Order er baire er medicine");
   });
 
@@ -186,7 +187,7 @@ describe("approveOrder", () => {
     const order = await makeOrder(buyer._id, medicine, 3);
 
     await expect(
-      approveOrder(String(order._id), [{ medicineId: String(medicine._id), boxes: 3 }]),
+      unwrap(approveOrder(String(order._id), [{ medicineId: String(medicine._id), boxes: 3 }])),
     ).rejects.toThrow("stock e ache");
 
     expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(25);
@@ -199,9 +200,9 @@ describe("approveOrder", () => {
     const medicine = await makeMedicine();
     const order = await makeOrder(buyer._id, medicine, 1);
 
-    await approveOrder(String(order._id), [{ medicineId: String(medicine._id), boxes: 1 }]);
+    await unwrap(approveOrder(String(order._id), [{ medicineId: String(medicine._id), boxes: 1 }]));
     await expect(
-      approveOrder(String(order._id), [{ medicineId: String(medicine._id), boxes: 1 }]),
+      unwrap(approveOrder(String(order._id), [{ medicineId: String(medicine._id), boxes: 1 }])),
     ).rejects.toThrow("Ei order ar approve kora jabe na");
 
     // Stock only dropped once.
@@ -213,18 +214,18 @@ describe("approveOrder", () => {
     const buyer = await makeBuyer();
     const medicine = await makeMedicine();
     const order = await makeOrder(buyer._id, medicine, 3);
-    await expect(approveOrder(String(order._id), [])).rejects.toThrow("Cart khali");
+    await expect(unwrap(approveOrder(String(order._id), []))).rejects.toThrow("Cart khali");
   });
 
   it("rejects an unknown order", async () => {
     await expect(
-      approveOrder("507f1f77bcf86cd799439011", []),
+      unwrap(approveOrder("507f1f77bcf86cd799439011", [])),
     ).rejects.toThrow("Order pawa jay ni");
   });
 
   it("rejects a buyer caller", async () => {
     setSessionCookie(cookieStore, await buyerToken());
-    await expect(approveOrder("507f1f77bcf86cd799439011", [])).rejects.toThrow(
+    await expect(unwrap(approveOrder("507f1f77bcf86cd799439011", []))).rejects.toThrow(
       ADMIN_ONLY_ERROR,
     );
   });
@@ -236,7 +237,7 @@ describe("rejectOrder", () => {
     const medicine = await makeMedicine();
     const order = await makeOrder(buyer._id, medicine, 3);
 
-    await rejectOrder(String(order._id), "Stock nai");
+    await unwrap(rejectOrder(String(order._id), "Stock nai"));
     const after = await OrderModel.findById(order._id);
     expect(after!.status).toBe("rejected");
     expect(after!.rejectReason).toBe("Stock nai");
@@ -249,7 +250,7 @@ describe("rejectOrder", () => {
     const buyer = await makeBuyer();
     const medicine = await makeMedicine();
     const order = await makeOrder(buyer._id, medicine, 3);
-    await expect(rejectOrder(String(order._id), "  ")).rejects.toThrow(
+    await expect(unwrap(rejectOrder(String(order._id), "  "))).rejects.toThrow(
       "Reject korar karon likhte hobe",
     );
   });
@@ -258,15 +259,15 @@ describe("rejectOrder", () => {
     const buyer = await makeBuyer();
     const medicine = await makeMedicine();
     const order = await makeOrder(buyer._id, medicine, 1);
-    await approveOrder(String(order._id), [{ medicineId: String(medicine._id), boxes: 1 }]);
-    await expect(rejectOrder(String(order._id), "too late")).rejects.toThrow(
+    await unwrap(approveOrder(String(order._id), [{ medicineId: String(medicine._id), boxes: 1 }]));
+    await expect(unwrap(rejectOrder(String(order._id), "too late"))).rejects.toThrow(
       "Ei order ar reject kora jabe na",
     );
   });
 
   it("rejects a buyer caller", async () => {
     setSessionCookie(cookieStore, await buyerToken());
-    await expect(rejectOrder("507f1f77bcf86cd799439011", "x")).rejects.toThrow(
+    await expect(unwrap(rejectOrder("507f1f77bcf86cd799439011", "x"))).rejects.toThrow(
       ADMIN_ONLY_ERROR,
     );
   });
@@ -307,10 +308,10 @@ describe("zero-quantity approval lines", () => {
     const outOfStock = await makeMedicine({ name: "Ace Syrup" }, 0);
     const order = await makeTwoItemOrder(buyer._id, supplied, outOfStock);
 
-    const sale = await approveOrder(String(order._id), [
+    const sale = await unwrap(approveOrder(String(order._id), [
       { medicineId: String(supplied._id), boxes: 3 },
       { medicineId: String(outOfStock._id), boxes: 0 },
-    ]);
+    ]));
 
     // The whole point: the buyer's paper still shows what was asked for.
     expect(sale.items).toHaveLength(2);
@@ -326,10 +327,10 @@ describe("zero-quantity approval lines", () => {
     const outOfStock = await makeMedicine({ name: "Ace Syrup" }, 0);
     const order = await makeTwoItemOrder(buyer._id, supplied, outOfStock);
 
-    const sale = await approveOrder(String(order._id), [
+    const sale = await unwrap(approveOrder(String(order._id), [
       { medicineId: String(supplied._id), boxes: 3 },
       { medicineId: String(outOfStock._id), boxes: 0 },
-    ]);
+    ]));
 
     expect(sale.subtotalPaisa).toBe(36000);
     expect(sale.totalPaisa).toBe(36000);
@@ -341,10 +342,10 @@ describe("zero-quantity approval lines", () => {
     const outOfStock = await makeMedicine({ name: "Ace Syrup" }, 7);
     const order = await makeTwoItemOrder(buyer._id, supplied, outOfStock);
 
-    await approveOrder(String(order._id), [
+    await unwrap(approveOrder(String(order._id), [
       { medicineId: String(supplied._id), boxes: 3 },
       { medicineId: String(outOfStock._id), boxes: 0 },
-    ]);
+    ]));
 
     const after = await MedicineModel.findById(outOfStock._id);
     expect(after?.stockPatas).toBe(7);
@@ -361,10 +362,10 @@ describe("zero-quantity approval lines", () => {
     // Would throw "stock e ache 0" if a zero line still went through the
     // stock deduction.
     await expect(
-      approveOrder(String(order._id), [
+      unwrap(approveOrder(String(order._id), [
         { medicineId: String(supplied._id), boxes: 3 },
         { medicineId: String(outOfStock._id), boxes: 0 },
-      ]),
+      ])),
     ).resolves.toBeTruthy();
   });
 
@@ -375,10 +376,10 @@ describe("zero-quantity approval lines", () => {
     const order = await makeTwoItemOrder(buyer._id, supplied, outOfStock);
 
     await expect(
-      approveOrder(String(order._id), [
+      unwrap(approveOrder(String(order._id), [
         { medicineId: String(supplied._id), boxes: 0 },
         { medicineId: String(outOfStock._id), boxes: 0 },
-      ]),
+      ])),
     ).rejects.toThrow("Onto ekta line e poriman dite hobe");
   });
 
@@ -389,10 +390,10 @@ describe("zero-quantity approval lines", () => {
     const order = await makeTwoItemOrder(buyer._id, supplied, outOfStock);
 
     await expect(
-      approveOrder(String(order._id), [
+      unwrap(approveOrder(String(order._id), [
         { medicineId: String(supplied._id), boxes: 0 },
         { medicineId: String(outOfStock._id), boxes: 0 },
-      ]),
+      ])),
     ).rejects.toThrow();
 
     const reread = await OrderModel.findById(order._id);
@@ -406,9 +407,9 @@ describe("zero-quantity approval lines", () => {
     const order = await makeOrder(buyer._id, medicine);
 
     await expect(
-      approveOrder(String(order._id), [
+      unwrap(approveOrder(String(order._id), [
         { medicineId: String(medicine._id), boxes: -1 },
-      ]),
+      ])),
     ).rejects.toThrow("Poriman 0 er kom hote parbe na");
   });
 });

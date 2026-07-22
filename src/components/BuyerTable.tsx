@@ -34,7 +34,11 @@ export function BuyerTable({ buyers }: { buyers: BuyerRow[] }) {
     setError("");
     setTogglingId(row.id);
     try {
-      await setBuyerActive(row.id, !row.active);
+      const result = await setBuyerActive(row.id, !row.active);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kichu ekta bhul holo");

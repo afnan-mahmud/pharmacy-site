@@ -29,11 +29,15 @@ export function StockInForm() {
     setDone("");
 
     try {
-      await stockIn({
+      const result = await stockIn({
         medicineId: medicine.id,
         boxes: Number(boxes),
         note,
       });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
       setDone(`${medicine.name} — ${boxes} ${labels.outer} stock e dhuklo`);
       setMedicine(null);
       setBoxes("");

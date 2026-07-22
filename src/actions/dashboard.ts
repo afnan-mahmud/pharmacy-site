@@ -52,23 +52,25 @@ export async function dashboardSummary(): Promise<DashboardSummary> {
   const today = dhakaToday();
   const { start, end } = dhakaDayBounds(today);
 
-  const [todaySales, dues, lowStockDocs, pendingOrderCount] = await Promise.all([
-    SaleModel.find({
-      createdAt: { $gte: start, $lt: end },
-      status: "active",
-    }).lean<SaleDoc[]>(),
-    listBuyerDues(),
-    // A threshold of 0 means the owner set no alert for that medicine, so an
-    // empty one must not nag him forever — hence $gt: 0 rather than $gte.
-    MedicineModel.find({
-      active: true,
-      lowStockThreshold: { $gt: 0 },
-      $expr: { $lte: ["$stockPatas", "$lowStockThreshold"] },
-    })
-      .sort({ stockPatas: 1 })
-      .lean<MedicineDoc[]>(),
-    OrderModel.countDocuments({ status: "pending" }),
-  ]);
+  const [todaySales, dues, lowStockDocs, pendingOrderCount] = await Promise.all(
+    [
+      SaleModel.find({
+        createdAt: { $gte: start, $lt: end },
+        status: "active",
+      }).lean<SaleDoc[]>(),
+      listBuyerDues(),
+      // A threshold of 0 means the owner set no alert for that medicine, so an
+      // empty one must not nag him forever — hence $gt: 0 rather than $gte.
+      MedicineModel.find({
+        active: true,
+        lowStockThreshold: { $gt: 0 },
+        $expr: { $lte: ["$stockPatas", "$lowStockThreshold"] },
+      })
+        .sort({ stockPatas: 1 })
+        .lean<MedicineDoc[]>(),
+      OrderModel.countDocuments({ status: "pending" }),
+    ],
+  );
 
   const sumBy = (type: "retail" | "wholesale") =>
     todaySales

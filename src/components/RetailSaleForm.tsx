@@ -94,11 +94,16 @@ export function RetailSaleForm() {
     setBusy(true);
 
     try {
-      await recordRetailSale({
+      const result = await recordRetailSale({
         items: cart.map((l) => ({ medicineId: l.medicine.id, patas: l.patas })),
         customerName,
         customerPhone,
       });
+      if (!result.ok) {
+        setError(result.error);
+        setBusy(false);
+        return;
+      }
       setCart([]);
       setCustomerName("");
       setCustomerPhone("");

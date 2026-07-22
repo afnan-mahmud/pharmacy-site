@@ -5,6 +5,7 @@ import { connectDb } from "@/lib/db";
 import { requireAdminAction } from "@/lib/session";
 import { toPlain, type Serialized } from "@/lib/serialize";
 import { SettingsModel, type SettingsDoc } from "@/models/Settings";
+import { actionResult, type ActionResult } from "@/lib/actionResult";
 
 export type SettingsInput = {
   pharmacyName: string;
@@ -75,7 +76,9 @@ function isDuplicateKeyError(error: unknown): boolean {
 // by the time it runs again, the winner's document already exists, so the
 // same query now matches an existing document instead of trying (and
 // failing) to insert a second one.
-async function withDuplicateKeyRetry<T>(operation: () => Promise<T>): Promise<T> {
+async function withDuplicateKeyRetry<T>(
+  operation: () => Promise<T>,
+): Promise<T> {
   try {
     return await operation();
   } catch (error) {
@@ -128,7 +131,9 @@ export async function getSettings(): Promise<Serialized<SettingsDoc>> {
 export async function readSettings(): Promise<SettingsDoc> {
   await connectDb();
 
-  const settings = await SettingsModel.findOne({ key: "singleton" }).lean<SettingsDoc>();
+  const settings = await SettingsModel.findOne({
+    key: "singleton",
+  }).lean<SettingsDoc>();
   if (settings) return settings;
 
   return new SettingsModel({ key: "singleton" }).toObject() as SettingsDoc;
@@ -165,23 +170,28 @@ function validate(input: SettingsInput): {
   return { pharmacyName, tagline, address, phone, invoicePrefix };
 }
 
-export async function updateSettings(input: SettingsInput): Promise<Serialized<SettingsDoc>> {
-  await requireAdminAction();
-  await connectDb();
+export async function updateSettings(
+  input: SettingsInput,
+): Promise<ActionResult<Serialized<SettingsDoc>>> {
+  return actionResult(async () => {
+    await requireAdminAction();
+    await connectDb();
 
-  const { pharmacyName, tagline, address, phone, invoicePrefix } = validate(input);
+    const { pharmacyName, tagline, address, phone, invoicePrefix } =
+      validate(input);
 
-  const settings = await withDuplicateKeyRetry(() =>
-    SettingsModel.findOneAndUpdate(
-      { key: "singleton" },
-      {
-        $set: { pharmacyName, tagline, invoicePrefix, address, phone },
-        $setOnInsert: { key: "singleton" },
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
-    ).lean<SettingsDoc>(),
-  );
+    const settings = await withDuplicateKeyRetry(() =>
+      SettingsModel.findOneAndUpdate(
+        { key: "singleton" },
+        {
+          $set: { pharmacyName, tagline, invoicePrefix, address, phone },
+          $setOnInsert: { key: "singleton" },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      ).lean<SettingsDoc>(),
+    );
 
-  revalidatePath("/", "layout");
-  return toPlain(settings!);
+    revalidatePath("/", "layout");
+    return toPlain(settings!);
+  });
 }
