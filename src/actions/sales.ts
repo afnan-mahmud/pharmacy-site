@@ -6,6 +6,7 @@ import { connectDb } from "@/lib/db";
 import { requireAdminAction } from "@/lib/session";
 import { applyStockDelta } from "@/lib/stockTransaction";
 import { computeTotals, lineTotal } from "@/lib/saleTotals";
+import { unitLabelsFor } from "@/lib/unitLabels";
 import { toPlain, type Serialized } from "@/lib/serialize";
 import { writeWholesaleSale } from "@/lib/writeWholesaleSale";
 import { MedicineModel } from "@/models/Medicine";
@@ -37,7 +38,7 @@ function validateRetail(input: RetailSaleInput): void {
       !Number.isInteger(item.patas) ||
       item.patas < 1
     ) {
-      throw new Error("Pata sonkha 1 er kom hote parbe na");
+      throw new Error("Poriman 1 er kom hote parbe na");
     }
     // Two lines for one medicine would each pass their own stock check and
     // could together oversell it.
@@ -74,6 +75,7 @@ export async function recordRetailSale(
         // The precondition lives in applyStockDelta's update filter, so the
         // check and the write are one atomic operation. See
         // src/lib/stockTransaction.ts for why a pre-read is not a substitute.
+        const unit = unitLabelsFor(medicine.form).inner;
         const ok = await applyStockDelta(medicine._id, -item.patas, session);
         if (!ok) {
           // Re-read inside the same transaction to tell the owner what is
@@ -82,7 +84,7 @@ export async function recordRetailSale(
             session,
           );
           throw new Error(
-            `${medicine.name} — stock e ache ${current?.stockPatas ?? 0} pata, lagbe ${item.patas} pata`,
+            `${medicine.name} — stock e ache ${current?.stockPatas ?? 0} ${unit}, lagbe ${item.patas} ${unit}`,
           );
         }
 
@@ -167,7 +169,7 @@ function validateWholesale(input: WholesaleSaleInput): void {
       !Number.isInteger(item.boxes) ||
       item.boxes < 1
     ) {
-      throw new Error("Box sonkha 1 er kom hote parbe na");
+      throw new Error("Poriman 1 er kom hote parbe na");
     }
     if (seen.has(item.medicineId)) {
       throw new Error("Ekta medicine ekbar er beshi cart e dewa jabe na");

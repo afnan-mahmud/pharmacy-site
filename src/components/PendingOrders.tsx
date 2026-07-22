@@ -5,13 +5,20 @@ import { useRouter } from "next/navigation";
 import { approveOrder, rejectOrder } from "@/actions/adminOrders";
 import { formatTaka } from "@/lib/money";
 import { formatDhakaDateTime } from "@/lib/dhakaDate";
+import { unitLabelsFor } from "@/lib/unitLabels";
 
 export type PendingOrderRow = {
   id: string;
   createdAt: string;
   buyerName: string;
   buyerShopName: string;
-  items: { medicineId: string; medicineName: string; boxes: number; boxPricePaisa: number }[];
+  items: {
+    medicineId: string;
+    medicineName: string;
+    form: string;
+    boxes: number;
+    boxPricePaisa: number;
+  }[];
 };
 
 export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
@@ -100,24 +107,28 @@ export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
               <thead className="text-left text-muted">
                 <tr>
                   <th className="py-1">Medicine</th>
-                  <th className="py-1">Box rate</th>
+                  <th className="py-1">Pack rate</th>
                   <th className="py-1">Order</th>
-                  <th className="py-1">Approve koto box</th>
+                  <th className="py-1">Approve koto</th>
                   <th className="py-1 text-right">Total</th>
                 </tr>
               </thead>
               <tbody>
                 {order.items.map((item) => {
                   const boxes = edits[order.id]?.[item.medicineId] ?? item.boxes;
+                  const labels = unitLabelsFor(item.form);
                   return (
                     <tr key={item.medicineId} className="border-t border-line">
                       <td className="py-2 font-medium text-ink">{item.medicineName}</td>
                       <td className="py-2">{formatTaka(item.boxPricePaisa)}</td>
-                      <td className="py-2 text-muted">{item.boxes}</td>
+                      <td className="py-2 text-muted">
+                        {item.boxes} {labels.outer}
+                      </td>
                       <td className="py-2">
                         <input type="number" min={0} value={boxes}
                           onChange={(e) => setBoxes(order.id, item.medicineId, Number(e.target.value))}
                           className="w-20 rounded-lg border border-line px-2 py-1" />
+                        <span className="ml-1 text-xs text-muted">{labels.outer}</span>
                       </td>
                       <td className="py-2 text-right">{formatTaka(item.boxPricePaisa * boxes)}</td>
                     </tr>

@@ -195,14 +195,14 @@ describe("recordRetailSale", () => {
     const medicine = await makeMedicine();
     await expect(
       recordRetailSale({ items: [{ medicineId: medicine._id, patas: 0 }] }),
-    ).rejects.toThrow("Pata sonkha 1 er kom hote parbe na");
+    ).rejects.toThrow("Poriman 1 er kom hote parbe na");
   });
 
   it("rejects a fractional quantity", async () => {
     const medicine = await makeMedicine();
     await expect(
       recordRetailSale({ items: [{ medicineId: medicine._id, patas: 1.5 }] }),
-    ).rejects.toThrow("Pata sonkha 1 er kom hote parbe na");
+    ).rejects.toThrow("Poriman 1 er kom hote parbe na");
   });
 
   it("rejects a malformed medicine id", async () => {
@@ -461,7 +461,7 @@ describe("recordWholesaleSale", () => {
         discountPaisa: 0,
         paidPaisa: 0,
       }),
-    ).rejects.toThrow("Box sonkha 1 er kom hote parbe na");
+    ).rejects.toThrow("Poriman 1 er kom hote parbe na");
   });
 
   it("rejects an unauthenticated caller", async () => {

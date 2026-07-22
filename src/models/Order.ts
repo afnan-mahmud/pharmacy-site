@@ -12,6 +12,11 @@ const orderLineSchema = new Schema(
     // Snapshotted at order time: a price change before approval must never
     // silently rewrite what the buyer thought he was ordering.
     boxPricePaisa: { type: Number, required: true, min: 0 },
+    // Which unit words this line reads with, snapshotted like medicineName
+    // and boxPricePaisa above so a pending order does not silently re-word
+    // itself if the medicine's form is corrected before approval. No enum,
+    // for the same reason as the sale line. See src/lib/unitLabels.ts.
+    form: { type: String, default: "tablet" },
   },
   { _id: false },
 );

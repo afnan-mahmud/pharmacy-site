@@ -97,7 +97,7 @@ function validate(input: MedicineInput): void {
   // box price — an MRP below it would show a negative discount. 0 is the
   // "no MRP" sentinel and is always allowed.
   if (mrp > 0 && mrp < input.boxPricePaisa) {
-    throw new Error("MRP box rate er cheye kom hote parbe na");
+    throw new Error("MRP pack rate er cheye kom hote parbe na");
   }
 }
 

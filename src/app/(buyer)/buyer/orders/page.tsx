@@ -11,6 +11,7 @@ export default async function MyOrdersPage() {
     rejectReason: o.rejectReason,
     items: o.items.map((i) => ({
       medicineName: i.medicineName,
+      form: i.form,
       boxes: i.boxes,
       boxPricePaisa: i.boxPricePaisa,
     })),

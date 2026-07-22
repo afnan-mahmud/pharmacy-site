@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { cancelMyOrder } from "@/actions/buyerOrders";
 import { formatTaka } from "@/lib/money";
 import { formatDhakaDate } from "@/lib/dhakaDate";
+import { unitLabelsFor } from "@/lib/unitLabels";
 import { card, pageTitle, errorBox } from "@/components/ui";
 
 const STATUS: Record<string, { label: string; cls: string; dot: string }> = {
@@ -23,7 +24,7 @@ export type OrderRow = {
   createdAt: string;
   status: string;
   rejectReason: string;
-  items: { medicineName: string; boxes: number; boxPricePaisa: number }[];
+  items: { medicineName: string; form: string; boxes: number; boxPricePaisa: number }[];
 };
 
 export function BuyerOrderList({ orders }: { orders: OrderRow[] }) {
@@ -85,7 +86,9 @@ export function BuyerOrderList({ orders }: { orders: OrderRow[] }) {
                 <li key={i} className="flex justify-between gap-3">
                   <span className="truncate">
                     {item.medicineName}{" "}
-                    <span className="text-muted">× {item.boxes} box</span>
+                    <span className="text-muted">
+                      × {item.boxes} {unitLabelsFor(item.form).outer}
+                    </span>
                   </span>
                   <span className="shrink-0 font-medium">
                     {formatTaka(item.boxPricePaisa * item.boxes)}

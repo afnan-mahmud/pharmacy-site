@@ -1,5 +1,6 @@
 import mongoose, { type ClientSession } from "mongoose";
 import { boxesToPatas } from "@/lib/units";
+import { unitLabelsFor } from "@/lib/unitLabels";
 import { applyStockDelta } from "@/lib/stockTransaction";
 import { lineTotal, computeTotals } from "@/lib/saleTotals";
 import { nextInvoiceSeq, formatInvoiceNo } from "@/lib/invoiceNumber";
@@ -42,13 +43,14 @@ export async function writeWholesaleSale(
 
     const patas = boxesToPatas(item.boxes, medicine.patasPerBox);
 
+    const unit = unitLabelsFor(medicine.form).inner;
     const ok = await applyStockDelta(medicine._id, -patas, session);
     if (!ok) {
       const current = await MedicineModel.findById(item.medicineId).session(
         session,
       );
       throw new Error(
-        `${medicine.name} — stock e ache ${current?.stockPatas ?? 0} pata, lagbe ${patas} pata`,
+        `${medicine.name} — stock e ache ${current?.stockPatas ?? 0} ${unit}, lagbe ${patas} ${unit}`,
       );
     }
 

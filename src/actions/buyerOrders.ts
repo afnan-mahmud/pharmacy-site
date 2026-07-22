@@ -116,7 +116,7 @@ function validateItems(items: OrderItemInput[]): void {
       !Number.isInteger(item.boxes) ||
       item.boxes < 1
     ) {
-      throw new Error("Box sonkha 1 er kom hote parbe na");
+      throw new Error("Poriman 1 er kom hote parbe na");
     }
     if (seen.has(item.medicineId)) {
       throw new Error("Ekta medicine ekbar er beshi order kora jabe na");
@@ -145,6 +145,7 @@ export async function submitOrder(
     lines.push({
       medicineId: medicine._id,
       medicineName: medicine.name,
+      form: medicine.form,
       boxes: item.boxes,
       // Snapshot the box price the buyer is ordering at.
       boxPricePaisa: medicine.boxPricePaisa,

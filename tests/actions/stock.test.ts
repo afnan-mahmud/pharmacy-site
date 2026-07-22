@@ -122,14 +122,14 @@ describe("stockIn", () => {
     const medicine = await createMedicine(napa);
     await expect(
       stockIn({ medicineId: String(medicine._id), boxes: 0, note: "" }),
-    ).rejects.toThrow("Box sonkha 1 er kom hote parbe na");
+    ).rejects.toThrow("Poriman 1 er kom hote parbe na");
   });
 
   it("rejects negative boxes", async () => {
     const medicine = await createMedicine(napa);
     await expect(
       stockIn({ medicineId: String(medicine._id), boxes: -5, note: "" }),
-    ).rejects.toThrow("Box sonkha 1 er kom hote parbe na");
+    ).rejects.toThrow("Poriman 1 er kom hote parbe na");
   });
 
   it("rejects an unknown medicine and writes no entry", async () => {
@@ -160,7 +160,7 @@ describe("stockIn input validation", () => {
     const medicine = await createMedicine(napa);
     await expect(
       stockIn({ medicineId: String(medicine._id), boxes: 1.5, note: "" }),
-    ).rejects.toThrow("Box sonkha 1 er kom hote parbe na");
+    ).rejects.toThrow("Poriman 1 er kom hote parbe na");
   });
 
   it("rejects a non-string note instead of crashing on .trim()", async () => {

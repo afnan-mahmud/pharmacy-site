@@ -40,7 +40,7 @@ function validate(input: StockInInput): void {
     !Number.isInteger(input.boxes) ||
     input.boxes < 1
   ) {
-    throw new Error("Box sonkha 1 er kom hote parbe na");
+    throw new Error("Poriman 1 er kom hote parbe na");
   }
   if (typeof input.note !== "string") {
     throw new Error("note must be a string");

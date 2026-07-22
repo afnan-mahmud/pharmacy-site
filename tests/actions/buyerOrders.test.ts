@@ -69,6 +69,37 @@ beforeEach(async () => {
 });
 
 describe("submitOrder", () => {
+  it("snapshots the medicine form on each order line", async () => {
+    await makeSessionBuyer();
+    const syrup = await makeMedicine({
+      name: "Ace Syrup",
+      form: "syrup",
+      patasPerBox: 12,
+    });
+
+    const order = await submitOrder([
+      { medicineId: String(syrup._id), boxes: 2 },
+    ]);
+
+    expect(order.items[0].form).toBe("syrup");
+  });
+
+  it("defaults an order line to tablet for a medicine saved before forms existed", async () => {
+    await makeSessionBuyer();
+    const medicine = await makeMedicine();
+    // Strip the field the way a document written before this change looks.
+    await MedicineModel.updateOne(
+      { _id: medicine._id },
+      { $unset: { form: "" } },
+    );
+
+    const order = await submitOrder([
+      { medicineId: String(medicine._id), boxes: 1 },
+    ]);
+
+    expect(order.items[0].form).toBe("tablet");
+  });
+
   it("creates a pending order snapshotting the box price", async () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine();
@@ -102,10 +133,10 @@ describe("submitOrder", () => {
     const medicine = await makeMedicine();
     await expect(
       submitOrder([{ medicineId: String(medicine._id), boxes: 0 }]),
-    ).rejects.toThrow("Box sonkha 1 er kom hote parbe na");
+    ).rejects.toThrow("Poriman 1 er kom hote parbe na");
     await expect(
       submitOrder([{ medicineId: String(medicine._id), boxes: 1.5 }]),
-    ).rejects.toThrow("Box sonkha 1 er kom hote parbe na");
+    ).rejects.toThrow("Poriman 1 er kom hote parbe na");
   });
 
   it("rejects the same medicine twice in one order", async () => {

@@ -26,6 +26,7 @@ export default async function OrdersPage() {
       return {
         medicineId,
         medicineName: i.medicineName,
+        form: i.form,
         boxes: i.boxes,
         boxPricePaisa: priceMap[medicineId] ?? i.boxPricePaisa,
       };

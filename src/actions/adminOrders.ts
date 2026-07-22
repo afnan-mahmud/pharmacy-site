@@ -83,7 +83,7 @@ function validateApproval(items: ApprovalItemInput[]): void {
       !Number.isInteger(item.boxes) ||
       item.boxes < 1
     ) {
-      throw new Error("Box sonkha 1 er kom hote parbe na");
+      throw new Error("Poriman 1 er kom hote parbe na");
     }
     if (seen.has(item.medicineId)) {
       throw new Error("Ekta medicine ekbar er beshi dewa jabe na");
