@@ -148,7 +148,7 @@ export async function approveOrder(
           shopName: order.buyerShopName,
         },
         items,
-        discountPaisa: 0,
+        discountPercent: 0,
         // The buyer pays nothing at order time; it is all due, collected
         // later through the Baki Khata.
         paidPaisa: 0,

@@ -21,6 +21,9 @@ type InvoiceProps = {
   }[];
   subtotalPaisa: number;
   discountPaisa: number;
+  // Absent on sales written before discounts became percentages; those print
+  // the amount alone, which is what they said when they were printed.
+  discountPercent?: number;
   totalPaisa: number;
   paidPaisa: number;
   duePaisa: number;
@@ -47,6 +50,7 @@ export function Invoice({
   items,
   subtotalPaisa,
   discountPaisa,
+  discountPercent,
   totalPaisa,
   paidPaisa,
   duePaisa,
@@ -134,7 +138,10 @@ export function Invoice({
               <span>{formatTaka(subtotalPaisa)}</span>
             </div>
             <div className="flex justify-between">
-              <span>Discount</span>
+              <span>
+                Discount
+                {discountPercent ? ` (${discountPercent}%)` : ""}
+              </span>
               <span>− {formatTaka(discountPaisa)}</span>
             </div>
           </>

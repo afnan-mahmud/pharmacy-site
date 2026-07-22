@@ -70,6 +70,7 @@ export default async function InvoicePage({
         }))}
         subtotalPaisa={sale.subtotalPaisa}
         discountPaisa={sale.discountPaisa ?? 0}
+        discountPercent={sale.discountPercent ?? 0}
         totalPaisa={sale.totalPaisa}
         paidPaisa={sale.paidPaisa}
         duePaisa={sale.duePaisa}

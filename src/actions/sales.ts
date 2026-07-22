@@ -147,7 +147,8 @@ export async function recordRetailSale(
 export type WholesaleSaleInput = {
   buyerId: string;
   items: { medicineId: string; boxes: number }[];
-  discountPaisa: number;
+  /** A percentage of the subtotal, 0-100. May be fractional. */
+  discountPercent: number;
   paidPaisa: number;
 };
 
@@ -181,12 +182,16 @@ function validateWholesale(input: WholesaleSaleInput): void {
 
   // computeTotals re-checks these against the actual subtotal; these guards
   // catch the malformed cases before any database work happens.
+  // computeTotals is the authority on the range; this catches the malformed
+  // cases before any database work happens. Fractional is legal here — 2.5%
+  // is a real discount — so unlike the money fields there is no integer check.
   if (
-    typeof input.discountPaisa !== "number" ||
-    !Number.isInteger(input.discountPaisa) ||
-    input.discountPaisa < 0
+    typeof input.discountPercent !== "number" ||
+    !Number.isFinite(input.discountPercent) ||
+    input.discountPercent < 0 ||
+    input.discountPercent > 100
   ) {
-    throw new Error("discountPaisa must be a whole number");
+    throw new Error("Discount 0 theke 100 er moddhe hote hobe");
   }
   if (
     typeof input.paidPaisa !== "number" ||
@@ -217,7 +222,7 @@ export async function recordWholesaleSale(
         session,
         buyer: { id: buyer._id, name: buyer.name, shopName: buyer.shopName },
         items: input.items,
-        discountPaisa: input.discountPaisa,
+        discountPercent: input.discountPercent,
         paidPaisa: input.paidPaisa,
         createdBy: adminSession.userId,
         orderId: null,

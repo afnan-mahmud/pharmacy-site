@@ -39,7 +39,7 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
   // A zero line contributes nothing to the money, but a sale of nothing but
   // zeroes is not a sale — writeWholesaleSale rejects it, so catch it here.
   const hasBillableLine = cart.some((line) => line.boxes > 0);
-  const discountPaisa = Math.round(takaToPaisa(discount || 0));
+  const discountPercent = Number(discount || 0);
   const paidPaisa = Math.round(takaToPaisa(paid || 0));
 
   // Reuse the server's own totals math instead of a second, looser
@@ -50,13 +50,17 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
   // so the client and server always agree.
   let totalPaisa = subtotalPaisa;
   let duePaisa = 0;
+  // What the percentage actually works out to. Taken from computeTotals rather
+  // than recomputed here, so the figure previewed is the figure stored.
+  let discountPaisa = 0;
   let totalsError = "";
   try {
     const totals = computeTotals(
       cart.map((line) => ({ ratePaisa: line.medicine.boxPricePaisa, quantity: line.boxes })),
-      discountPaisa,
+      discountPercent,
       paidPaisa,
     );
+    discountPaisa = totals.discountPaisa;
     totalPaisa = totals.totalPaisa;
     duePaisa = totals.duePaisa;
   } catch (err) {
@@ -103,7 +107,7 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
       const sale = await recordWholesaleSale({
         buyerId,
         items: cart.map((l) => ({ medicineId: l.medicine.id, boxes: l.boxes })),
-        discountPaisa: Math.round(takaToPaisa(discount || 0)),
+        discountPercent: Number(discount || 0),
         paidPaisa: Math.round(takaToPaisa(paid || 0)),
       });
       setCart([]);
@@ -232,9 +236,14 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
 
         <div className="grid gap-3 rounded-2xl border border-line bg-surface p-4 shadow-sm sm:grid-cols-3">
           <div className="space-y-1">
-            <label htmlFor="discount" className="text-sm text-ink">Discount (৳)</label>
-            <input id="discount" type="number" step="0.01" min={0} className={field}
-              value={discount} onChange={(e) => setDiscount(e.target.value)} />
+            <label htmlFor="discount" className="text-sm text-ink">Discount (%)</label>
+            {/* No min/max here on purpose: this input is inside the form that
+                submits the sale, and HTML constraint validation would block
+                the submit with a native bubble. Out-of-range values surface
+                through totalsError below, which also disables the button. */}
+            <input id="discount" type="number" step="0.01" className={field}
+              placeholder="0" value={discount}
+              onChange={(e) => setDiscount(e.target.value)} />
           </div>
           <div className="space-y-1">
             <label htmlFor="paid" className="text-sm text-ink">Joma (৳)</label>
@@ -248,7 +257,7 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
             </div>
             {discountPaisa > 0 && (
               <div className="flex justify-between text-sm text-muted">
-                <span>Discount</span>
+                <span>Discount ({discountPercent}%)</span>
                 <span>− {formatTaka(discountPaisa)}</span>
               </div>
             )}

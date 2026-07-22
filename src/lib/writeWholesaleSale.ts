@@ -12,7 +12,8 @@ export type WriteWholesaleSaleParams = {
   session: ClientSession;
   buyer: { id: mongoose.Types.ObjectId; name: string; shopName: string };
   items: { medicineId: string; boxes: number }[];
-  discountPaisa: number;
+  /** A percentage of the subtotal, 0-100. May be fractional. */
+  discountPercent: number;
   paidPaisa: number;
   createdBy: string;
   orderId?: string | null;
@@ -86,9 +87,11 @@ export async function writeWholesaleSale(
     });
   }
 
-  const { subtotalPaisa, totalPaisa, duePaisa } = computeTotals(
+  // discountPaisa comes back from computeTotals rather than being worked out
+  // here, so the amount stored is exactly the one the form previewed.
+  const { subtotalPaisa, discountPaisa, totalPaisa, duePaisa } = computeTotals(
     lines.map((l) => ({ ratePaisa: l.ratePaisa, quantity: l.quantity })),
-    params.discountPaisa,
+    params.discountPercent,
     params.paidPaisa,
   );
 
@@ -109,7 +112,8 @@ export async function writeWholesaleSale(
         orderId: params.orderId ?? null,
         items: lines,
         subtotalPaisa,
-        discountPaisa: params.discountPaisa,
+        discountPercent: params.discountPercent,
+        discountPaisa,
         totalPaisa,
         paidPaisa: params.paidPaisa,
         duePaisa,

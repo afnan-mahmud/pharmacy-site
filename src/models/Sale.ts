@@ -53,6 +53,12 @@ const saleSchema = new Schema(
       },
     },
     subtotalPaisa: { type: Number, required: true, min: 0 },
+    // Both are stored because they answer different questions: the percent
+    // is what was agreed with the buyer, the paisa is what was actually taken
+    // off. Sales written before discounts became percentages have no percent
+    // and read back as 0, which the invoice renders as the amount alone —
+    // exactly what those invoices said when they were printed.
+    discountPercent: { type: Number, required: true, default: 0, min: 0 },
     discountPaisa: { type: Number, required: true, default: 0, min: 0 },
     totalPaisa: { type: Number, required: true, min: 0 },
     paidPaisa: { type: Number, required: true, min: 0 },

@@ -51,7 +51,7 @@ async function makeSale(overrides: Record<string, unknown> = {}) {
       },
     ],
     subtotalPaisa: 2800,
-    discountPaisa: 0,
+    discountPercent: 0,
     totalPaisa: 2800,
     paidPaisa: 2800,
     duePaisa: 0,

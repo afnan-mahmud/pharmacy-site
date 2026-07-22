@@ -249,7 +249,7 @@ describe("recordWholesaleSale", () => {
     const sale = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 3 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 36000,
     });
 
@@ -272,13 +272,13 @@ describe("recordWholesaleSale", () => {
     const first = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [line],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 12000,
     });
     const second = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [line],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 12000,
     });
 
@@ -298,7 +298,7 @@ describe("recordWholesaleSale", () => {
     const sale = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 12000,
     });
     expect(sale.invoiceNo).toBe("RP-000001");
@@ -311,7 +311,7 @@ describe("recordWholesaleSale", () => {
     const sale = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 3 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 20000,
     });
 
@@ -320,21 +320,54 @@ describe("recordWholesaleSale", () => {
     expect(sale.duePaisa).toBe(16000);
   });
 
-  it("subtracts a discount from the total", async () => {
+  it("takes a percentage off the total and stores both figures", async () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
 
     const sale = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 3 }],
-      discountPaisa: 1000,
+      discountPercent: 10,
       paidPaisa: 0,
     });
 
     expect(sale.subtotalPaisa).toBe(36000);
-    expect(sale.discountPaisa).toBe(1000);
-    expect(sale.totalPaisa).toBe(35000);
-    expect(sale.duePaisa).toBe(35000);
+    // The percent as agreed, and the paisa it actually worked out to.
+    expect(sale.discountPercent).toBe(10);
+    expect(sale.discountPaisa).toBe(3600);
+    expect(sale.totalPaisa).toBe(32400);
+    expect(sale.duePaisa).toBe(32400);
+  });
+
+  it("accepts a fractional percentage", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+
+    const sale = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 3 }],
+      discountPercent: 2.5,
+      paidPaisa: 0,
+    });
+
+    expect(sale.discountPercent).toBe(2.5);
+    expect(sale.discountPaisa).toBe(900);
+    expect(sale.totalPaisa).toBe(35100);
+  });
+
+  it("defaults an old-style sale to no percentage", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+
+    const sale = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 1 }],
+      discountPercent: 0,
+      paidPaisa: 0,
+    });
+
+    expect(sale.discountPercent).toBe(0);
+    expect(sale.discountPaisa).toBe(0);
   });
 
   it("snapshots the buyer name and shop onto the sale", async () => {
@@ -343,7 +376,7 @@ describe("recordWholesaleSale", () => {
     const sale = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 12000,
     });
     expect(sale.buyerName).toBe("Karim Uddin");
@@ -358,7 +391,7 @@ describe("recordWholesaleSale", () => {
       recordWholesaleSale({
         buyerId: buyer._id,
         items: [{ medicineId: medicine._id, boxes: 3 }],
-        discountPaisa: 0,
+        discountPercent: 0,
         paidPaisa: 0,
       }),
     ).rejects.toThrow("stock e ache");
@@ -377,7 +410,7 @@ describe("recordWholesaleSale", () => {
       recordWholesaleSale({
         buyerId: buyer._id,
         items: [{ medicineId: short._id, boxes: 1 }],
-        discountPaisa: 0,
+        discountPercent: 0,
         paidPaisa: 0,
       }),
     ).rejects.toThrow();
@@ -385,7 +418,7 @@ describe("recordWholesaleSale", () => {
     const after = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: good._id, boxes: 1 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 12000,
     });
 
@@ -403,7 +436,7 @@ describe("recordWholesaleSale", () => {
       recordWholesaleSale({
         buyerId: "507f1f77bcf86cd799439011",
         items: [{ medicineId: medicine._id, boxes: 1 }],
-        discountPaisa: 0,
+        discountPercent: 0,
         paidPaisa: 0,
       }),
     ).rejects.toThrow("Buyer pawa jay ni");
@@ -419,23 +452,49 @@ describe("recordWholesaleSale", () => {
       recordWholesaleSale({
         buyerId: buyer._id,
         items: [{ medicineId: medicine._id, boxes: 1 }],
-        discountPaisa: 0,
+        discountPercent: 0,
         paidPaisa: 0,
       }),
     ).rejects.toThrow("Buyer ta bondho ache");
   });
 
-  it("rejects a discount larger than the subtotal", async () => {
+  it("rejects a discount above a hundred percent", async () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
     await expect(
       recordWholesaleSale({
         buyerId: buyer._id,
         items: [{ medicineId: medicine._id, boxes: 1 }],
-        discountPaisa: 99999,
+        discountPercent: 101,
         paidPaisa: 0,
       }),
-    ).rejects.toThrow("Discount total er cheye beshi hote parbe na");
+    ).rejects.toThrow("Discount 0 theke 100 er moddhe hote hobe");
+  });
+
+  it("rejects a negative discount percentage", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    await expect(
+      recordWholesaleSale({
+        buyerId: buyer._id,
+        items: [{ medicineId: medicine._id, boxes: 1 }],
+        discountPercent: -1,
+        paidPaisa: 0,
+      }),
+    ).rejects.toThrow("Discount 0 theke 100 er moddhe hote hobe");
+  });
+
+  it("allows a hundred percent discount, leaving nothing to pay", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    const sale = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 1 }],
+      discountPercent: 100,
+      paidPaisa: 0,
+    });
+    expect(sale.totalPaisa).toBe(0);
+    expect(sale.duePaisa).toBe(0);
   });
 
   it("rejects paying more than the total", async () => {
@@ -445,7 +504,7 @@ describe("recordWholesaleSale", () => {
       recordWholesaleSale({
         buyerId: buyer._id,
         items: [{ medicineId: medicine._id, boxes: 1 }],
-        discountPaisa: 0,
+        discountPercent: 0,
         paidPaisa: 99999,
       }),
     ).rejects.toThrow("Joma taka total er cheye beshi hote parbe na");
@@ -458,7 +517,7 @@ describe("recordWholesaleSale", () => {
       recordWholesaleSale({
         buyerId: buyer._id,
         items: [{ medicineId: medicine._id, boxes: 0 }],
-        discountPaisa: 0,
+        discountPercent: 0,
         paidPaisa: 0,
       }),
     ).rejects.toThrow("Onto ekta line e poriman dite hobe");
@@ -470,7 +529,7 @@ describe("recordWholesaleSale", () => {
       recordWholesaleSale({
         buyerId: "507f1f77bcf86cd799439011",
         items: [{ medicineId: "507f1f77bcf86cd799439011", boxes: 1 }],
-        discountPaisa: 0,
+        discountPercent: 0,
         paidPaisa: 0,
       }),
     ).rejects.toThrow();
@@ -484,7 +543,7 @@ describe("cancelSale", () => {
     const sale = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 3 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 36000,
     });
     expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(470);
@@ -500,7 +559,7 @@ describe("cancelSale", () => {
     const sale = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 12000,
     });
 
@@ -519,7 +578,7 @@ describe("cancelSale", () => {
     const sale = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 12000,
     });
 
@@ -577,7 +636,7 @@ describe("cancelSale", () => {
     const sale = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 2 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 24000,
     });
     expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(480);
@@ -653,7 +712,7 @@ describe("sale lines snapshot the medicine form", () => {
     const sale = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: syrup._id, boxes: 2 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0,
     });
 
@@ -693,7 +752,7 @@ describe("zero-quantity wholesale lines", () => {
         { medicineId: supplied._id, boxes: 3 },
         { medicineId: outOfStock._id, boxes: 0 },
       ],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0,
     });
 
@@ -716,7 +775,7 @@ describe("zero-quantity wholesale lines", () => {
         { medicineId: supplied._id, boxes: 3 },
         { medicineId: outOfStock._id, boxes: 0 },
       ],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0,
     });
 
@@ -735,7 +794,7 @@ describe("zero-quantity wholesale lines", () => {
         { medicineId: supplied._id, boxes: 3 },
         { medicineId: outOfStock._id, boxes: 0 },
       ],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0,
     });
 
@@ -754,7 +813,7 @@ describe("zero-quantity wholesale lines", () => {
       recordWholesaleSale({
         buyerId: buyer._id,
         items: [{ medicineId: medicine._id, boxes: -1 }],
-        discountPaisa: 0,
+        discountPercent: 0,
         paidPaisa: 0,
       }),
     ).rejects.toThrow("Poriman 0 er kom hote parbe na");

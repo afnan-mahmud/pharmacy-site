@@ -61,14 +61,14 @@ describe("listBuyerDues", () => {
     await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 3 }], // 36000
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 20000,
     });
     // Total: 240, paid 240, due 0
     await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 2 }], // 24000
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 24000,
     });
 
@@ -85,7 +85,7 @@ describe("listBuyerDues", () => {
     await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 3 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 20000, // Due 16000
     });
     await recordPayment(buyer._id, 100, "Cash"); // 10000 paisa
@@ -101,7 +101,7 @@ describe("listBuyerDues", () => {
     const sale = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 3 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0, // Due 36000
     });
     
@@ -122,13 +122,13 @@ describe("listBuyerDues", () => {
     const saleA = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 10 }], // 120000 paisa
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0,
     });
     await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 5 }], // 60000 paisa
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0,
     });
     await recordPayment(buyer._id, 1200, "Cash");
@@ -147,13 +147,13 @@ describe("listBuyerDues", () => {
     await recordWholesaleSale({
       buyerId: buyer1._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 10000, // Due 2000
     });
     await recordWholesaleSale({
       buyerId: buyer2._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0, // Due 12000
     });
 
@@ -174,7 +174,7 @@ describe("buyerDueBalance", () => {
     await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 10000, // Due 2000
     });
     await recordPayment(buyer._id, 10, "test"); // 1000 paisa
@@ -209,13 +209,13 @@ describe("buyerDueBalance", () => {
     const saleA = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 10 }], // 120000 paisa
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0,
     });
     await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 5 }], // 60000 paisa
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0,
     });
 
@@ -236,7 +236,7 @@ describe("buyerDueBalance", () => {
     const sale = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 10 }], // 120000 paisa
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0,
     });
     await recordPayment(buyer._id, 1200, "Cash"); // pays it off in full
@@ -258,7 +258,7 @@ describe("recordPayment", () => {
     await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0, // Due 12000
     });
     
@@ -278,7 +278,7 @@ describe("recordPayment", () => {
     await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 10000, // Due 2000
     });
 
@@ -301,7 +301,7 @@ describe("recordPayment", () => {
     const sale = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 10 }], // 120000 paisa
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0,
     });
     await recordPayment(buyer._id, 1200, "Cash"); // pays it off exactly
@@ -324,7 +324,7 @@ describe("recordPayment", () => {
     await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 1 }], // 12000 paisa due
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0,
     });
 
@@ -352,7 +352,7 @@ describe("buyerLedger", () => {
     await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0,
     });
     await recordPayment(buyer._id, 10, "test");

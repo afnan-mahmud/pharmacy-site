@@ -300,7 +300,7 @@ describe("myDueBalance and myLedger — buyer-scoped reads", () => {
     await recordWholesaleSale({
       buyerId: String(otherBuyer._id),
       items: [{ medicineId: String(medicine._id), boxes: 5 }], // 60000 paisa
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0,
     });
 
@@ -308,7 +308,7 @@ describe("myDueBalance and myLedger — buyer-scoped reads", () => {
     await recordWholesaleSale({
       buyerId: BUYER_USER_ID,
       items: [{ medicineId: String(medicine._id), boxes: 1 }], // 12000 paisa
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 2000,
     });
     await recordPayment(BUYER_USER_ID, 10, "test"); // 1000 paisa

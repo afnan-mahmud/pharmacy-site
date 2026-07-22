@@ -59,7 +59,7 @@ describe("computeBuyerDue", () => {
     await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 2 }], // 24000 paisa
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0,
     });
 
@@ -78,7 +78,7 @@ describe("computeBuyerDue", () => {
     const sale = await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 2 }], // 24000 paisa
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0,
     });
     await recordPayment(buyer._id, 240, "Cash"); // 24000 paisa, pays it off exactly
@@ -106,13 +106,13 @@ describe("loadBuyerLedger", () => {
     await recordWholesaleSale({
       buyerId: buyer._id,
       items: [{ medicineId: medicine._id, boxes: 1 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0,
     });
     await recordWholesaleSale({
       buyerId: other._id,
       items: [{ medicineId: medicine._id, boxes: 5 }],
-      discountPaisa: 0,
+      discountPercent: 0,
       paidPaisa: 0,
     });
 
