@@ -1,4 +1,5 @@
 import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
+import { MEDICINE_FORMS } from "@/lib/unitLabels";
 
 const medicineSchema = new Schema(
   {
@@ -8,6 +9,16 @@ const medicineSchema = new Schema(
     nameLower: { type: String, required: true, unique: true },
     genericName: { type: String, default: "", trim: true },
     company: { type: String, default: "", trim: true },
+    // Which unit words this medicine is described with — box/pata for a
+    // tablet strip, carton/bottle for a syrup. Display only: every stock and
+    // price field below means the same thing under every form, which is why
+    // none of them is renamed. See src/lib/unitLabels.ts.
+    form: {
+      type: String,
+      enum: [...MEDICINE_FORMS],
+      required: true,
+      default: "tablet",
+    },
     patasPerBox: { type: Number, required: true, min: 1 },
     boxPricePaisa: { type: Number, required: true, min: 0 },
     pataPricePaisa: { type: Number, required: true, min: 0 },

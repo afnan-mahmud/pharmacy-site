@@ -6,11 +6,19 @@ import { connectDb } from "@/lib/db";
 import { requireAdminAction } from "@/lib/session";
 import { toPlain, toPlainList, type Serialized } from "@/lib/serialize";
 import { MedicineModel, type MedicineDoc } from "@/models/Medicine";
+import {
+  isMedicineForm,
+  toMedicineForm,
+  type MedicineForm,
+} from "@/lib/unitLabels";
 
 export type MedicineInput = {
   name: string;
   genericName: string;
   company: string;
+  // Which unit words this medicine is shown with. Omitted means "tablet",
+  // which is what every medicine created before this field existed is.
+  form?: MedicineForm;
   patasPerBox: number;
   boxPricePaisa: number;
   pataPricePaisa: number;
@@ -66,6 +74,12 @@ function validate(input: MedicineInput): void {
   toOptionalString(input.genericName, "genericName");
   toOptionalString(input.company, "company");
 
+  // Undefined is the "not specified" case and defaults to tablet in
+  // toFields(); anything else present must be a form we actually know.
+  if (input.form !== undefined && !isMedicineForm(input.form)) {
+    throw new Error("Medicine form thik nai");
+  }
+
   if (
     typeof input.patasPerBox !== "number" ||
     !Number.isInteger(input.patasPerBox) ||
@@ -94,6 +108,7 @@ function toFields(input: MedicineInput) {
     nameLower: name.toLowerCase(),
     genericName: toOptionalString(input.genericName, "genericName").trim(),
     company: toOptionalString(input.company, "company").trim(),
+    form: toMedicineForm(input.form),
     patasPerBox: input.patasPerBox,
     boxPricePaisa: input.boxPricePaisa,
     pataPricePaisa: input.pataPricePaisa,

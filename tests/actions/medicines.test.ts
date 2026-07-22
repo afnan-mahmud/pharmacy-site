@@ -337,3 +337,47 @@ describe("authorization", () => {
     );
   });
 });
+
+describe("medicine form", () => {
+  it("defaults to tablet when no form is given", async () => {
+    const medicine = await createMedicine(napa);
+    expect(medicine.form).toBe("tablet");
+  });
+
+  it("stores the form it is given", async () => {
+    const medicine = await createMedicine({
+      ...napa,
+      name: "Napa Syrup",
+      form: "syrup",
+    });
+    expect(medicine.form).toBe("syrup");
+  });
+
+  it("rejects a form that is not one of the known ones", async () => {
+    await expect(
+      createMedicine({
+        ...napa,
+        name: "Weird",
+        // Deliberately invalid: this is a network-reachable boundary and the
+        // payload does not have to come from our own form picker.
+        form: "ointment" as never,
+      }),
+    ).rejects.toThrow("Medicine form thik nai");
+  });
+
+  it("lets an edit change the form without touching stock", async () => {
+    const created = await createMedicine(napa);
+    const updated = await updateMedicine(created._id, {
+      ...napa,
+      form: "syrup",
+    });
+    expect(updated.form).toBe("syrup");
+    expect(updated.stockPatas).toBe(created.stockPatas);
+  });
+
+  it("resets an edited medicine to tablet when the form is omitted", async () => {
+    const created = await createMedicine({ ...napa, form: "syrup" });
+    const updated = await updateMedicine(created._id, napa);
+    expect(updated.form).toBe("tablet");
+  });
+});
