@@ -1,4 +1,5 @@
 import { listMedicines } from "@/actions/medicines";
+import { toMedicineForm } from "@/lib/unitLabels";
 import { MedicineTable, type MedicineRow } from "@/components/MedicineTable";
 
 export default async function MedicinesPage() {
@@ -9,6 +10,7 @@ export default async function MedicinesPage() {
     name: m.name,
     genericName: m.genericName,
     company: m.company,
+    form: toMedicineForm(m.form),
     patasPerBox: m.patasPerBox,
     boxPricePaisa: m.boxPricePaisa,
     pataPricePaisa: m.pataPricePaisa,

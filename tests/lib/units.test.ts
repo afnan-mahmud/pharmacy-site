@@ -74,43 +74,66 @@ describe("splitStock", () => {
 
 describe("formatStock", () => {
   it("shows boxes and patas together", () => {
-    expect(formatStock(498, 10)).toBe("49 box 8 pata");
+    expect(formatStock(498, 10, "tablet")).toBe("49 box 8 pata");
   });
 
   it("omits patas when the split is exact", () => {
-    expect(formatStock(500, 10)).toBe("50 box");
+    expect(formatStock(500, 10, "tablet")).toBe("50 box");
   });
 
   it("omits boxes when under one box", () => {
-    expect(formatStock(8, 10)).toBe("8 pata");
+    expect(formatStock(8, 10, "tablet")).toBe("8 pata");
   });
 
   it("shows empty stock as zero patas", () => {
-    expect(formatStock(0, 10)).toBe("0 pata");
+    expect(formatStock(0, 10, "tablet")).toBe("0 pata");
+  });
+
+  it("uses each form's own words", () => {
+    expect(formatStock(41, 12, "syrup")).toBe("3 carton 5 bottle");
+    expect(formatStock(24, 12, "syrup")).toBe("2 carton");
+    expect(formatStock(5, 12, "syrup")).toBe("5 bottle");
+    expect(formatStock(7, 5, "injection")).toBe("1 box 2 vial");
+    expect(formatStock(3, 6, "cream")).toBe("3 tube");
+    expect(formatStock(6, 6, "drops")).toBe("1 box");
+  });
+
+  // Medicines saved before the form field existed read back without one.
+  it("falls back to box/pata for a missing or unknown form", () => {
+    expect(formatStock(498, 10, undefined)).toBe("49 box 8 pata");
+    expect(formatStock(498, 10, "ointment")).toBe("49 box 8 pata");
   });
 
   it("rejects a non-positive patasPerBox", () => {
-    expect(() => formatStock(100, 0)).toThrow("patasPerBox must be at least 1");
-    expect(() => formatStock(100, -1)).toThrow("patasPerBox must be at least 1");
+    expect(() => formatStock(100, 0, "tablet")).toThrow("patasPerBox must be at least 1");
+    expect(() => formatStock(100, -1, "tablet")).toThrow("patasPerBox must be at least 1");
   });
 
   it("rejects a non-integer patasPerBox", () => {
-    expect(() => formatStock(100, 10.5)).toThrow("patasPerBox must be a whole number");
+    expect(() => formatStock(100, 10.5, "tablet")).toThrow("patasPerBox must be a whole number");
   });
 
   it("rejects negative stockPatas", () => {
-    expect(() => formatStock(-1, 10)).toThrow("stockPatas cannot be negative");
+    expect(() => formatStock(-1, 10, "tablet")).toThrow("stockPatas cannot be negative");
   });
 
   it("rejects a non-integer stockPatas", () => {
-    expect(() => formatStock(5.5, 10)).toThrow("stockPatas must be a whole number");
+    expect(() => formatStock(5.5, 10, "tablet")).toThrow("stockPatas must be a whole number");
   });
 
   it("rejects NaN and Infinity", () => {
-    expect(() => formatStock(NaN, 10)).toThrow("is not a valid number");
-    expect(() => formatStock(Infinity, 10)).toThrow("is not a valid number");
-    expect(() => formatStock(100, NaN)).toThrow("is not a valid number");
-    expect(() => formatStock(100, Infinity)).toThrow("is not a valid number");
+    expect(() => formatStock(NaN, 10, "tablet")).toThrow("is not a valid number");
+    expect(() => formatStock(Infinity, 10, "tablet")).toThrow("is not a valid number");
+    expect(() => formatStock(100, NaN, "tablet")).toThrow("is not a valid number");
+    expect(() => formatStock(100, Infinity, "tablet")).toThrow("is not a valid number");
+  });
+
+  // A bad number must be reported as a bad number, not silently formatted
+  // with fallback wording, so the guards have to run before the labels.
+  it("validates numbers before it looks at the form", () => {
+    expect(() => formatStock(-1, 10, "definitely-not-a-form")).toThrow(
+      "stockPatas cannot be negative",
+    );
   });
 });
 
@@ -121,7 +144,7 @@ describe("validation ordering consistency", () => {
     // check wins: non-integer is reported before negative/range.
     expect(() => boxesToPatas(-1.5, 10)).toThrow("boxes must be a whole number");
     expect(() => splitStock(-1.5, 10)).toThrow("stockPatas must be a whole number");
-    expect(() => formatStock(-1.5, 10)).toThrow("stockPatas must be a whole number");
+    expect(() => formatStock(-1.5, 10, "tablet")).toThrow("stockPatas must be a whole number");
     expect(() => boxesToPatas(5, -1.5)).toThrow("patasPerBox must be a whole number");
   });
 });

@@ -53,7 +53,7 @@ export function StockInForm() {
           <div>
             <div className="text-sm font-semibold text-ink">{medicine.name}</div>
             <div className="text-xs text-muted">
-              Ekhon ache: {formatStock(medicine.stockPatas, medicine.patasPerBox)}
+              Ekhon ache: {formatStock(medicine.stockPatas, medicine.patasPerBox, medicine.form)}
               {" · "}1 box = {medicine.patasPerBox} pata
             </div>
           </div>

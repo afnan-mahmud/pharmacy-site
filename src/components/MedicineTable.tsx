@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { deactivateMedicine } from "@/actions/medicines";
 import { formatTaka } from "@/lib/money";
 import { formatStock } from "@/lib/units";
+import { unitLabelsFor } from "@/lib/unitLabels";
 import { MedicineForm, type MedicineFormValues } from "./MedicineForm";
 import {
   card,
@@ -99,7 +100,7 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
                   <td className={`${td} font-medium`}>{formatTaka(row.boxPricePaisa)}</td>
                   <td className={td}>{formatTaka(row.pataPricePaisa)}</td>
                   <td className={`${td} ${low ? "font-semibold text-danger" : ""}`}>
-                    {formatStock(row.stockPatas, row.patasPerBox)}
+                    {formatStock(row.stockPatas, row.patasPerBox, row.form)}
                   </td>
                   <td className={`${td} text-right`}>
                     <button

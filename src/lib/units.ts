@@ -1,7 +1,15 @@
+import { unitLabelsFor } from "@/lib/unitLabels";
+
 /**
- * Stock is stored as a single integer count of patas (strips). The owner enters
- * and reads stock in boxes, so every box quantity converts through here. Keeping
- * one canonical number means box and pata counts can never disagree.
+ * Stock is stored as a single integer count of inner units — patas for a
+ * tablet strip, bottles for a syrup. The owner enters and reads stock in outer
+ * packs, so every pack quantity converts through here. Keeping one canonical
+ * number means the two counts can never disagree.
+ *
+ * The field names say "pata" and "box" because that is what they were called
+ * when the system only sold tablets; they mean "inner unit" and "outer pack"
+ * under every medicine form. The words a person actually sees come from
+ * src/lib/unitLabels.ts, never from these names.
  */
 
 function assertWholeNonNegative(value: number, label: string): void {
@@ -46,9 +54,16 @@ export function splitStock(
   };
 }
 
-export function formatStock(stockPatas: number, patasPerBox: number): string {
+export function formatStock(
+  stockPatas: number,
+  patasPerBox: number,
+  form: unknown,
+): string {
+  // splitStock validates first, so a bad number is reported as a bad number
+  // rather than formatted with fallback wording.
   const { boxes, patas } = splitStock(stockPatas, patasPerBox);
-  if (boxes === 0) return `${patas} pata`;
-  if (patas === 0) return `${boxes} box`;
-  return `${boxes} box ${patas} pata`;
+  const labels = unitLabelsFor(form);
+  if (boxes === 0) return `${patas} ${labels.inner}`;
+  if (patas === 0) return `${boxes} ${labels.outer}`;
+  return `${boxes} ${labels.outer} ${patas} ${labels.inner}`;
 }

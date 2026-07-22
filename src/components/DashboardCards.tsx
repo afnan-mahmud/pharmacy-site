@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { DashboardSummary } from "@/actions/dashboard";
 import { formatTaka } from "@/lib/money";
 import { formatStock } from "@/lib/units";
+import { unitLabelsFor } from "@/lib/unitLabels";
 import { card, pageTitle, thead, th, td, trow } from "@/components/ui";
 
 export function DashboardCards({ summary }: { summary: DashboardSummary }) {
@@ -75,9 +76,11 @@ export function DashboardCards({ summary }: { summary: DashboardSummary }) {
                   <tr key={row.medicineId} className={trow}>
                     <td className={`${td} font-semibold`}>{row.name}</td>
                     <td className={`${td} font-semibold text-warn`}>
-                      {formatStock(row.stockPatas, row.patasPerBox)}
+                      {formatStock(row.stockPatas, row.patasPerBox, row.form)}
                     </td>
-                    <td className={`${td} text-muted`}>{row.lowStockThreshold} pata</td>
+                    <td className={`${td} text-muted`}>
+                      {row.lowStockThreshold} {unitLabelsFor(row.form).inner}
+                    </td>
                   </tr>
                 ))}
               </tbody>

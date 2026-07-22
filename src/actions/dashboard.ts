@@ -8,10 +8,12 @@ import { splitDueTotals } from "@/lib/dueDisplay";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { MedicineModel, type MedicineDoc } from "@/models/Medicine";
 import { OrderModel } from "@/models/Order";
+import { toMedicineForm, type MedicineForm } from "@/lib/unitLabels";
 
 export type LowStockRow = {
   medicineId: string;
   name: string;
+  form: MedicineForm;
   stockPatas: number;
   patasPerBox: number;
   lowStockThreshold: number;
@@ -91,6 +93,7 @@ export async function dashboardSummary(): Promise<DashboardSummary> {
     lowStock: lowStockDocs.map((medicine) => ({
       medicineId: medicine._id.toString(),
       name: medicine.name,
+      form: toMedicineForm(medicine.form),
       stockPatas: medicine.stockPatas,
       patasPerBox: medicine.patasPerBox,
       lowStockThreshold: medicine.lowStockThreshold,

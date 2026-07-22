@@ -4,6 +4,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createMedicine, updateMedicine } from "@/actions/medicines";
 import { takaToPaisa, paisaToTaka } from "@/lib/money";
+// Aliased: `MedicineForm` is this file's component (a <form>), while the
+// imported type is the dosage form (tablet, syrup, ...).
+import {
+  DEFAULT_MEDICINE_FORM,
+  type MedicineForm as DosageForm,
+} from "@/lib/unitLabels";
 import { card, input, label as labelCls, btnPrimary, btnGhost, errorBox } from "@/components/ui";
 
 export type MedicineFormValues = {
@@ -11,6 +17,7 @@ export type MedicineFormValues = {
   name: string;
   genericName: string;
   company: string;
+  form: DosageForm;
   patasPerBox: number;
   boxPricePaisa: number;
   pataPricePaisa: number;
@@ -29,6 +36,9 @@ export function MedicineForm({
   const [name, setName] = useState(initial?.name ?? "");
   const [genericName, setGenericName] = useState(initial?.genericName ?? "");
   const [company, setCompany] = useState(initial?.company ?? "");
+  const [form, setForm] = useState<DosageForm>(
+    initial?.form ?? DEFAULT_MEDICINE_FORM,
+  );
   const [patasPerBox, setPatasPerBox] = useState(
     String(initial?.patasPerBox ?? 10),
   );
@@ -57,6 +67,7 @@ export function MedicineForm({
         name,
         genericName,
         company,
+        form,
         patasPerBox: Number(patasPerBox),
         boxPricePaisa: takaToPaisa(boxPrice || 0),
         pataPricePaisa: takaToPaisa(pataPrice || 0),

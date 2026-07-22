@@ -3,12 +3,14 @@
 import { useState, useEffect } from "react";
 import { searchMedicines } from "@/actions/medicines";
 import { formatStock } from "@/lib/units";
+import { toMedicineForm, type MedicineForm } from "@/lib/unitLabels";
 import { input } from "@/components/ui";
 
 export type PickedMedicine = {
   id: string;
   name: string;
   genericName: string;
+  form: MedicineForm;
   patasPerBox: number;
   boxPricePaisa: number;
   pataPricePaisa: number;
@@ -45,6 +47,7 @@ export function MedicinePicker({
             id: m._id,
             name: m.name,
             genericName: m.genericName,
+            form: toMedicineForm(m.form),
             patasPerBox: m.patasPerBox,
             boxPricePaisa: m.boxPricePaisa,
             pataPricePaisa: m.pataPricePaisa,
@@ -98,7 +101,7 @@ export function MedicinePicker({
                   </span>
                 </span>
                 <span className="shrink-0 text-xs font-medium text-muted">
-                  {formatStock(medicine.stockPatas, medicine.patasPerBox)}
+                  {formatStock(medicine.stockPatas, medicine.patasPerBox, medicine.form)}
                 </span>
               </button>
             </li>
