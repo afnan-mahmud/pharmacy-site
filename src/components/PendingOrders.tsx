@@ -129,10 +129,7 @@ export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
                   const boxes = edits[order.id]?.[item.medicineId] ?? item.boxes;
                   const labels = unitLabelsFor(item.form);
                   return (
-                    <tr
-                      key={item.medicineId}
-                      className={`border-t border-line ${boxes === 0 ? "opacity-50" : ""}`}
-                    >
+                    <tr key={item.medicineId} className="border-t border-line">
                       <td className="py-2 font-medium text-ink">{item.medicineName}</td>
                       <td className="py-2">{formatTaka(item.boxPricePaisa)}</td>
                       <td className="py-2 text-muted">
@@ -147,7 +144,7 @@ export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
                         <span className="ml-1 text-xs text-muted">{labels.outer}</span>
                         {boxes === 0 && (
                           <div className="text-[11px] font-medium text-muted">
-                            bill hobe na
+                            invoice e thakbe, dam nai
                           </div>
                         )}
                       </td>

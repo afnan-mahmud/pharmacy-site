@@ -178,10 +178,7 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
               </thead>
               <tbody>
                 {cart.map((line, idx) => (
-                  <tr
-                    key={line.medicine.id}
-                    className={`border-b border-line ${line.boxes === 0 ? "opacity-50" : ""}`}
-                  >
+                  <tr key={line.medicine.id} className="border-b border-line">
                     <td className={td}>
                       <div className="font-medium text-ink">{line.medicine.name}</div>
                       <div className="text-xs text-muted">
@@ -192,9 +189,15 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
                     </td>
                     <td className={td}>{formatTaka(line.medicine.boxPricePaisa)}</td>
                     <td className={td}>
+                      {/* min={0}, not 1: this input sits inside the form that
+                          submits the sale, so the browser's own constraint
+                          validation would block the submit outright — with a
+                          "must be greater than or equal to 1" bubble — before
+                          handleSubmit ever ran. A zeroed line is legal here;
+                          it prints on the invoice with no price. */}
                       <input
                         type="number"
-                        min={1}
+                        min={0}
                         value={line.boxes}
                         onChange={(e) => updateBoxes(idx, e.target.value)}
                         className="w-20 rounded border border-line px-2 py-1 text-sm"
@@ -204,7 +207,7 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
                       </span>
                       {line.boxes === 0 && (
                         <div className="text-[11px] font-medium text-muted">
-                          bill hobe na
+                          invoice e thakbe, dam nai
                         </div>
                       )}
                     </td>
