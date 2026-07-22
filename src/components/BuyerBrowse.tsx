@@ -10,6 +10,7 @@ import {
 import { formatTaka } from "@/lib/money";
 import { discountPercent } from "@/lib/discount";
 import { stockStatusLabel, type StockStatus } from "@/lib/stockStatus";
+import { unitLabelsFor, capitalize } from "@/lib/unitLabels";
 
 type CartLine = { medicine: BuyerMedicineOption; boxes: number };
 
@@ -155,7 +156,8 @@ export function BuyerBrowse() {
                   {line.medicine.name}
                 </div>
                 <div className="text-xs text-muted">
-                  {formatTaka(line.medicine.boxPricePaisa)}/box ·{" "}
+                  {formatTaka(line.medicine.boxPricePaisa)}/
+                  {unitLabelsFor(line.medicine.form).outer} ·{" "}
                   <span className="font-semibold text-brand-strong">
                     {formatTaka(line.medicine.boxPricePaisa * line.boxes)}
                   </span>
@@ -164,6 +166,7 @@ export function BuyerBrowse() {
               <Stepper
                 value={line.boxes}
                 onChange={(v) => setBoxes(line.medicine.id, v)}
+                unitLabel={unitLabelsFor(line.medicine.form).outer}
               />
               <button
                 type="button"
@@ -252,7 +255,9 @@ function ProductCard({
               </span>
             </>
           )}
-          <span className="text-[11px] text-muted">/box</span>
+          <span className="text-[11px] text-muted">
+            /{unitLabelsFor(medicine.form).outer}
+          </span>
         </div>
       </div>
 
@@ -298,9 +303,11 @@ function AvailabilityBadge({ status }: { status: StockStatus }) {
 function Stepper({
   value,
   onChange,
+  unitLabel,
 }: {
   value: number;
   onChange: (v: number) => void;
+  unitLabel: string;
 }) {
   return (
     <div className="flex shrink-0 items-center rounded-full border border-line bg-canvas">
@@ -317,7 +324,7 @@ function Stepper({
         min={1}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        aria-label="Box"
+        aria-label={capitalize(unitLabel)}
         className="w-9 border-0 bg-transparent p-0 text-center text-sm font-semibold text-ink [appearance:textfield] focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none"
       />
       <button

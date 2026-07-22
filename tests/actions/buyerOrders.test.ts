@@ -309,6 +309,19 @@ describe("myDueBalance and myLedger — buyer-scoped reads", () => {
 });
 
 describe("searchMedicinesForBuyer", () => {
+  it("returns the medicine form, and still no stock count or retail price", async () => {
+    await makeSessionBuyer();
+    await makeMedicine({ name: "Napa Syrup", form: "syrup", patasPerBox: 12 });
+
+    const [found] = await searchMedicinesForBuyer("Napa Syrup");
+
+    expect(found.form).toBe("syrup");
+    // The domain rule this endpoint exists to enforce: a buyer never sees
+    // the raw stock count or the retail price. A form name is neither.
+    expect(found).not.toHaveProperty("stockPatas");
+    expect(found).not.toHaveProperty("pataPricePaisa");
+  });
+
   it("returns the buyer-safe fields — availability, never the raw stock or pata price", async () => {
     await makeSessionBuyer();
     await makeMedicine({ name: "Napa 500mg", mrpBoxPricePaisa: 15000 });
@@ -319,6 +332,7 @@ describe("searchMedicinesForBuyer", () => {
       id: expect.any(String),
       name: "Napa 500mg",
       company: "Beximco",
+      form: "tablet",
       boxPricePaisa: 12000,
       mrpBoxPricePaisa: 15000,
       // 500 patas, threshold 20 -> comfortably in stock, as a signal only.
@@ -334,6 +348,7 @@ describe("searchMedicinesForBuyer", () => {
       "availability",
       "boxPricePaisa",
       "company",
+      "form",
       "id",
       "mrpBoxPricePaisa",
       "name",

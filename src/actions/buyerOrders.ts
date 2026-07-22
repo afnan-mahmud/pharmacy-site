@@ -12,6 +12,7 @@ import { MedicineModel } from "@/models/Medicine";
 import { OrderModel, type OrderDoc } from "@/models/Order";
 import { type PaymentDoc } from "@/models/Payment";
 import { type SaleDoc } from "@/models/Sale";
+import { toMedicineForm, type MedicineForm } from "@/lib/unitLabels";
 
 export type OrderItemInput = { medicineId: string; boxes: number };
 
@@ -30,6 +31,9 @@ export type BuyerMedicineOption = {
   id: string;
   name: string;
   company: string;
+  // Which unit words to show. Not sensitive: it is neither the stock count
+  // nor the retail price.
+  form: MedicineForm;
   boxPricePaisa: number;
   // The struck-through list price, or 0 for none. Never the internal cost.
   mrpBoxPricePaisa: number;
@@ -67,7 +71,7 @@ export async function searchMedicinesForBuyer(
     active: true,
     $or: [{ name: pattern }, { genericName: pattern }],
   })
-    .select("name company boxPricePaisa mrpBoxPricePaisa stockPatas lowStockThreshold")
+    .select("name company form boxPricePaisa mrpBoxPricePaisa stockPatas lowStockThreshold")
     .sort({ name: 1 })
     .limit(20)
     .lean<
@@ -75,6 +79,7 @@ export async function searchMedicinesForBuyer(
         _id: mongoose.Types.ObjectId;
         name: string;
         company: string;
+        form?: string;
         boxPricePaisa: number;
         mrpBoxPricePaisa: number;
         stockPatas: number;
@@ -86,6 +91,7 @@ export async function searchMedicinesForBuyer(
     id: String(m._id),
     name: m.name,
     company: m.company,
+    form: toMedicineForm(m.form),
     boxPricePaisa: m.boxPricePaisa,
     mrpBoxPricePaisa: m.mrpBoxPricePaisa ?? 0,
     availability: stockStatus(m.stockPatas, m.lowStockThreshold),
