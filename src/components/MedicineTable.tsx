@@ -34,7 +34,11 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
     setError("");
     setDeactivatingId(row.id);
     try {
-      await deactivateMedicine(row.id);
+      const result = await deactivateMedicine(row.id);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kichu ekta bhul holo");

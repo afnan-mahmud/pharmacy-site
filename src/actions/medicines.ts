@@ -6,6 +6,7 @@ import { connectDb } from "@/lib/db";
 import { requireAdminAction } from "@/lib/session";
 import { toPlain, toPlainList, type Serialized } from "@/lib/serialize";
 import { MedicineModel, type MedicineDoc } from "@/models/Medicine";
+import { actionResult, type ActionResult } from "@/lib/actionResult";
 import {
   isMedicineForm,
   toMedicineForm,
@@ -119,58 +120,64 @@ function toFields(input: MedicineInput) {
 
 export async function createMedicine(
   input: MedicineInput,
-): Promise<Serialized<MedicineDoc>> {
-  await requireAdminAction();
-  await connectDb();
-  validate(input);
+): Promise<ActionResult<Serialized<MedicineDoc>>> {
+  return actionResult(async () => {
+    await requireAdminAction();
+    await connectDb();
+    validate(input);
 
-  try {
-    const medicine = await MedicineModel.create(toFields(input));
-    revalidatePath("/medicines");
-    return toPlain(medicine.toObject() as MedicineDoc);
-  } catch (error) {
-    if ((error as { code?: number }).code === 11000) {
-      throw new Error(`Medicine "${input.name.trim()}" already exists`);
+    try {
+      const medicine = await MedicineModel.create(toFields(input));
+      revalidatePath("/medicines");
+      return toPlain(medicine.toObject() as MedicineDoc);
+    } catch (error) {
+      if ((error as { code?: number }).code === 11000) {
+        throw new Error(`Medicine "${input.name.trim()}" already exists`);
+      }
+      throw error;
     }
-    throw error;
-  }
+  });
 }
 
 export async function updateMedicine(
   id: string,
   input: MedicineInput,
-): Promise<Serialized<MedicineDoc>> {
-  await requireAdminAction();
-  await connectDb();
-  validate(input);
+): Promise<ActionResult<Serialized<MedicineDoc>>> {
+  return actionResult(async () => {
+    await requireAdminAction();
+    await connectDb();
+    validate(input);
 
-  // A malformed id would otherwise reach the driver and surface a raw
-  // Mongoose CastError instead of a clean "not found".
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    throw new Error("Medicine not found");
-  }
-
-  try {
-    // stockPatas is deliberately absent from the update: stock only ever
-    // changes through stock-in and sales, never through the medicine form.
-    const medicine = await MedicineModel.findByIdAndUpdate(
-      id,
-      { $set: toFields(input) },
-      { new: true, runValidators: true },
-    ).lean<MedicineDoc>();
-
-    if (!medicine) throw new Error("Medicine not found");
-    revalidatePath("/medicines");
-    return toPlain(medicine);
-  } catch (error) {
-    if ((error as { code?: number }).code === 11000) {
-      throw new Error(`Medicine "${input.name.trim()}" already exists`);
+    // A malformed id would otherwise reach the driver and surface a raw
+    // Mongoose CastError instead of a clean "not found".
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new Error("Medicine not found");
     }
-    throw error;
-  }
+
+    try {
+      // stockPatas is deliberately absent from the update: stock only ever
+      // changes through stock-in and sales, never through the medicine form.
+      const medicine = await MedicineModel.findByIdAndUpdate(
+        id,
+        { $set: toFields(input) },
+        { new: true, runValidators: true },
+      ).lean<MedicineDoc>();
+
+      if (!medicine) throw new Error("Medicine not found");
+      revalidatePath("/medicines");
+      return toPlain(medicine);
+    } catch (error) {
+      if ((error as { code?: number }).code === 11000) {
+        throw new Error(`Medicine "${input.name.trim()}" already exists`);
+      }
+      throw error;
+    }
+  });
 }
 
-export async function listMedicines(query?: string): Promise<Serialized<MedicineDoc>[]> {
+export async function listMedicines(
+  query?: string,
+): Promise<Serialized<MedicineDoc>[]> {
   await requireAdminAction();
   await connectDb();
 
@@ -186,7 +193,9 @@ export async function listMedicines(query?: string): Promise<Serialized<Medicine
     filter.name = { $regex: escapeRegex(term), $options: "i" };
   }
 
-  const docs = await MedicineModel.find(filter).sort({ name: 1 }).lean<MedicineDoc[]>();
+  const docs = await MedicineModel.find(filter)
+    .sort({ name: 1 })
+    .lean<MedicineDoc[]>();
   return toPlainList(docs);
 }
 
@@ -218,15 +227,19 @@ export async function searchMedicines(
   return toPlainList(docs);
 }
 
-export async function deactivateMedicine(id: string): Promise<void> {
-  await requireAdminAction();
-  await connectDb();
-  // A malformed id would otherwise reach the driver and surface a raw
-  // Mongoose CastError instead of a clean "not found".
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    throw new Error("Medicine not found");
-  }
-  // Deactivated, not deleted: past sales reference this medicine.
-  await MedicineModel.findByIdAndUpdate(id, { $set: { active: false } });
-  revalidatePath("/medicines");
+export async function deactivateMedicine(
+  id: string,
+): Promise<ActionResult<void>> {
+  return actionResult(async () => {
+    await requireAdminAction();
+    await connectDb();
+    // A malformed id would otherwise reach the driver and surface a raw
+    // Mongoose CastError instead of a clean "not found".
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new Error("Medicine not found");
+    }
+    // Deactivated, not deleted: past sales reference this medicine.
+    await MedicineModel.findByIdAndUpdate(id, { $set: { active: false } });
+    revalidatePath("/medicines");
+  });
 }

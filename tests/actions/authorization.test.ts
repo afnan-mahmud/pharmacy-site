@@ -89,6 +89,35 @@ const EXPECTED_ERROR: Record<string, string> = {
   "/src/actions/buyerOrders.ts": BUYER_ONLY_ERROR,
 };
 
+/**
+ * A guarded action refuses an unauthenticated caller in one of two shapes.
+ *
+ * Read actions still throw. Mutating actions return their failure as data
+ * instead, because Next.js redacts a thrown message in production (see
+ * src/lib/actionResult.ts) — the guard message has to survive the trip to the
+ * browser like any other.
+ *
+ * Both shapes are accepted, and nothing else is. A promise that resolves to
+ * anything other than a failure carrying the expected message fails here, so
+ * an unguarded export — which would resolve with real data, or reject with
+ * some unrelated TypeError from touching its arguments — still cannot pass.
+ */
+async function expectRefusal(call: unknown, expected: string): Promise<void> {
+  let resolved: unknown;
+  try {
+    resolved = await (call as Promise<unknown>);
+  } catch (error) {
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain(expected);
+    return;
+  }
+
+  // Resolved: the only acceptable resolution is an ActionResult failure
+  // carrying the guard's own message.
+  expect(resolved).toMatchObject({ ok: false });
+  expect((resolved as { error: string }).error).toContain(expected);
+}
+
 describe("every action module export requires an admin session", () => {
   const modulePaths = Object.keys(actionModules).sort();
 
@@ -124,10 +153,10 @@ describe("every action module export requires an admin session", () => {
         continue;
       }
 
-      it(`${path} → ${exportName}() rejects an unauthenticated caller`, async () => {
+      it(`${path} → ${exportName}() refuses an unauthenticated caller`, async () => {
         const fn = value as (...args: unknown[]) => unknown;
         const expected = EXPECTED_ERROR[path] ?? ADMIN_ONLY_ERROR;
-        await expect(fn()).rejects.toThrow(expected);
+        await expectRefusal(fn(), expected);
       });
     }
   }

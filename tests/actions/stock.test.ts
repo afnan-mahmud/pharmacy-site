@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import mongoose from "mongoose";
 import { setupTestDb } from "../helpers/db";
+import { unwrap } from "../helpers/action";
 import {
   createMockCookieStore,
   setSessionCookie,
@@ -40,7 +41,7 @@ const napa = {
 
 describe("stockIn", () => {
   it("converts boxes to patas and increases stock", async () => {
-    const medicine = await createMedicine(napa);
+    const medicine = await unwrap(createMedicine(napa));
     await stockIn({
       medicineId: String(medicine._id),
       boxes: 50,
@@ -52,7 +53,7 @@ describe("stockIn", () => {
   });
 
   it("accumulates across entries", async () => {
-    const medicine = await createMedicine(napa);
+    const medicine = await unwrap(createMedicine(napa));
     const entry = { medicineId: String(medicine._id), note: "" };
     await stockIn({ ...entry, boxes: 50 });
     await stockIn({ ...entry, boxes: 20 });
@@ -62,7 +63,7 @@ describe("stockIn", () => {
   });
 
   it("records the entry with the snapshotted pata count", async () => {
-    const medicine = await createMedicine(napa);
+    const medicine = await unwrap(createMedicine(napa));
     await stockIn({
       medicineId: String(medicine._id),
       boxes: 50,
@@ -81,7 +82,7 @@ describe("stockIn", () => {
   // guard closes. There is no `userId` field in the input at all any more:
   // stockIn derives it itself from requireAdminAction()'s session.
   it("stamps createdBy from the session, not from the input", async () => {
-    const medicine = await createMedicine(napa);
+    const medicine = await unwrap(createMedicine(napa));
     await stockIn({
       medicineId: String(medicine._id),
       boxes: 50,
@@ -94,7 +95,7 @@ describe("stockIn", () => {
   });
 
   it("keeps the historical patasAdded when patasPerBox later changes, and a new entry uses the new pack size", async () => {
-    const medicine = await createMedicine(napa);
+    const medicine = await unwrap(createMedicine(napa));
     await stockIn({
       medicineId: String(medicine._id),
       boxes: 10,
@@ -119,14 +120,14 @@ describe("stockIn", () => {
   });
 
   it("rejects zero boxes", async () => {
-    const medicine = await createMedicine(napa);
+    const medicine = await unwrap(createMedicine(napa));
     await expect(
       stockIn({ medicineId: String(medicine._id), boxes: 0, note: "" }),
     ).rejects.toThrow("Poriman 1 er kom hote parbe na");
   });
 
   it("rejects negative boxes", async () => {
-    const medicine = await createMedicine(napa);
+    const medicine = await unwrap(createMedicine(napa));
     await expect(
       stockIn({ medicineId: String(medicine._id), boxes: -5, note: "" }),
     ).rejects.toThrow("Poriman 1 er kom hote parbe na");
@@ -157,14 +158,14 @@ describe("stockIn input validation", () => {
   });
 
   it("rejects non-integer boxes", async () => {
-    const medicine = await createMedicine(napa);
+    const medicine = await unwrap(createMedicine(napa));
     await expect(
       stockIn({ medicineId: String(medicine._id), boxes: 1.5, note: "" }),
     ).rejects.toThrow("Poriman 1 er kom hote parbe na");
   });
 
   it("rejects a non-string note instead of crashing on .trim()", async () => {
-    const medicine = await createMedicine(napa);
+    const medicine = await unwrap(createMedicine(napa));
     await expect(
       stockIn({
         medicineId: String(medicine._id),
@@ -182,7 +183,7 @@ describe("stockIn transactional rollback", () => {
   });
 
   it("rolls back the stock increment when the StockEntry write fails inside the transaction", async () => {
-    const medicine = await createMedicine(napa);
+    const medicine = await unwrap(createMedicine(napa));
 
     vi.spyOn(StockEntryModel, "create").mockImplementationOnce(() => {
       throw new Error("Simulated failure after the increment landed");
@@ -202,7 +203,7 @@ describe("stockIn transactional rollback", () => {
   });
 
   it("aborts and writes no entry when the medicine is deleted between the read and the transaction", async () => {
-    const medicine = await createMedicine(napa);
+    const medicine = await unwrap(createMedicine(napa));
     const originalStartSession = mongoose.startSession.bind(mongoose);
 
     vi.spyOn(mongoose, "startSession").mockImplementationOnce(async (...args) => {
@@ -226,7 +227,7 @@ describe("stockIn transactional rollback", () => {
 
 describe("listStockEntries", () => {
   it("returns entries newest first", async () => {
-    const medicine = await createMedicine(napa);
+    const medicine = await unwrap(createMedicine(napa));
     const base = { medicineId: String(medicine._id), note: "" };
     await stockIn({ ...base, boxes: 1 });
     await stockIn({ ...base, boxes: 2 });
@@ -244,7 +245,7 @@ describe("listStockEntries", () => {
 // version of src/actions/stock.ts that doesn't call requireAdminAction().
 describe("authorization", () => {
   it("stockIn rejects an unauthenticated caller and writes no entry", async () => {
-    const medicine = await createMedicine(napa);
+    const medicine = await unwrap(createMedicine(napa));
     clearSessionCookie(cookieStore);
 
     await expect(
@@ -254,7 +255,7 @@ describe("authorization", () => {
   });
 
   it("stockIn rejects a buyer-role session and writes no entry", async () => {
-    const medicine = await createMedicine(napa);
+    const medicine = await unwrap(createMedicine(napa));
     setSessionCookie(cookieStore, await buyerToken());
 
     await expect(

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { setupTestDb } from "../helpers/db";
+import { unwrap } from "../helpers/action";
 import {
   createMockCookieStore,
   setSessionCookie,
@@ -37,7 +38,7 @@ const napa = {
 };
 
 async function makeMedicine(overrides = {}, stockPatas = 500) {
-  const medicine = await createMedicine({ ...napa, ...overrides });
+  const medicine = await unwrap(createMedicine({ ...napa, ...overrides }));
   await MedicineModel.updateOne({ _id: medicine._id }, { $set: { stockPatas } });
   return medicine;
 }

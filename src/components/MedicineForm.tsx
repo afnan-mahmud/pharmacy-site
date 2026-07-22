@@ -80,11 +80,18 @@ export function MedicineForm({
         lowStockThreshold: Number(threshold),
       };
 
-      if (initial?.id) {
-        await updateMedicine(initial.id, medicineInput);
-      } else {
-        await createMedicine(medicineInput);
+      const result = initial?.id
+        ? await updateMedicine(initial.id, medicineInput)
+        : await createMedicine(medicineInput);
+
+      // The failure arrives as data, not as a throw: Next.js would have
+      // redacted a thrown message in production. See src/lib/actionResult.ts.
+      if (!result.ok) {
+        setError(result.error);
+        setBusy(false);
+        return;
       }
+
       router.refresh();
       onDone();
     } catch (err) {
