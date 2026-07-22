@@ -111,9 +111,10 @@ arithmetic and are untouched.
 form: { type: String, enum: MEDICINE_FORMS, required: true, default: "tablet" },
 ```
 
-### `src/models/Sale.ts` and `src/models/Order.ts` (changed)
+### `src/models/Sale.ts`, `src/models/Order.ts`, `src/models/StockEntry.ts` (changed)
 
-Each line schema gains `form: { type: String, default: "tablet" }`.
+Each gains `form: { type: String, default: "tablet" }` — on the line schema for
+sales and orders, on the entry itself for stock.
 
 The line stores the **form**, not a rendered label, because the invoice needs
 `"btl"` while the order screen needs `"bottle"` — both are derivable from the
@@ -122,6 +123,15 @@ already documented in both schemas: `medicineName` and the snapshotted prices
 exist so a past invoice reads correctly after the medicine changes, and the unit
 wording needs the same protection. Legacy lines have no `form` and fall back to
 tablet wording, which is what they were printed with.
+
+`StockEntry` gets the same treatment for the same reason: it already snapshots
+`patasAdded` so an old entry keeps saying what actually entered stock that day,
+and the log's "Box / Pata" columns need the wording to keep up.
+
+None of these three declares an `enum` on `form`. A snapshot must never fail
+validation over a value the medicine model no longer offers, and
+`unitLabelsFor` renders anything unrecognised as tablet wording rather than
+throwing.
 
 `Sale.items[].unit` keeps its `"box" | "pata"` enum. It is a tier marker telling
 stock arithmetic which tier was sold, not a display string, and it is not
@@ -146,6 +156,11 @@ stays meaningful.
 - `src/components/MedicinePicker.tsx` — onto the picked medicine, so the retail
   and wholesale sale forms have it
 - `src/actions/buyerOrders.ts` — added to the `.select()` and the returned shape
+
+The four write paths that create snapshots — `src/lib/writeWholesaleSale.ts`,
+the retail branch of `src/actions/sales.ts`, `submitOrder` in
+`src/actions/buyerOrders.ts`, and `stockIn` in `src/actions/stock.ts` — copy the
+medicine's `form` onto the line or entry they write.
 
 Sending `form` to a buyer is safe. The domain rule that `searchMedicinesForBuyer`
 enforces is that a buyer never sees the raw stock count or the retail (pata)
