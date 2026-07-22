@@ -451,7 +451,7 @@ describe("recordWholesaleSale", () => {
     ).rejects.toThrow("Joma taka total er cheye beshi hote parbe na");
   });
 
-  it("rejects a zero box count", async () => {
+  it("rejects a sale whose only line is zero", async () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
     await expect(
@@ -461,7 +461,7 @@ describe("recordWholesaleSale", () => {
         discountPaisa: 0,
         paidPaisa: 0,
       }),
-    ).rejects.toThrow("Poriman 1 er kom hote parbe na");
+    ).rejects.toThrow("Onto ekta line e poriman dite hobe");
   });
 
   it("rejects an unauthenticated caller", async () => {
@@ -678,5 +678,93 @@ describe("sale lines snapshot the medicine form", () => {
 
     const reread = await SaleModel.findById(sale._id).lean();
     expect(reread?.items[0].form).toBe("syrup");
+  });
+});
+
+describe("zero-quantity wholesale lines", () => {
+  it("keeps a zeroed line on the sale and bills only the rest", async () => {
+    const supplied = await makeMedicine({ name: "Napa 500mg" });
+    const outOfStock = await makeMedicine({ name: "Ace Syrup" }, 0);
+    const buyer = await makeBuyer();
+
+    const sale = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [
+        { medicineId: supplied._id, boxes: 3 },
+        { medicineId: outOfStock._id, boxes: 0 },
+      ],
+      discountPaisa: 0,
+      paidPaisa: 0,
+    });
+
+    expect(sale.items).toHaveLength(2);
+    const zeroed = sale.items.find((i) => i.medicineName === "Ace Syrup");
+    expect(zeroed?.quantity).toBe(0);
+    expect(zeroed?.patasDeducted).toBe(0);
+    expect(zeroed?.lineTotalPaisa).toBe(0);
+    expect(sale.subtotalPaisa).toBe(36000);
+  });
+
+  it("takes no stock for a zeroed line", async () => {
+    const supplied = await makeMedicine({ name: "Napa 500mg" });
+    const outOfStock = await makeMedicine({ name: "Ace Syrup" }, 7);
+    const buyer = await makeBuyer();
+
+    await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [
+        { medicineId: supplied._id, boxes: 3 },
+        { medicineId: outOfStock._id, boxes: 0 },
+      ],
+      discountPaisa: 0,
+      paidPaisa: 0,
+    });
+
+    const after = await MedicineModel.findById(outOfStock._id);
+    expect(after?.stockPatas).toBe(7);
+  });
+
+  it("returns only the stock that actually left when the sale is cancelled", async () => {
+    const supplied = await makeMedicine({ name: "Napa 500mg" });
+    const outOfStock = await makeMedicine({ name: "Ace Syrup" }, 7);
+    const buyer = await makeBuyer();
+
+    const sale = await recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [
+        { medicineId: supplied._id, boxes: 3 },
+        { medicineId: outOfStock._id, boxes: 0 },
+      ],
+      discountPaisa: 0,
+      paidPaisa: 0,
+    });
+
+    await cancelSale(sale._id, "Buyer ferot diyeche");
+
+    // 500 back to 500, and the zero line must not invent 7 more.
+    expect((await MedicineModel.findById(supplied._id))?.stockPatas).toBe(500);
+    expect((await MedicineModel.findById(outOfStock._id))?.stockPatas).toBe(7);
+  });
+
+  it("still rejects a negative quantity", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+
+    await expect(
+      recordWholesaleSale({
+        buyerId: buyer._id,
+        items: [{ medicineId: medicine._id, boxes: -1 }],
+        discountPaisa: 0,
+        paidPaisa: 0,
+      }),
+    ).rejects.toThrow("Poriman 0 er kom hote parbe na");
+  });
+
+  it("still rejects a zero quantity at the retail counter", async () => {
+    const medicine = await makeMedicine();
+
+    await expect(
+      recordRetailSale({ items: [{ medicineId: medicine._id, patas: 0 }] }),
+    ).rejects.toThrow("Poriman 1 er kom hote parbe na");
   });
 });

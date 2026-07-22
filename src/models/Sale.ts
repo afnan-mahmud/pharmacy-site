@@ -7,16 +7,21 @@ const saleLineSchema = new Schema(
     // later renamed or deactivated.
     medicineName: { type: String, required: true },
     unit: { type: String, enum: ["box", "pata"], required: true },
-    quantity: { type: Number, required: true, min: 1 },
+    // 0 is allowed and meaningful: a line the buyer asked for that the owner
+    // could not supply stays on the invoice at zero, priced at nothing, so
+    // the paper records the request rather than silently dropping it. The
+    // min is what keeps a *negative* quantity out of the database.
+    quantity: { type: Number, required: true, min: 0 },
     // Snapshotted at sale time: changing a medicine's price later must
     // never rewrite what a past invoice says the customer was charged.
     ratePaisa: { type: Number, required: true, min: 0 },
     lineTotalPaisa: { type: Number, required: true, min: 0 },
     // How much stock this line actually consumed. For a box line this is
-    // quantity * patasPerBox; for a pata line it is quantity. Stored so
-    // cancellation can return exactly what was taken, even if the
-    // medicine's pack size changed in between.
-    patasDeducted: { type: Number, required: true, min: 1 },
+    // quantity * patasPerBox; for a pata line it is quantity, and for a
+    // zero-quantity line it is 0 — nothing left the shelf, so cancelling
+    // returns nothing. Stored so cancellation can return exactly what was
+    // taken, even if the medicine's pack size changed in between.
+    patasDeducted: { type: Number, required: true, min: 0 },
     // Which unit words this line prints with, snapshotted for the same reason
     // medicineName and ratePaisa are: an invoice printed last month must not
     // re-word itself because the medicine's form was corrected today. The

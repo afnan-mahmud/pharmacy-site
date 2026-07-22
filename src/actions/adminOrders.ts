@@ -81,9 +81,11 @@ function validateApproval(items: ApprovalItemInput[]): void {
     if (
       typeof item.boxes !== "number" ||
       !Number.isInteger(item.boxes) ||
-      item.boxes < 1
+      item.boxes < 0
     ) {
-      throw new Error("Poriman 1 er kom hote parbe na");
+      // 0 is legal here — the owner zeroes a line he cannot supply and it
+      // still prints. writeWholesaleSale rejects an all-zero approval.
+      throw new Error("Poriman 0 er kom hote parbe na");
     }
     if (seen.has(item.medicineId)) {
       throw new Error("Ekta medicine ekbar er beshi dewa jabe na");

@@ -6,6 +6,7 @@ import { approveOrder, rejectOrder } from "@/actions/adminOrders";
 import { formatTaka } from "@/lib/money";
 import { formatDhakaDateTime } from "@/lib/dhakaDate";
 import { unitLabelsFor } from "@/lib/unitLabels";
+import { parseQuantityInput } from "@/lib/quantityInput";
 
 export type PendingOrderRow = {
   id: string;
@@ -46,9 +47,14 @@ export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
     setError("");
     setBusyId(order.id);
     try {
-      const items = order.items
-        .map((i) => ({ medicineId: i.medicineId, boxes: edits[order.id]?.[i.medicineId] ?? i.boxes }))
-        .filter((i) => i.boxes > 0);
+      // Every ordered line goes through, zeroes included: a line the owner
+      // cannot supply stays on the invoice at 0 so the buyer's paper shows
+      // what was asked for. Filtering them out here is what used to make an
+      // out-of-stock product vanish from the invoice without explanation.
+      const items = order.items.map((i) => ({
+        medicineId: i.medicineId,
+        boxes: edits[order.id]?.[i.medicineId] ?? i.boxes,
+      }));
       const sale = await approveOrder(order.id, items);
       router.push(`/invoice/${sale._id}`);
     } catch (err) {
@@ -93,6 +99,11 @@ export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
           (sum, i) => sum + i.boxPricePaisa * (edits[order.id]?.[i.medicineId] ?? i.boxes),
           0,
         );
+        // An approval where every line is zero bills nothing for nothing;
+        // writeWholesaleSale rejects it, so don't let it be sent.
+        const hasBillableLine = order.items.some(
+          (i) => (edits[order.id]?.[i.medicineId] ?? i.boxes) > 0,
+        );
         return (
           <div key={order.id} className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
             <div className="flex items-center justify-between">
@@ -118,7 +129,10 @@ export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
                   const boxes = edits[order.id]?.[item.medicineId] ?? item.boxes;
                   const labels = unitLabelsFor(item.form);
                   return (
-                    <tr key={item.medicineId} className="border-t border-line">
+                    <tr
+                      key={item.medicineId}
+                      className={`border-t border-line ${boxes === 0 ? "opacity-50" : ""}`}
+                    >
                       <td className="py-2 font-medium text-ink">{item.medicineName}</td>
                       <td className="py-2">{formatTaka(item.boxPricePaisa)}</td>
                       <td className="py-2 text-muted">
@@ -126,9 +140,16 @@ export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
                       </td>
                       <td className="py-2">
                         <input type="number" min={0} value={boxes}
-                          onChange={(e) => setBoxes(order.id, item.medicineId, Number(e.target.value))}
+                          onChange={(e) =>
+                            setBoxes(order.id, item.medicineId, parseQuantityInput(e.target.value, 0))
+                          }
                           className="w-20 rounded-lg border border-line px-2 py-1" />
                         <span className="ml-1 text-xs text-muted">{labels.outer}</span>
+                        {boxes === 0 && (
+                          <div className="text-[11px] font-medium text-muted">
+                            bill hobe na
+                          </div>
+                        )}
                       </td>
                       <td className="py-2 text-right">{formatTaka(item.boxPricePaisa * boxes)}</td>
                     </tr>
@@ -138,13 +159,21 @@ export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
             </table>
 
             <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
-              <span className="font-medium">Mot {formatTaka(total)}</span>
+              <span className="font-medium">
+                Mot {formatTaka(total)}
+                {!hasBillableLine && (
+                  <span className="ml-2 text-xs font-normal text-muted">
+                    — shob line 0, approve kora jabe na
+                  </span>
+                )}
+              </span>
               <div className="flex gap-2">
                 <button onClick={() => handleReject(order)} disabled={busyId === order.id}
                   className="rounded-lg border border-danger/50 px-4 py-2 text-sm text-danger hover:bg-danger-bg disabled:opacity-50">
                   Reject
                 </button>
-                <button onClick={() => handleApprove(order)} disabled={busyId === order.id}
+                <button onClick={() => handleApprove(order)}
+                  disabled={busyId === order.id || !hasBillableLine}
                   className="rounded-full bg-brand hover:bg-brand-strong px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
                   {busyId === order.id ? "Wait..." : "Approve ar invoice"}
                 </button>

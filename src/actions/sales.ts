@@ -167,9 +167,11 @@ function validateWholesale(input: WholesaleSaleInput): void {
     if (
       typeof item.boxes !== "number" ||
       !Number.isInteger(item.boxes) ||
-      item.boxes < 1
+      item.boxes < 0
     ) {
-      throw new Error("Poriman 1 er kom hote parbe na");
+      // 0 is legal here — see the zero-line rule in writeWholesaleSale,
+      // which is what stops an invoice from being zero all the way down.
+      throw new Error("Poriman 0 er kom hote parbe na");
     }
     if (seen.has(item.medicineId)) {
       throw new Error("Ekta medicine ekbar er beshi cart e dewa jabe na");

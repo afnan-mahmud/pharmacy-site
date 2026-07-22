@@ -271,3 +271,144 @@ describe("rejectOrder", () => {
     );
   });
 });
+
+describe("zero-quantity approval lines", () => {
+  /** An order for two medicines, so one can be zeroed and one supplied. */
+  async function makeTwoItemOrder(
+    buyerId: mongoose.Types.ObjectId,
+    supplied: { _id: mongoose.Types.ObjectId; name: string; boxPricePaisa: number },
+    outOfStock: { _id: mongoose.Types.ObjectId; name: string; boxPricePaisa: number },
+  ) {
+    return OrderModel.create({
+      buyerId,
+      buyerName: "Karim Uddin",
+      buyerShopName: "Karim Medical Hall",
+      items: [
+        {
+          medicineId: supplied._id,
+          medicineName: supplied.name,
+          boxes: 3,
+          boxPricePaisa: supplied.boxPricePaisa,
+        },
+        {
+          medicineId: outOfStock._id,
+          medicineName: outOfStock.name,
+          boxes: 10,
+          boxPricePaisa: outOfStock.boxPricePaisa,
+        },
+      ],
+      status: "pending",
+    });
+  }
+
+  it("keeps a zeroed line on the sale instead of dropping it", async () => {
+    const buyer = await makeBuyer();
+    const supplied = await makeMedicine({ name: "Napa 500mg" });
+    const outOfStock = await makeMedicine({ name: "Ace Syrup" }, 0);
+    const order = await makeTwoItemOrder(buyer._id, supplied, outOfStock);
+
+    const sale = await approveOrder(String(order._id), [
+      { medicineId: String(supplied._id), boxes: 3 },
+      { medicineId: String(outOfStock._id), boxes: 0 },
+    ]);
+
+    // The whole point: the buyer's paper still shows what was asked for.
+    expect(sale.items).toHaveLength(2);
+    const zeroed = sale.items.find((i) => i.medicineName === "Ace Syrup");
+    expect(zeroed?.quantity).toBe(0);
+    expect(zeroed?.patasDeducted).toBe(0);
+    expect(zeroed?.lineTotalPaisa).toBe(0);
+  });
+
+  it("bills only the supplied line", async () => {
+    const buyer = await makeBuyer();
+    const supplied = await makeMedicine({ name: "Napa 500mg" });
+    const outOfStock = await makeMedicine({ name: "Ace Syrup" }, 0);
+    const order = await makeTwoItemOrder(buyer._id, supplied, outOfStock);
+
+    const sale = await approveOrder(String(order._id), [
+      { medicineId: String(supplied._id), boxes: 3 },
+      { medicineId: String(outOfStock._id), boxes: 0 },
+    ]);
+
+    expect(sale.subtotalPaisa).toBe(36000);
+    expect(sale.totalPaisa).toBe(36000);
+  });
+
+  it("takes no stock for a zeroed line", async () => {
+    const buyer = await makeBuyer();
+    const supplied = await makeMedicine({ name: "Napa 500mg" });
+    const outOfStock = await makeMedicine({ name: "Ace Syrup" }, 7);
+    const order = await makeTwoItemOrder(buyer._id, supplied, outOfStock);
+
+    await approveOrder(String(order._id), [
+      { medicineId: String(supplied._id), boxes: 3 },
+      { medicineId: String(outOfStock._id), boxes: 0 },
+    ]);
+
+    const after = await MedicineModel.findById(outOfStock._id);
+    expect(after?.stockPatas).toBe(7);
+    const billed = await MedicineModel.findById(supplied._id);
+    expect(billed?.stockPatas).toBe(470);
+  });
+
+  it("approves a zeroed line even when that medicine has no stock at all", async () => {
+    const buyer = await makeBuyer();
+    const supplied = await makeMedicine({ name: "Napa 500mg" });
+    const outOfStock = await makeMedicine({ name: "Ace Syrup" }, 0);
+    const order = await makeTwoItemOrder(buyer._id, supplied, outOfStock);
+
+    // Would throw "stock e ache 0" if a zero line still went through the
+    // stock deduction.
+    await expect(
+      approveOrder(String(order._id), [
+        { medicineId: String(supplied._id), boxes: 3 },
+        { medicineId: String(outOfStock._id), boxes: 0 },
+      ]),
+    ).resolves.toBeTruthy();
+  });
+
+  it("refuses an approval where every line is zero", async () => {
+    const buyer = await makeBuyer();
+    const supplied = await makeMedicine({ name: "Napa 500mg" });
+    const outOfStock = await makeMedicine({ name: "Ace Syrup" }, 0);
+    const order = await makeTwoItemOrder(buyer._id, supplied, outOfStock);
+
+    await expect(
+      approveOrder(String(order._id), [
+        { medicineId: String(supplied._id), boxes: 0 },
+        { medicineId: String(outOfStock._id), boxes: 0 },
+      ]),
+    ).rejects.toThrow("Onto ekta line e poriman dite hobe");
+  });
+
+  it("leaves the order pending when an all-zero approval is refused", async () => {
+    const buyer = await makeBuyer();
+    const supplied = await makeMedicine({ name: "Napa 500mg" });
+    const outOfStock = await makeMedicine({ name: "Ace Syrup" }, 0);
+    const order = await makeTwoItemOrder(buyer._id, supplied, outOfStock);
+
+    await expect(
+      approveOrder(String(order._id), [
+        { medicineId: String(supplied._id), boxes: 0 },
+        { medicineId: String(outOfStock._id), boxes: 0 },
+      ]),
+    ).rejects.toThrow();
+
+    const reread = await OrderModel.findById(order._id);
+    expect(reread?.status).toBe("pending");
+    expect(await SaleModel.countDocuments()).toBe(0);
+  });
+
+  it("still rejects a negative quantity", async () => {
+    const buyer = await makeBuyer();
+    const medicine = await makeMedicine();
+    const order = await makeOrder(buyer._id, medicine);
+
+    await expect(
+      approveOrder(String(order._id), [
+        { medicineId: String(medicine._id), boxes: -1 },
+      ]),
+    ).rejects.toThrow("Poriman 0 er kom hote parbe na");
+  });
+});

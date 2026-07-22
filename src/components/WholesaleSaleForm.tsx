@@ -8,6 +8,7 @@ import { MedicinePicker, type PickedMedicine } from "./MedicinePicker";
 import { formatTaka, takaToPaisa } from "@/lib/money";
 import { computeTotals } from "@/lib/saleTotals";
 import { unitLabelsFor } from "@/lib/unitLabels";
+import { parseQuantityInput } from "@/lib/quantityInput";
 
 type BuyerOption = {
   id: string;
@@ -35,6 +36,9 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
     (sum, line) => sum + line.medicine.boxPricePaisa * line.boxes,
     0,
   );
+  // A zero line contributes nothing to the money, but a sale of nothing but
+  // zeroes is not a sale — writeWholesaleSale rejects it, so catch it here.
+  const hasBillableLine = cart.some((line) => line.boxes > 0);
   const discountPaisa = Math.round(takaToPaisa(discount || 0));
   const paidPaisa = Math.round(takaToPaisa(paid || 0));
 
@@ -65,14 +69,12 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
     setCart((prev) => [...prev, { medicine, boxes: 1 }]);
   }
 
+  // Minimum 0: zeroing a line is how the owner says "ordered, could not
+  // supply". The line stays on the invoice, priced at nothing.
   function updateBoxes(idx: number, raw: string) {
-    const val = Number(raw);
+    const boxes = parseQuantityInput(raw, 0);
     setCart((prev) =>
-      prev.map((line, i) =>
-        i === idx
-          ? { ...line, boxes: Number.isInteger(val) && val >= 1 ? val : 1 }
-          : line,
-      ),
+      prev.map((line, i) => (i === idx ? { ...line, boxes } : line)),
     );
   }
 
@@ -88,6 +90,10 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
     }
     if (cart.length === 0) {
       setError("Cart khali");
+      return;
+    }
+    if (!hasBillableLine) {
+      setError("Onto ekta line e poriman dite hobe");
       return;
     }
     setError("");
@@ -172,7 +178,10 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
               </thead>
               <tbody>
                 {cart.map((line, idx) => (
-                  <tr key={line.medicine.id} className="border-b border-line">
+                  <tr
+                    key={line.medicine.id}
+                    className={`border-b border-line ${line.boxes === 0 ? "opacity-50" : ""}`}
+                  >
                     <td className={td}>
                       <div className="font-medium text-ink">{line.medicine.name}</div>
                       <div className="text-xs text-muted">
@@ -193,6 +202,11 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
                       <span className="ml-1 text-xs text-muted">
                         {unitLabelsFor(line.medicine.form).outer}
                       </span>
+                      {line.boxes === 0 && (
+                        <div className="text-[11px] font-medium text-muted">
+                          bill hobe na
+                        </div>
+                      )}
                     </td>
                     <td className={`${td} text-right font-medium text-ink`}>
                       {formatTaka(line.medicine.boxPricePaisa * line.boxes)}
@@ -252,11 +266,19 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
           </div>
         </div>
 
+        {cart.length > 0 && !hasBillableLine && (
+          <p className="text-sm text-muted">
+            Shob line 0 — onto ekta line e poriman dile invoice kora jabe.
+          </p>
+        )}
+
         {error && <p role="alert" className="text-sm text-danger">{error}</p>}
 
         <button
           type="submit"
-          disabled={busy || cart.length === 0 || !buyerId || !!totalsError}
+          disabled={
+            busy || cart.length === 0 || !hasBillableLine || !buyerId || !!totalsError
+          }
           className="rounded-full bg-brand hover:bg-brand-strong px-6 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           {busy ? "Wait..." : "Bikri confirm koro"}

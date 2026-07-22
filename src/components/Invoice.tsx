@@ -111,8 +111,15 @@ export function Invoice({
                   {item.quantity}
                   {item.unit === "box" ? labels.outerShort : labels.innerShort}
                 </td>
-                <td className="py-1 text-right">{formatTaka(item.ratePaisa)}</td>
-                <td className="py-1 text-right">{formatTaka(item.lineTotalPaisa)}</td>
+                {/* A zero line is on the paper to show what was ordered and
+                    could not be supplied, so it carries no price at all —
+                    neither a rate nor an amount. */}
+                <td className="py-1 text-right">
+                  {item.quantity === 0 ? "" : formatTaka(item.ratePaisa)}
+                </td>
+                <td className="py-1 text-right">
+                  {item.quantity === 0 ? "" : formatTaka(item.lineTotalPaisa)}
+                </td>
               </tr>
             );
           })}

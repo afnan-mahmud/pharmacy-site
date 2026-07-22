@@ -6,6 +6,7 @@ import { recordRetailSale } from "@/actions/sales";
 import { MedicinePicker, type PickedMedicine } from "./MedicinePicker";
 import { formatTaka } from "@/lib/money";
 import { unitLabelsFor } from "@/lib/unitLabels";
+import { parseQuantityInput } from "@/lib/quantityInput";
 
 type CartLine = {
   medicine: PickedMedicine;
@@ -31,12 +32,12 @@ export function RetailSaleForm() {
     setCart((prev) => [...prev, { medicine, patas: 1 }]);
   }
 
+  // Minimum 1: a retail sale prints nothing, so a zero line would have no
+  // reader. Dropping an item means removing the line, not zeroing it.
   function updatePatas(idx: number, raw: string) {
-    const val = Number(raw);
+    const patas = parseQuantityInput(raw, 1);
     setCart((prev) =>
-      prev.map((line, i) =>
-        i === idx ? { ...line, patas: Number.isInteger(val) ? val : 1 } : line,
-      ),
+      prev.map((line, i) => (i === idx ? { ...line, patas } : line)),
     );
   }
 
