@@ -26,8 +26,9 @@ const medicineSchema = new Schema(
     // and a discount badge. 0 means no MRP — nothing struck through. When set,
     // it is kept at or above boxPricePaisa (a discount, not a markup).
     mrpBoxPricePaisa: { type: Number, required: true, default: 0, min: 0 },
-    // Canonical stock. Always patas, never boxes. See src/lib/units.ts.
-    stockPatas: { type: Number, required: true, default: 0, min: 0 },
+    // Canonical stock. Always patas, never boxes. May be negative — a sale can
+    // outrun what is on hand; see src/lib/stockTransaction.ts. See src/lib/units.ts.
+    stockPatas: { type: Number, required: true, default: 0 },
     lowStockThreshold: { type: Number, required: true, default: 0, min: 0 },
     active: { type: Boolean, required: true, default: true },
   },

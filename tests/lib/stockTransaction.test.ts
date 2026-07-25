@@ -56,32 +56,35 @@ describe("applyStockDelta", () => {
     expect(updated!.stockPatas).toBe(20);
   });
 
-  // This is the regression test for Fix 1: a bare `$inc` (the pattern this
-  // function replaces) matches regardless of quantity and drives stockPatas
-  // negative — verified empirically before this fix existed (matchedCount:
-  // 1, stockPatas: -500 against a starting stock of 0). applyStockDelta's
-  // filter-level precondition (`stockPatas >= -delta`) must refuse the write
-  // entirely instead, leaving the document untouched.
-  it("never drives stock negative: refuses a decrement larger than available stock", async () => {
+  it("allows a decrement larger than available stock, landing on negative stock", async () => {
     const medicine = await createMedicineDirect(50);
     const matched = await runInTransaction((session) =>
       applyStockDelta(medicine._id, -500, session),
     );
-    expect(matched).toBe(false);
+    expect(matched).toBe(true);
 
     const updated = await MedicineModel.findById(medicine._id);
-    expect(updated!.stockPatas).toBe(50);
+    expect(updated!.stockPatas).toBe(-450);
   });
 
-  it("refuses a decrement that would land exactly one pata below zero", async () => {
+  it("allows a decrement that lands one pata below zero", async () => {
     const medicine = await createMedicineDirect(10);
     const matched = await runInTransaction((session) =>
       applyStockDelta(medicine._id, -11, session),
     );
-    expect(matched).toBe(false);
+    expect(matched).toBe(true);
 
     const updated = await MedicineModel.findById(medicine._id);
-    expect(updated!.stockPatas).toBe(10);
+    expect(updated!.stockPatas).toBe(-1);
+  });
+
+  it("recovers from negative stock on a later increment", async () => {
+    const medicine = await createMedicineDirect(10);
+    await runInTransaction((session) => applyStockDelta(medicine._id, -30, session));
+    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(-20);
+
+    await runInTransaction((session) => applyStockDelta(medicine._id, 100, session));
+    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(80);
   });
 
   it("allows a decrement that lands exactly on zero", async () => {
