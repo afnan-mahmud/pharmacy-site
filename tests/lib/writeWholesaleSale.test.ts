@@ -111,20 +111,13 @@ describe("writeWholesaleSale", () => {
     expect(String(sale!.orderId)).toBe(orderId);
   });
 
-  it("throws and aborts when stock is short, leaving stock untouched", async () => {
+  it("succeeds and leaves stock negative when the sale exceeds what is on hand", async () => {
     const medicine = await makeMedicine({}, 25); // 2 boxes + 5 patas
-    await expect(
-      run({ buyer: buyer(), items: [{ medicineId: String(medicine._id), boxes: 3 }] }),
-    ).rejects.toThrow("stock e ache");
-    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(25);
-    expect(await SaleModel.countDocuments()).toBe(0);
-  });
-
-  it("never lets stock go negative", async () => {
-    const medicine = await makeMedicine({}, 3);
-    await expect(
-      run({ buyer: buyer(), items: [{ medicineId: String(medicine._id), boxes: 1000 }] }),
-    ).rejects.toThrow();
-    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBeGreaterThanOrEqual(0);
+    const sale = await run({
+      buyer: buyer(),
+      items: [{ medicineId: String(medicine._id), boxes: 3 }],
+    });
+    expect(sale!.totalPaisa).toBe(36000);
+    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(-5);
   });
 });

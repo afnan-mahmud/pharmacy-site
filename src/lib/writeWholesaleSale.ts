@@ -1,6 +1,5 @@
 import mongoose, { type ClientSession } from "mongoose";
 import { boxesToPatas } from "@/lib/units";
-import { unitLabelsFor } from "@/lib/unitLabels";
 import { applyStockDelta } from "@/lib/stockTransaction";
 import { lineTotal, computeTotals } from "@/lib/saleTotals";
 import { nextInvoiceSeq, formatInvoiceNo } from "@/lib/invoiceNumber";
@@ -31,8 +30,8 @@ export type WriteWholesaleSaleParams = {
  *
  * MUST be called from inside an already-open transaction (`session`). Every
  * read and write here uses that session, and stock goes through
- * applyStockDelta, whose precondition lives in the update filter — a bare
- * $inc would take stock negative (Mongoose min:0 does not run on $inc).
+ * applyStockDelta. A sale always succeeds once every line's medicine is
+ * found — there is no "not enough stock" refusal, so stock may go negative.
  * Reads are inside the caller's withTransaction so a retry re-evaluates them.
  */
 export async function writeWholesaleSale(
@@ -65,16 +64,8 @@ export async function writeWholesaleSale(
     // that changes nothing; its other half — "does this medicine still
     // exist" — is already covered by the findById above.
     if (patas > 0) {
-      const unit = unitLabelsFor(medicine.form).inner;
       const ok = await applyStockDelta(medicine._id, -patas, session);
-      if (!ok) {
-        const current = await MedicineModel.findById(item.medicineId).session(
-          session,
-        );
-        throw new Error(
-          `${medicine.name} — stock e ache ${current?.stockPatas ?? 0} ${unit}, lagbe ${patas} ${unit}`,
-        );
-      }
+      if (!ok) throw new Error("Medicine pawa jay ni");
     }
 
     lines.push({

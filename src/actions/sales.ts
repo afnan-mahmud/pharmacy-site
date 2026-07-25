@@ -6,7 +6,6 @@ import { connectDb } from "@/lib/db";
 import { requireAdminAction } from "@/lib/session";
 import { applyStockDelta } from "@/lib/stockTransaction";
 import { computeTotals, lineTotal } from "@/lib/saleTotals";
-import { unitLabelsFor } from "@/lib/unitLabels";
 import { toPlain, type Serialized } from "@/lib/serialize";
 import { writeWholesaleSale } from "@/lib/writeWholesaleSale";
 import { MedicineModel } from "@/models/Medicine";
@@ -97,21 +96,13 @@ export async function recordRetailSale(
           ).session(session);
           if (!medicine) throw new Error("Medicine pawa jay ni");
 
-          // The precondition lives in applyStockDelta's update filter, so the
-          // check and the write are one atomic operation. See
-          // src/lib/stockTransaction.ts for why a pre-read is not a substitute.
-          const unit = unitLabelsFor(medicine.form).inner;
+          // A sale always succeeds once the medicine is found — there is no
+          // "not enough stock" refusal, so stock may go negative. This can
+          // now only fail if the medicine vanished between the findById
+          // above and here, which is already effectively unreachable inside
+          // one transaction; the check stays as a defensive fallback.
           const ok = await applyStockDelta(medicine._id, -item.patas, session);
-          if (!ok) {
-            // Re-read inside the same transaction to tell the owner what is
-            // actually available, rather than a bare "not enough".
-            const current = await MedicineModel.findById(
-              item.medicineId,
-            ).session(session);
-            throw new Error(
-              `${medicine.name} — stock e ache ${current?.stockPatas ?? 0} ${unit}, lagbe ${item.patas} ${unit}`,
-            );
-          }
+          if (!ok) throw new Error("Medicine pawa jay ni");
 
           lines.push({
             medicineId: medicine._id,

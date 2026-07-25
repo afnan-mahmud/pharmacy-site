@@ -181,18 +181,17 @@ describe("approveOrder", () => {
     ).rejects.toThrow("Order er baire er medicine");
   });
 
-  it("aborts when stock is short and leaves the order pending, stock intact, no invoice consumed", async () => {
+  it("approves even when stock is short, leaving stock negative and the order approved", async () => {
     const buyer = await makeBuyer();
     const medicine = await makeMedicine({}, 25); // 2 boxes + 5 patas
     const order = await makeOrder(buyer._id, medicine, 3);
 
-    await expect(
-      unwrap(approveOrder(String(order._id), [{ medicineId: String(medicine._id), boxes: 3 }])),
-    ).rejects.toThrow("stock e ache");
-
-    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(25);
-    expect((await OrderModel.findById(order._id))!.status).toBe("pending");
-    expect(await SaleModel.countDocuments()).toBe(0);
+    const sale = await unwrap(
+      approveOrder(String(order._id), [{ medicineId: String(medicine._id), boxes: 3 }]),
+    );
+    expect(sale.items[0].quantity).toBe(3);
+    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(-5);
+    expect((await OrderModel.findById(order._id))!.status).toBe("approved");
   });
 
   it("cannot approve an order twice", async () => {

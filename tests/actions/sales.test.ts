@@ -160,45 +160,30 @@ describe("recordRetailSale", () => {
     expect(sale.items).toHaveLength(2);
   });
 
-  it("refuses to sell more than the stock and changes nothing", async () => {
+  it("succeeds and leaves stock negative when the sale exceeds what is on hand", async () => {
     const medicine = await makeMedicine({}, 5);
-    await expect(
-      unwrap(recordRetailSale({ items: [{ medicineId: medicine._id, patas: 6 }], customerName: "Walk-in" })),
-    ).rejects.toThrow("Napa 500mg — stock e ache 5 pata, lagbe 6 pata");
-
+    const sale = await unwrap(
+      recordRetailSale({ items: [{ medicineId: medicine._id, patas: 6 }], customerName: "Walk-in" }),
+    );
+    expect(sale.totalPaisa).toBeGreaterThan(0);
     const after = await MedicineModel.findById(medicine._id);
-    expect(after!.stockPatas).toBe(5);
-    expect(await SaleModel.countDocuments()).toBe(0);
+    expect(after!.stockPatas).toBe(-1);
   });
 
-  it("rolls back every line when a later line is short", async () => {
-    // The whole sale must be atomic: the first medicine's stock must not
-    // stay deducted because the second one failed.
+  it("deducts every line in the same transaction, even when more than one goes negative", async () => {
     const a = await makeMedicine({}, 500);
     const b = await makeMedicine({ name: "Ace" }, 1);
 
-    await expect(
-      unwrap(recordRetailSale({
-        items: [
-          { medicineId: a._id, patas: 2 },
-          { medicineId: b._id, patas: 5 },
-        ],
-        customerName: "Walk-in",
-      })),
-    ).rejects.toThrow("stock e ache");
+    await unwrap(recordRetailSale({
+      items: [
+        { medicineId: a._id, patas: 2 },
+        { medicineId: b._id, patas: 5 },
+      ],
+      customerName: "Walk-in",
+    }));
 
-    expect((await MedicineModel.findById(a._id))!.stockPatas).toBe(500);
-    expect((await MedicineModel.findById(b._id))!.stockPatas).toBe(1);
-    expect(await SaleModel.countDocuments()).toBe(0);
-  });
-
-  it("stock can never go negative through this path", async () => {
-    const medicine = await makeMedicine({}, 3);
-    await expect(
-      unwrap(recordRetailSale({ items: [{ medicineId: medicine._id, patas: 1000 }], customerName: "Walk-in" })),
-    ).rejects.toThrow();
-    const after = await MedicineModel.findById(medicine._id);
-    expect(after!.stockPatas).toBeGreaterThanOrEqual(0);
+    expect((await MedicineModel.findById(a._id))!.stockPatas).toBe(498);
+    expect((await MedicineModel.findById(b._id))!.stockPatas).toBe(-4);
   });
 
   it("rejects an empty sale", async () => {
@@ -401,37 +386,36 @@ describe("recordWholesaleSale", () => {
     expect(sale.buyerShopName).toBe("Karim Medical Hall");
   });
 
-  it("refuses to sell more boxes than the stock covers, and changes nothing", async () => {
+  it("succeeds and leaves stock negative when the wholesale sale exceeds what is on hand", async () => {
     const medicine = await makeMedicine({}, 25); // 2 boxes and 5 patas
     const buyer = await makeBuyer();
 
-    await expect(
-      unwrap(recordWholesaleSale({
-        buyerId: buyer._id,
-        items: [{ medicineId: medicine._id, boxes: 3 }],
-        discountPercent: 0,
-        paidPaisa: 0,
-      })),
-    ).rejects.toThrow("stock e ache");
+    const sale = await unwrap(recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 3 }],
+      discountPercent: 0,
+      paidPaisa: 0,
+    }));
 
+    expect(sale.totalPaisa).toBe(36000);
     const after = await MedicineModel.findById(medicine._id);
-    expect(after!.stockPatas).toBe(25);
-    expect(await SaleModel.countDocuments()).toBe(0);
+    expect(after!.stockPatas).toBe(-5);
   });
 
   it("burns the invoice number rather than reusing it after a failure", async () => {
     const good = await makeMedicine({}, 500);
-    const short = await makeMedicine({ name: "Ace" }, 0);
     const buyer = await makeBuyer();
 
+    // A sale can no longer fail on stock, so a vanished medicine (never
+    // existed) is what stands in for "the sale failed" here.
     await expect(
       unwrap(recordWholesaleSale({
         buyerId: buyer._id,
-        items: [{ medicineId: short._id, boxes: 1 }],
+        items: [{ medicineId: "507f1f77bcf86cd799439011", boxes: 1 }],
         discountPercent: 0,
         paidPaisa: 0,
       })),
-    ).rejects.toThrow();
+    ).rejects.toThrow("Medicine pawa jay ni");
 
     const after = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
