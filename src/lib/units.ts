@@ -59,11 +59,14 @@ export function formatStock(
   patasPerBox: number,
   form: unknown,
 ): string {
-  // splitStock validates first, so a bad number is reported as a bad number
-  // rather than formatted with fallback wording.
-  const { boxes, patas } = splitStock(stockPatas, patasPerBox);
+  // splitStock still validates (integer-ness, NaN/Infinity) and still
+  // rejects a negative value — so the sign is stripped here, before the
+  // call, rather than loosening splitStock's own contract for every caller.
+  const negative = stockPatas < 0;
+  const { boxes, patas } = splitStock(Math.abs(stockPatas), patasPerBox);
   const labels = unitLabelsFor(form);
-  if (boxes === 0) return `${patas} ${labels.inner}`;
-  if (patas === 0) return `${boxes} ${labels.outer}`;
-  return `${boxes} ${labels.outer} ${patas} ${labels.inner}`;
+  const sign = negative ? "-" : "";
+  if (boxes === 0) return `${sign}${patas} ${labels.inner}`;
+  if (patas === 0) return `${sign}${boxes} ${labels.outer}`;
+  return `${sign}${boxes} ${labels.outer} ${patas} ${labels.inner}`;
 }

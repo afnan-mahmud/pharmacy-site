@@ -113,8 +113,11 @@ describe("formatStock", () => {
     expect(() => formatStock(100, 10.5, "tablet")).toThrow("patasPerBox must be a whole number");
   });
 
-  it("rejects negative stockPatas", () => {
-    expect(() => formatStock(-1, 10, "tablet")).toThrow("stockPatas cannot be negative");
+  it("renders negative stock with a minus sign", () => {
+    expect(formatStock(-1, 10, "tablet")).toBe("-1 pata");
+    expect(formatStock(-8, 10, "tablet")).toBe("-8 pata");
+    expect(formatStock(-23, 10, "tablet")).toBe("-2 box 3 pata");
+    expect(formatStock(-20, 10, "tablet")).toBe("-2 box");
   });
 
   it("rejects a non-integer stockPatas", () => {
@@ -130,10 +133,8 @@ describe("formatStock", () => {
 
   // A bad number must be reported as a bad number, not silently formatted
   // with fallback wording, so the guards have to run before the labels.
-  it("validates numbers before it looks at the form", () => {
-    expect(() => formatStock(-1, 10, "definitely-not-a-form")).toThrow(
-      "stockPatas cannot be negative",
-    );
+  it("falls back to box/pata wording for an unknown form even when negative", () => {
+    expect(formatStock(-1, 10, "definitely-not-a-form")).toBe("-1 pata");
   });
 });
 
