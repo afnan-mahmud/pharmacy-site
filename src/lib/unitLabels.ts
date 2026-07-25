@@ -13,6 +13,7 @@ export const MEDICINE_FORMS = [
   "injection",
   "cream",
   "drops",
+  "other",
 ] as const;
 
 export type MedicineForm = (typeof MEDICINE_FORMS)[number];
@@ -66,6 +67,13 @@ const LABELS: Record<MedicineForm, UnitLabels> = {
     outer: "box",
     inner: "piece",
     outerShort: "bx",
+    innerShort: "pc",
+  },
+  other: {
+    formLabel: "Onnanno (Piece)",
+    outer: "piece",
+    inner: "piece",
+    outerShort: "pc",
     innerShort: "pc",
   },
 };

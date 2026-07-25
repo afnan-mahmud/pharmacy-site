@@ -61,6 +61,9 @@ export function MedicineForm({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const labels = unitLabelsFor(form);
+  // "other" has no outer pack — it's counted in pieces only, so the box
+  // fields collapse into the piece price (1 box === 1 piece).
+  const isOther = form === "other";
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -68,14 +71,15 @@ export function MedicineForm({
     setError("");
 
     try {
+      const pataPricePaisa = takaToPaisa(pataPrice || 0);
       const medicineInput = {
         name,
         genericName,
         company,
         form,
-        patasPerBox: Number(patasPerBox),
-        boxPricePaisa: takaToPaisa(boxPrice || 0),
-        pataPricePaisa: takaToPaisa(pataPrice || 0),
+        patasPerBox: isOther ? 1 : Number(patasPerBox),
+        boxPricePaisa: isOther ? pataPricePaisa : takaToPaisa(boxPrice || 0),
+        pataPricePaisa,
         mrpBoxPricePaisa: takaToPaisa(mrp || 0),
         lowStockThreshold: Number(threshold),
       };
@@ -118,8 +122,9 @@ export function MedicineForm({
             ))}
           </select>
           <p className="text-xs text-muted">
-            Ei medicine {labels.outer} ar {labels.inner} hishebe cholbe — shob
-            screen e oi naam e dekhabe.
+            {isOther
+              ? "Ei medicine piece hishebe cholbe — shob screen e oi naam e dekhabe."
+              : `Ei medicine ${labels.outer} ar ${labels.inner} hishebe cholbe — shob screen e oi naam e dekhabe.`}
           </p>
         </div>
         <div className="space-y-1.5">
@@ -137,20 +142,24 @@ export function MedicineForm({
           <input id="company" className={input} value={company}
             onChange={(e) => setCompany(e.target.value)} />
         </div>
-        <div className="space-y-1.5">
-          <label htmlFor="ppb" className={labelCls}>
-            1 {labels.outer} e koto {labels.inner}
-          </label>
-          <input id="ppb" type="number" min={1} className={input} value={patasPerBox}
-            onChange={(e) => setPatasPerBox(e.target.value)} required />
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor="boxPrice" className={labelCls}>
-            {capitalize(labels.outer)} rate (৳) — wholesale
-          </label>
-          <input id="boxPrice" type="number" step="0.01" min={0} className={input}
-            value={boxPrice} onChange={(e) => setBoxPrice(e.target.value)} required />
-        </div>
+        {!isOther && (
+          <div className="space-y-1.5">
+            <label htmlFor="ppb" className={labelCls}>
+              1 {labels.outer} e koto {labels.inner}
+            </label>
+            <input id="ppb" type="number" min={1} className={input} value={patasPerBox}
+              onChange={(e) => setPatasPerBox(e.target.value)} required />
+          </div>
+        )}
+        {!isOther && (
+          <div className="space-y-1.5">
+            <label htmlFor="boxPrice" className={labelCls}>
+              {capitalize(labels.outer)} rate (৳) — wholesale
+            </label>
+            <input id="boxPrice" type="number" step="0.01" min={0} className={input}
+              value={boxPrice} onChange={(e) => setBoxPrice(e.target.value)} required />
+          </div>
+        )}
         <div className="space-y-1.5">
           <label htmlFor="mrp" className={labelCls}>
             MRP {labels.outer} rate (৳) — optional
