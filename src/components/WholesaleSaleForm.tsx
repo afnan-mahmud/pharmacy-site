@@ -6,7 +6,7 @@ import Link from "next/link";
 import { recordWholesaleSale } from "@/actions/sales";
 import { MedicinePicker, type PickedMedicine } from "./MedicinePicker";
 import { formatTaka, takaToPaisa } from "@/lib/money";
-import { computeTotals } from "@/lib/saleTotals";
+import { computeTotals, wholesaleLineTotal } from "@/lib/saleTotals";
 import { unitLabelsFor } from "@/lib/unitLabels";
 import { parseQuantityInput } from "@/lib/quantityInput";
 
@@ -19,6 +19,7 @@ type BuyerOption = {
 type CartLine = {
   medicine: PickedMedicine;
   boxes: number;
+  patas: number;
 };
 
 export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
@@ -32,13 +33,15 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
   const [lastInvoice, setLastInvoice] = useState<string | null>(null);
   const [lastSaleId, setLastSaleId] = useState<string | null>(null);
 
-  const subtotalPaisa = cart.reduce(
-    (sum, line) => sum + line.medicine.boxPricePaisa * line.boxes,
-    0,
-  );
+  function lineTotalFor(line: CartLine): number {
+    const totalPatas = line.boxes * line.medicine.patasPerBox + line.patas;
+    return wholesaleLineTotal(totalPatas, line.medicine.boxPricePaisa, line.medicine.patasPerBox);
+  }
+
+  const subtotalPaisa = cart.reduce((sum, line) => sum + lineTotalFor(line), 0);
   // A zero line contributes nothing to the money, but a sale of nothing but
-  // zeroes is not a sale — writeWholesaleSale rejects it, so catch it here.
-  const hasBillableLine = cart.some((line) => line.boxes > 0);
+  // zeroes is not a sale — recordWholesaleSale rejects it, so catch it here.
+  const hasBillableLine = cart.some((line) => line.boxes > 0 || line.patas > 0);
   const discountPercent = Number(discount || 0);
   const paidPaisa = Math.round(takaToPaisa(paid || 0));
 
@@ -56,7 +59,7 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
   let totalsError = "";
   try {
     const totals = computeTotals(
-      cart.map((line) => ({ ratePaisa: line.medicine.boxPricePaisa, quantity: line.boxes })),
+      cart.map((line) => ({ ratePaisa: lineTotalFor(line), quantity: 1 })),
       discountPercent,
       paidPaisa,
     );
@@ -70,7 +73,7 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
   function addMedicine(medicine: PickedMedicine) {
     if (cart.some((l) => l.medicine.id === medicine.id)) return;
     setLastInvoice(null);
-    setCart((prev) => [...prev, { medicine, boxes: 1 }]);
+    setCart((prev) => [...prev, { medicine, boxes: 1, patas: 0 }]);
   }
 
   // Minimum 0: zeroing a line is how the owner says "ordered, could not
@@ -79,6 +82,26 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
     const boxes = parseQuantityInput(raw, 0);
     setCart((prev) =>
       prev.map((line, i) => (i === idx ? { ...line, boxes } : line)),
+    );
+  }
+
+  // Whatever is typed here becomes the line's leftover-patas figure; if it is
+  // patasPerBox or more, the extra whole boxes are folded into `boxes` so the
+  // displayed leftover always stays under one box. Re-typing the same large
+  // number again is a deliberate "add another box" — the field always shows
+  // the already-rolled-up leftover, never the raw number last typed.
+  function updatePatas(idx: number, raw: string) {
+    setCart((prev) =>
+      prev.map((line, i) => {
+        if (i !== idx) return line;
+        const entered = parseQuantityInput(raw, 0);
+        const patasPerBox = line.medicine.patasPerBox;
+        return {
+          ...line,
+          boxes: line.boxes + Math.floor(entered / patasPerBox),
+          patas: entered % patasPerBox,
+        };
+      }),
     );
   }
 
@@ -106,7 +129,7 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
     try {
       const result = await recordWholesaleSale({
         buyerId,
-        items: cart.map((l) => ({ medicineId: l.medicine.id, boxes: l.boxes, patas: 0 })),
+        items: cart.map((l) => ({ medicineId: l.medicine.id, boxes: l.boxes, patas: l.patas })),
         discountPercent: Number(discount || 0),
         paidPaisa: Math.round(takaToPaisa(paid || 0)),
       });
@@ -199,30 +222,32 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
                     </td>
                     <td className={td}>{formatTaka(line.medicine.boxPricePaisa)}</td>
                     <td className={td}>
-                      {/* min={0}, not 1: this input sits inside the form that
-                          submits the sale, so the browser's own constraint
-                          validation would block the submit outright — with a
-                          "must be greater than or equal to 1" bubble — before
-                          handleSubmit ever ran. A zeroed line is legal here;
-                          it prints on the invoice with no price. */}
-                      <input
-                        type="number"
-                        min={0}
-                        value={line.boxes}
-                        onChange={(e) => updateBoxes(idx, e.target.value)}
-                        className="w-20 rounded border border-line px-2 py-1 text-sm"
-                      />
-                      <span className="ml-1 text-xs text-muted">
-                        {unitLabelsFor(line.medicine.form).outer}
-                      </span>
-                      {line.boxes === 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          min={0}
+                          value={line.boxes}
+                          onChange={(e) => updateBoxes(idx, e.target.value)}
+                          className="w-16 rounded border border-line px-2 py-1 text-sm"
+                        />
+                        <span className="text-xs text-muted">{unitLabelsFor(line.medicine.form).outer}</span>
+                        <input
+                          type="number"
+                          min={0}
+                          value={line.patas}
+                          onChange={(e) => updatePatas(idx, e.target.value)}
+                          className="w-16 rounded border border-line px-2 py-1 text-sm"
+                        />
+                        <span className="text-xs text-muted">{unitLabelsFor(line.medicine.form).inner}</span>
+                      </div>
+                      {line.boxes === 0 && line.patas === 0 && (
                         <div className="text-[11px] font-medium text-muted">
                           invoice e thakbe, dam nai
                         </div>
                       )}
                     </td>
                     <td className={`${td} text-right font-medium text-ink`}>
-                      {formatTaka(line.medicine.boxPricePaisa * line.boxes)}
+                      {formatTaka(lineTotalFor(line))}
                     </td>
                     <td className={td}>
                       <button
