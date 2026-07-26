@@ -3,9 +3,11 @@ import { buyerLogout } from "@/actions/auth";
 import { Brand } from "@/components/Brand";
 
 const LINKS = [
-  { href: "/buyer", label: "Order dao" },
-  { href: "/buyer/orders", label: "Amar order" },
-  { href: "/buyer/account", label: "Amar hisab" },
+  { href: "/buyer", label: "Home" },
+  { href: "/buyer/search", label: "Search" },
+  { href: "/buyer/shortlist", label: "Shortlist" },
+  { href: "/buyer/orders", label: "Orders" },
+  { href: "/buyer/account", label: "Account" },
 ];
 
 export function BuyerNav({

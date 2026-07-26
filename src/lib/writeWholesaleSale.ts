@@ -15,7 +15,13 @@ export type WriteWholesaleSaleParams = {
     shopName: string;
     phone: string;
   };
-  items: { medicineId: string; boxes: number; patas?: number }[];
+  items: { 
+    medicineId?: string; // Optional for custom items
+    customName?: string;
+    customPricePaisa?: number;
+    boxes: number; 
+    patas?: number 
+  }[];
   /** A percentage of the subtotal, 0-100. May be fractional. */
   discountPercent: number;
   paidPaisa: number;
@@ -52,34 +58,51 @@ export async function writeWholesaleSale(
   const lines = [];
 
   for (const item of params.items) {
-    const medicine = await MedicineModel.findById(item.medicineId).session(
-      session,
-    );
-    if (!medicine) throw new Error("Medicine pawa jay ni");
+    if (item.medicineId) {
+      const medicine = await MedicineModel.findById(item.medicineId).session(
+        session,
+      );
+      if (!medicine) throw new Error("Medicine pawa jay ni");
 
-    const leftoverPatas = item.patas ?? 0;
-    const totalPatas = boxesToPatas(item.boxes, medicine.patasPerBox) + leftoverPatas;
+      const leftoverPatas = item.patas ?? 0;
+      const totalPatas = boxesToPatas(item.boxes, medicine.patasPerBox) + leftoverPatas;
 
-    // A zero line takes nothing off the shelf. Skipped rather than passed
-    // through applyStockDelta as a delta of 0, which would issue an `$inc: 0`
-    // that changes nothing; its other half — "does this medicine still
-    // exist" — is already covered by the findById above.
-    if (totalPatas > 0) {
-      const ok = await applyStockDelta(medicine._id, -totalPatas, session);
-      if (!ok) throw new Error("Medicine pawa jay ni");
+      // A zero line takes nothing off the shelf. Skipped rather than passed
+      // through applyStockDelta as a delta of 0, which would issue an `$inc: 0`
+      // that changes nothing; its other half — "does this medicine still
+      // exist" — is already covered by the findById above.
+      if (totalPatas > 0) {
+        const ok = await applyStockDelta(medicine._id, -totalPatas, session);
+        if (!ok) throw new Error("Medicine pawa jay ni");
+      }
+
+      lines.push({
+        medicineId: medicine._id,
+        medicineName: medicine.name,
+        form: medicine.form,
+        unit: "box" as const,
+        quantity: item.boxes,
+        leftoverPatas,
+        ratePaisa: medicine.boxPricePaisa,
+        lineTotalPaisa: wholesaleLineTotal(totalPatas, medicine.boxPricePaisa, medicine.patasPerBox),
+        patasDeducted: totalPatas,
+      });
+    } else {
+      if (!item.customName || item.customPricePaisa === undefined) {
+        throw new Error("Custom item er nam o price dite hobe");
+      }
+      lines.push({
+        medicineId: null,
+        medicineName: item.customName,
+        form: "custom",
+        unit: "box" as const,
+        quantity: item.boxes,
+        leftoverPatas: 0,
+        ratePaisa: item.customPricePaisa,
+        lineTotalPaisa: item.boxes * item.customPricePaisa,
+        patasDeducted: 0,
+      });
     }
-
-    lines.push({
-      medicineId: medicine._id,
-      medicineName: medicine.name,
-      form: medicine.form,
-      unit: "box" as const,
-      quantity: item.boxes,
-      leftoverPatas,
-      ratePaisa: medicine.boxPricePaisa,
-      lineTotalPaisa: wholesaleLineTotal(totalPatas, medicine.boxPricePaisa, medicine.patasPerBox),
-      patasDeducted: totalPatas,
-    });
   }
 
   // computeTotals normally re-derives the subtotal itself, via

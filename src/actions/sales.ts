@@ -168,45 +168,66 @@ export async function recordRetailSale(
 
 export type WholesaleSaleInput = {
   buyerId: string;
-  items: { medicineId: string; boxes: number; patas: number }[];
+  items: {
+    medicineId?: string;
+    customName?: string;
+    customPricePaisa?: number;
+    boxes: number;
+    patas: number;
+  }[];
   /** A percentage of the subtotal, 0-100. May be fractional. */
   discountPercent: number;
   paidPaisa: number;
 };
 
+/**
+ * See validateRetail for the purpose of this manual shape-check.
+ */
 function validateWholesale(input: WholesaleSaleInput): void {
   if (!mongoose.Types.ObjectId.isValid(input.buyerId)) {
-    throw new Error("Buyer pawa jay ni");
+    throw new Error("Buyer thik nai");
   }
+
   if (!Array.isArray(input.items) || input.items.length === 0) {
     throw new Error("Cart khali");
   }
 
   const seen = new Set<string>();
   for (const item of input.items) {
-    if (!mongoose.Types.ObjectId.isValid(item.medicineId)) {
-      throw new Error("Medicine pawa jay ni");
+    if (item.medicineId) {
+      if (!mongoose.Types.ObjectId.isValid(item.medicineId)) {
+        throw new Error("Medicine pawa jay ni");
+      }
+      if (seen.has(item.medicineId)) {
+        throw new Error("Ekoi medicine dui bar add kora jabe na");
+      }
+      seen.add(item.medicineId);
+    } else {
+      if (typeof item.customName !== "string" || !item.customName.trim()) {
+        throw new Error("Custom item er nam dite hobe");
+      }
+      if (
+        typeof item.customPricePaisa !== "number" ||
+        item.customPricePaisa < 0
+      ) {
+        throw new Error("Custom item er price thik nai");
+      }
     }
+
     if (
       typeof item.boxes !== "number" ||
       !Number.isInteger(item.boxes) ||
       item.boxes < 0
     ) {
-      // 0 is legal here — see the zero-line rule in writeWholesaleSale,
-      // which is what stops an invoice from being zero all the way down.
-      throw new Error("Poriman 0 er kom hote parbe na");
+      throw new Error("Box er poriman thik nai");
     }
     if (
       typeof item.patas !== "number" ||
       !Number.isInteger(item.patas) ||
       item.patas < 0
     ) {
-      throw new Error("Poriman 0 er kom hote parbe na");
+      throw new Error("Pata er poriman thik nai");
     }
-    if (seen.has(item.medicineId)) {
-      throw new Error("Ekta medicine ekbar er beshi cart e dewa jabe na");
-    }
-    seen.add(item.medicineId);
   }
 
   // computeTotals re-checks these against the actual subtotal; these guards
@@ -340,6 +361,8 @@ export async function cancelSale(
         }
 
         for (const line of sale.items) {
+          if (!line.medicineId) continue;
+
           // A positive delta, so this can only fail here if the medicine
           // itself no longer exists — applyStockDelta's only precondition.
           const ok = await applyStockDelta(

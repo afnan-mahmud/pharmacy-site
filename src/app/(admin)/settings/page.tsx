@@ -12,6 +12,7 @@ export default async function SettingsPage() {
         address: settings.address,
         phone: settings.phone,
         invoicePrefix: settings.invoicePrefix,
+        aboutUs: settings.aboutUs ?? "",
       }}
     />
   );

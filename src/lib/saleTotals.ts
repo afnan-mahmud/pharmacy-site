@@ -79,10 +79,10 @@ export function computeTotals(
   // produce one, so the guard that used to live here is unreachable.
   const totalPaisa = subtotalPaisa - discountPaisa;
 
-  if (paidPaisa > totalPaisa) {
-    throw new Error("Joma taka total er cheye beshi hote parbe na");
-  }
-
+  // duePaisa may be negative when paidPaisa exceeds the total. A negative
+  // value means the buyer has credit — money the pharmacy owes back. This
+  // surfaces in the buyer's ledger as "Joma ache" (see src/lib/dueDisplay.ts)
+  // and is automatically offset against future purchases.
   return {
     subtotalPaisa,
     discountPaisa,

@@ -2,7 +2,7 @@ import mongoose, { Schema, type InferSchemaType, type Model } from "mongoose";
 
 const saleLineSchema = new Schema(
   {
-    medicineId: { type: Schema.Types.ObjectId, ref: "Medicine", required: true },
+    medicineId: { type: Schema.Types.ObjectId, ref: "Medicine", default: null },
     // Denormalised so an invoice still reads correctly if the medicine is
     // later renamed or deactivated.
     medicineName: { type: String, required: true },
@@ -72,7 +72,9 @@ const saleSchema = new Schema(
     discountPaisa: { type: Number, required: true, default: 0, min: 0 },
     totalPaisa: { type: Number, required: true, min: 0 },
     paidPaisa: { type: Number, required: true, min: 0 },
-    duePaisa: { type: Number, required: true, min: 0 },
+    // May be negative: when paidPaisa exceeds totalPaisa, the buyer has
+    // credit that the pharmacy owes back. See src/lib/dueDisplay.ts.
+    duePaisa: { type: Number, required: true },
     // Sales are cancelled, never deleted: an invoice number that vanishes
     // from the books is an audit trail with a hole in it.
     status: { type: String, enum: ["active", "cancelled"], required: true, default: "active" },
@@ -112,6 +114,10 @@ export type SaleDoc = InferSchemaType<typeof saleSchema> & {
   _id: mongoose.Types.ObjectId;
   createdAt: Date;
 };
+
+if (process.env.NODE_ENV !== "production") {
+  delete mongoose.models.Sale;
+}
 
 export const SaleModel: Model<SaleDoc> =
   (mongoose.models.Sale as Model<SaleDoc>) ??

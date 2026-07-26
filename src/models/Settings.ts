@@ -11,12 +11,17 @@ const settingsSchema = new Schema(
     address: { type: String, default: "" },
     phone: { type: String, default: "" },
     invoicePrefix: { type: String, required: true, default: "ABC" },
+    aboutUs: { type: String, default: "" },
   },
   { timestamps: true },
 );
 
 export type SettingsDoc = InferSchemaType<typeof settingsSchema>;
 
+if (process.env.NODE_ENV !== "production") {
+  delete mongoose.models.Settings;
+}
+
 export const SettingsModel: Model<SettingsDoc> =
-  (mongoose.models.Settings as Model<SettingsDoc>) ??
+  mongoose.models.Settings ||
   mongoose.model<SettingsDoc>("Settings", settingsSchema);

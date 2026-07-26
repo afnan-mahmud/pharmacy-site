@@ -10,9 +10,11 @@ import { usePathname } from "next/navigation";
  * fake "Home/About/Contact" filler.
  */
 const TABS = [
-  { href: "/buyer", label: "Order dao", icon: BagIcon },
-  { href: "/buyer/orders", label: "Amar order", icon: ListIcon },
-  { href: "/buyer/account", label: "Amar hisab", icon: WalletIcon },
+  { href: "/buyer", label: "Home", icon: HomeIcon },
+  { href: "/buyer/search", label: "Search", icon: SearchIcon },
+  { href: "/buyer/shortlist", label: "Shortlist", icon: ClipboardIcon },
+  { href: "/buyer/orders", label: "Orders", icon: ListIcon },
+  { href: "/buyer/account", label: "Account", icon: WalletIcon },
 ];
 
 export function BuyerBottomNav() {
@@ -60,11 +62,20 @@ const stroke = {
   strokeLinejoin: "round" as const,
 };
 
-function BagIcon() {
+function HomeIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5" {...stroke}>
-      <path d="M6 8h12l-1 11a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L6 8Z" />
-      <path d="M9 8V6a3 3 0 0 1 6 0v2" />
+      <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+      <polyline points="9 22 9 12 15 12 15 22" />
+    </svg>
+  );
+}
+
+function SearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" {...stroke}>
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
     </svg>
   );
 }
@@ -86,6 +97,16 @@ function WalletIcon() {
       <rect x="3" y="6" width="18" height="13" rx="2.5" />
       <path d="M3 10h18" />
       <circle cx="16.5" cy="14" r="1.2" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function ClipboardIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-5 w-5" {...stroke}>
+      <rect x="5" y="4" width="14" height="17" rx="2.5" />
+      <path d="M9 4h6v3H9z" />
+      <path d="M9 12h6M9 16h4" />
     </svg>
   );
 }

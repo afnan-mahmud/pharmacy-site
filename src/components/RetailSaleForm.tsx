@@ -117,15 +117,33 @@ export function RetailSaleForm() {
     }
   }
 
-  const td = "px-3 py-2 text-sm";
+  const field = "w-full rounded-2xl border border-line bg-surface px-4 py-3 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition";
+  const tdCls = "px-4 py-3 text-sm";
 
   return (
-    <div className="space-y-4">
-      <h1 className="font-display text-lg font-extrabold text-ink">Khuchra Bikri</h1>
+    <div className="flex flex-col pb-6">
+      <section className="-mx-4 -mt-4 mb-6 sm:-mx-6 sm:-mt-6 rounded-b-3xl bg-gradient-to-br from-brand to-brand-deep px-6 pb-8 pt-8 text-white shadow-sm relative overflow-hidden">
+        <div className="absolute right-0 top-0 -translate-y-1/3 translate-x-1/3 h-64 w-64 rounded-full bg-white/5 blur-3xl"></div>
+        <div className="absolute left-0 bottom-0 translate-y-1/3 -translate-x-1/3 h-48 w-48 rounded-full bg-black/10 blur-2xl"></div>
+        
+        <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[11px] font-medium backdrop-blur-sm">
+              <span className="text-yellow-300">🏪</span> Khuchra
+            </div>
+            <h1 className="mb-1 font-display text-3xl font-extrabold leading-tight">
+              Notun Bikri
+            </h1>
+            <p className="text-sm text-white/90">
+              Sadharon customer er kache khuchra bikri korun.
+            </p>
+          </div>
+        </div>
+      </section>
 
-      <div className="grid gap-3 rounded-2xl border border-line bg-surface p-4 shadow-sm sm:grid-cols-2">
-        <div className="space-y-1">
-          <label htmlFor="customerPhone" className="text-sm text-ink">
+      <div className="grid gap-4 rounded-3xl border border-line bg-surface p-5 shadow-md sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <label htmlFor="customerPhone" className="text-sm font-medium text-ink">
             Customer phone (optional)
           </label>
           <input
@@ -133,11 +151,11 @@ export function RetailSaleForm() {
             value={customerPhone}
             onChange={(e) => setCustomerPhone(e.target.value)}
             placeholder="01XXXXXXXXX"
-            className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm"
+            className={field}
           />
         </div>
-        <div className="space-y-1">
-          <label htmlFor="customerName" className="text-sm text-ink">
+        <div className="space-y-1.5">
+          <label htmlFor="customerName" className="text-sm font-medium text-ink">
             Customer nam
           </label>
           <input
@@ -148,62 +166,63 @@ export function RetailSaleForm() {
               setNameFromHistory(false);
             }}
             placeholder="Nam likho"
-            className="w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm"
+            className={field}
           />
           {nameFromHistory && (
-            <p className="text-xs text-muted">Ager naam — bodlano jabe</p>
+            <p className="text-xs text-brand-strong">Ager naam — bodlano jabe</p>
           )}
         </div>
       </div>
 
-      <div className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
+      <div className="rounded-3xl border border-line bg-surface p-5 shadow-md">
         <MedicinePicker onPick={addMedicine} />
       </div>
 
       {cart.length > 0 && (
-        <div className="overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm">
+        <div className="overflow-x-auto rounded-3xl border border-line bg-surface shadow-md">
           <table className="w-full text-sm">
-            <thead className="border-b border-line text-left text-muted">
+            <thead className="border-b border-line text-left text-muted bg-canvas/50">
               <tr>
-                <th className={td}>Medicine</th>
-                <th className={td}>Rate</th>
-                <th className={td}>Poriman</th>
-                <th className={`${td} text-right`}>Mot</th>
-                <th className={td}></th>
+                <th className={tdCls}>Medicine</th>
+                <th className={tdCls}>Rate</th>
+                <th className={tdCls}>Poriman</th>
+                <th className={`${tdCls} text-right`}>Mot</th>
+                <th className={tdCls}></th>
               </tr>
             </thead>
             <tbody>
               {cart.map((line, idx) => (
-                <tr key={line.medicine.id} className="border-b border-line">
-                  <td className={td}>
-                    <div className="font-medium text-ink">{line.medicine.name}</div>
-                    <div className="text-xs text-muted">{line.medicine.genericName}</div>
+                <tr key={line.medicine.id} className="border-b border-line/50 last:border-0">
+                  <td className={tdCls}>
+                    <div className="font-bold text-ink">{line.medicine.name}</div>
+                    <div className="text-xs font-medium text-muted mt-0.5">{line.medicine.genericName}</div>
                   </td>
-                  <td className={td}>
+                  <td className={tdCls}>
                     {formatTaka(line.medicine.pataPricePaisa)}/
                     {unitLabelsFor(line.medicine.form).inner}
                   </td>
-                  <td className={td}>
-                    <input
-                      type="number"
-                      min={1}
-                      value={line.patas}
-                      onChange={(e) => updatePatas(idx, e.target.value)}
-                      className="w-20 rounded border border-line px-2 py-1 text-sm"
-                    />
-                    <span className="ml-1 text-xs text-muted">
-                      {unitLabelsFor(line.medicine.form).inner} /{" "}
-                      {line.medicine.stockPatas}
-                    </span>
+                  <td className={tdCls}>
+                    <div className="flex items-center">
+                      <input
+                        type="number"
+                        min={1}
+                        value={line.patas}
+                        onChange={(e) => updatePatas(idx, e.target.value)}
+                        className="w-20 rounded-xl border border-line px-2 py-1.5 text-sm focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition"
+                      />
+                      <span className="ml-2 text-xs font-medium text-muted">
+                        {unitLabelsFor(line.medicine.form).inner} <br/>(stock: {line.medicine.stockPatas})
+                      </span>
+                    </div>
                   </td>
-                  <td className={`${td} text-right font-medium text-ink`}>
+                  <td className={`${tdCls} text-right font-bold text-ink`}>
                     {formatTaka(line.medicine.pataPricePaisa * line.patas)}
                   </td>
-                  <td className={td}>
+                  <td className={tdCls}>
                     <button
                       type="button"
                       onClick={() => removeLine(idx)}
-                      className="text-muted hover:text-danger"
+                      className="text-muted hover:text-danger rounded-full p-1 hover:bg-danger-bg transition"
                     >
                       ×
                     </button>
@@ -212,11 +231,11 @@ export function RetailSaleForm() {
               ))}
             </tbody>
             <tfoot>
-              <tr>
-                <td colSpan={3} className={`${td} text-right font-display font-bold text-ink`}>
+              <tr className="bg-canvas/30">
+                <td colSpan={3} className={`${tdCls} text-right font-display font-bold text-ink`}>
                   Mot
                 </td>
-                <td className={`${td} text-right text-lg font-bold text-brand-strong`}>
+                <td className={`${tdCls} text-right text-lg font-bold text-brand-strong`}>
                   {formatTaka(totalPaisa)}
                 </td>
                 <td />
@@ -226,14 +245,14 @@ export function RetailSaleForm() {
         </div>
       )}
 
-      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
-      {done && <p className="text-sm text-brand-strong">{done}</p>}
+      {error && <p role="alert" className="text-sm text-danger px-2">{error}</p>}
+      {done && <p className="text-sm font-medium text-brand-strong px-2">{done}</p>}
 
       <form onSubmit={handleSubmit}>
         <button
           type="submit"
           disabled={busy || cart.length === 0 || !customerName.trim()}
-          className="rounded-full bg-brand hover:bg-brand-strong px-6 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="w-full sm:w-auto rounded-full bg-brand hover:bg-brand-strong px-8 py-3 text-sm font-bold text-white shadow-md shadow-brand/20 disabled:opacity-50 transition"
         >
           {busy ? "Wait..." : "Bikri confirm koro"}
         </button>

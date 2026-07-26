@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { recordWholesaleSale } from "@/actions/sales";
-import { MedicinePicker, type PickedMedicine } from "./MedicinePicker";
+import { listMedicines } from "@/actions/medicines";
+import { type PickedMedicine } from "./MedicinePicker";
 import { formatTaka, takaToPaisa } from "@/lib/money";
 import { computeTotals, wholesaleLineTotal } from "@/lib/saleTotals";
+import { toMedicineForm } from "@/lib/unitLabels";
 import { unitLabelsFor } from "@/lib/unitLabels";
 import { parseQuantityInput } from "@/lib/quantityInput";
 
@@ -22,8 +24,18 @@ type CartLine = {
   patas: number;
 };
 
-export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
+function SearchIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
+      <circle cx="11" cy="11" r="7" />
+      <path d="m20 20-3.5-3.5" />
+    </svg>
+  );
+}
+
+export function WholesaleSaleForm({ buyers, allowCustomItems = false }: { buyers: BuyerOption[], allowCustomItems?: boolean }) {
   const router = useRouter();
+  const [step, setStep] = useState<1 | 2>(1);
   const [buyerId, setBuyerId] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const [discount, setDiscount] = useState("");
@@ -33,28 +45,91 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
   const [lastInvoice, setLastInvoice] = useState<string | null>(null);
   const [lastSaleId, setLastSaleId] = useState<string | null>(null);
 
+  // Search state
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<PickedMedicine[]>([]);
+  const [searching, setSearching] = useState(false);
+
+  // Custom Item state
+  const [showCustomForm, setShowCustomForm] = useState(false);
+  const [customName, setCustomName] = useState("");
+  const [customPrice, setCustomPrice] = useState("");
+  const [customBoxes, setCustomBoxes] = useState(1);
+
+  function addCustomItem() {
+    if (!customName.trim()) {
+      alert("Product name dite hobe");
+      return;
+    }
+    const pricePaisa = Math.round(takaToPaisa(customPrice || 0));
+    if (pricePaisa < 0) {
+      alert("Price thik nai");
+      return;
+    }
+    const id = `custom_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
+    const customMed: PickedMedicine = {
+      id,
+      name: customName.trim(),
+      genericName: "Custom Item",
+      form: "other",
+      patasPerBox: 1,
+      boxPricePaisa: pricePaisa,
+      pataPricePaisa: pricePaisa,
+      stockPatas: 0,
+    };
+    
+    setStep1Boxes((prev) => ({ ...prev, [id]: customBoxes }));
+    setCart((prev) => [...prev, { medicine: customMed, boxes: customBoxes, patas: 0 }]);
+    
+    setCustomName("");
+    setCustomPrice("");
+    setCustomBoxes(1);
+    setShowCustomForm(false);
+  }
+
+  useEffect(() => {
+    setSearching(true);
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        const found = await listMedicines(query);
+        if (cancelled) return;
+        setResults(
+          found.map((m) => ({
+            id: m._id,
+            name: m.name,
+            genericName: m.genericName,
+            form: toMedicineForm(m.form),
+            patasPerBox: m.patasPerBox,
+            boxPricePaisa: m.boxPricePaisa,
+            pataPricePaisa: m.pataPricePaisa,
+            stockPatas: m.stockPatas,
+          }))
+        );
+      } catch (err) {
+        if (!cancelled) setError("Medicine khoja jacche na");
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
+
   function lineTotalFor(line: CartLine): number {
     const totalPatas = line.boxes * line.medicine.patasPerBox + line.patas;
     return wholesaleLineTotal(totalPatas, line.medicine.boxPricePaisa, line.medicine.patasPerBox);
   }
 
   const subtotalPaisa = cart.reduce((sum, line) => sum + lineTotalFor(line), 0);
-  // A zero line contributes nothing to the money, but a sale of nothing but
-  // zeroes is not a sale — recordWholesaleSale rejects it, so catch it here.
   const hasBillableLine = cart.some((line) => line.boxes > 0 || line.patas > 0);
   const discountPercent = Number(discount || 0);
   const paidPaisa = Math.round(takaToPaisa(paid || 0));
 
-  // Reuse the server's own totals math instead of a second, looser
-  // definition (the old Math.max(0, ...) here would happily show ৳0.00 for
-  // a discount larger than the subtotal, then fail on submit with a server
-  // error the form never previewed). computeTotals throws on the same
-  // over-discount / over-payment conditions recordWholesaleSale enforces,
-  // so the client and server always agree.
   let totalPaisa = subtotalPaisa;
   let duePaisa = 0;
-  // What the percentage actually works out to. Taken from computeTotals rather
-  // than recomputed here, so the figure previewed is the figure stored.
   let discountPaisa = 0;
   let totalsError = "";
   try {
@@ -70,36 +145,57 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
     totalsError = err instanceof Error ? err.message : "Kichu ekta bhul holo";
   }
 
-  function addMedicine(medicine: PickedMedicine) {
-    if (cart.some((l) => l.medicine.id === medicine.id)) return;
-    setLastInvoice(null);
-    setCart((prev) => [...prev, { medicine, boxes: 1, patas: 0 }]);
+  // Step 1 quantities
+  const [step1Boxes, setStep1Boxes] = useState<Record<string, number>>({});
+  const [step1Patas, setStep1Patas] = useState<Record<string, number>>({});
+
+  function handleStep1BoxesChange(m: PickedMedicine, val: number) {
+    const valid = Math.max(0, val);
+    setStep1Boxes((prev) => ({ ...prev, [m.id]: valid }));
+    setCart((prev) => prev.map((l) => l.medicine.id === m.id ? { ...l, boxes: valid } : l));
   }
 
-  // Minimum 0: zeroing a line is how the owner says "ordered, could not
-  // supply". The line stays on the invoice, priced at nothing.
+  function handleStep1PatasChange(m: PickedMedicine, val: number) {
+    const valid = Math.max(0, val);
+    setStep1Patas((prev) => ({ ...prev, [m.id]: valid }));
+    setCart((prev) => prev.map((l) => l.medicine.id === m.id ? { ...l, patas: valid } : l));
+  }
+
+  function toggleCart(medicine: PickedMedicine, checked: boolean) {
+    if (checked) {
+      setCart((prev) => {
+        if (prev.find((l) => l.medicine.id === medicine.id)) return prev;
+        return [...prev, { medicine, boxes: step1Boxes[medicine.id] ?? 1, patas: step1Patas[medicine.id] ?? 0 }];
+      });
+    } else {
+      setCart((prev) => prev.filter((l) => l.medicine.id !== medicine.id));
+    }
+  }
+
   function updateBoxes(idx: number, raw: string) {
     const boxes = parseQuantityInput(raw, 0);
     setCart((prev) =>
-      prev.map((line, i) => (i === idx ? { ...line, boxes } : line)),
+      prev.map((line, i) => {
+        if (i === idx) {
+          setStep1Boxes((sb) => ({ ...sb, [line.medicine.id]: boxes }));
+          return { ...line, boxes };
+        }
+        return line;
+      }),
     );
   }
 
-  // Whatever is typed here becomes the line's leftover-patas figure; if it is
-  // patasPerBox or more, the extra whole boxes are folded into `boxes` so the
-  // displayed leftover always stays under one box. Re-typing the same large
-  // number again is a deliberate "add another box" — the field always shows
-  // the already-rolled-up leftover, never the raw number last typed.
   function updatePatas(idx: number, raw: string) {
     setCart((prev) =>
       prev.map((line, i) => {
         if (i !== idx) return line;
-        const entered = parseQuantityInput(raw, 0);
-        const patasPerBox = line.medicine.patasPerBox;
+        const newPatas = parseQuantityInput(raw, 0);
+        
+        setStep1Patas((sp) => ({ ...sp, [line.medicine.id]: newPatas }));
+        
         return {
           ...line,
-          boxes: line.boxes + Math.floor(entered / patasPerBox),
-          patas: entered % patasPerBox,
+          patas: newPatas,
         };
       }),
     );
@@ -127,9 +223,21 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
     setBusy(true);
 
     try {
+      const payloadItems = cart.map((l) => {
+        if (l.medicine.id.startsWith("custom_")) {
+          return {
+            customName: l.medicine.name,
+            customPricePaisa: l.medicine.boxPricePaisa,
+            boxes: l.boxes,
+            patas: l.patas,
+          };
+        }
+        return { medicineId: l.medicine.id, boxes: l.boxes, patas: l.patas };
+      });
+
       const result = await recordWholesaleSale({
         buyerId,
-        items: cart.map((l) => ({ medicineId: l.medicine.id, boxes: l.boxes, patas: l.patas })),
+        items: payloadItems,
         discountPercent: Number(discount || 0),
         paidPaisa: Math.round(takaToPaisa(paid || 0)),
       });
@@ -145,6 +253,8 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
       setBuyerId("");
       setLastInvoice(sale.invoiceNo as string | null);
       setLastSaleId(sale._id);
+      setStep(1);
+      setQuery("");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Kichu ekta bhul holo");
@@ -153,107 +263,305 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
     }
   }
 
-  const field = "w-full rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm";
-  const td = "px-3 py-2 text-sm";
+  const field = "w-full rounded-2xl border border-line bg-surface px-4 py-3 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20 transition";
+  const tdCls = "px-4 py-3 text-sm";
+  const inCartSet = new Set(cart.map((l) => l.medicine.id));
 
   return (
-    <div className="space-y-4">
-      <h1 className="font-display text-lg font-extrabold text-ink">Wholesale Bikri</h1>
+    <div className="flex flex-col pb-6">
+      <section className="-mx-4 -mt-4 mb-6 sm:-mx-6 sm:-mt-6 rounded-b-3xl bg-gradient-to-br from-brand to-brand-deep px-6 pb-8 pt-8 text-white shadow-sm relative overflow-hidden">
+        <div className="absolute right-0 top-0 -translate-y-1/3 translate-x-1/3 h-64 w-64 rounded-full bg-white/5 blur-3xl"></div>
+        <div className="absolute left-0 bottom-0 translate-y-1/3 -translate-x-1/3 h-48 w-48 rounded-full bg-black/10 blur-2xl"></div>
+        
+        <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <div className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[11px] font-medium backdrop-blur-sm">
+              <span className="text-yellow-300">📦</span> Wholesale
+            </div>
+            <h1 className="mb-1 font-display text-3xl font-extrabold leading-tight">
+              {step === 1 ? "Notun Bikri" : "Checkout"}
+            </h1>
+            <p className="text-sm text-white/90">
+              {step === 1 ? "Product khuje cart e add korun." : "Order final koro ebong invoice print koro."}
+            </p>
+          </div>
+          {step === 2 && (
+            <button
+              onClick={() => setStep(1)}
+              className="rounded-full bg-white/20 px-4 py-2 text-sm font-semibold text-white hover:bg-white/30 transition backdrop-blur-sm"
+            >
+              ← Piche ferot
+            </button>
+          )}
+        </div>
+      </section>
 
       {lastInvoice && lastSaleId && (
-        <div className="rounded-xl bg-brand-tint p-4 text-sm text-brand-strong">
-          Invoice {lastInvoice} record kora hoyeche.{" "}
-          <Link href={`/invoice/${lastSaleId}`} className="font-medium underline">
-            Print koro
+        <div className="mb-6 flex flex-col items-center justify-center rounded-3xl bg-surface border-2 border-brand p-8 text-center shadow-lg">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-brand-tint mb-4 text-3xl">
+            🎉
+          </div>
+          <h3 className="mb-2 font-display text-xl font-bold text-ink">
+            Invoice {lastInvoice} record kora hoyeche!
+          </h3>
+          <p className="mb-6 text-muted">
+            Order successfully save hoyeche, ebar invoice print korte paren.
+          </p>
+          <Link 
+            href={`/invoice/${lastSaleId}`} 
+            className="rounded-full bg-brand px-8 py-3.5 text-base font-bold text-white shadow-xl shadow-brand/30 hover:bg-brand-strong transition"
+          >
+            🖨️ Invoice Print Koro
           </Link>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-          <div className="space-y-2">
-            <label htmlFor="buyerSelect" className="text-sm text-ink">
-              Buyer
-            </label>
-            <select
-              id="buyerSelect"
-              className={field}
-              value={buyerId}
-              onChange={(e) => setBuyerId(e.target.value)}
-              required
-            >
-              <option value="">— buyer select koro —</option>
-              {buyers.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.name}
-                  {b.shopName ? ` — ${b.shopName}` : ""}
-                </option>
-              ))}
-            </select>
+      {step === 1 ? (
+        <div className="space-y-4">
+          <div className="sticky top-0 z-30 -mx-4 bg-surface px-4 py-3 shadow-sm border-b border-line sm:-mx-0 sm:rounded-3xl sm:px-5">
+            <div className="relative">
+              <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Medicine search করুন..."
+                className="w-full rounded-full border border-line bg-white py-3.5 pl-12 pr-4 text-sm font-medium text-ink shadow-sm placeholder:text-muted focus:border-brand focus:ring-1 focus:ring-brand"
+              />
+            </div>
           </div>
-        </div>
 
-        <div className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-          <MedicinePicker onPick={addMedicine} />
-        </div>
+          <div className="mb-2">
+            <p className="font-bold text-brand-strong text-sm">
+              {searching ? "খোঁজা হচ্ছে..." : `${results.length} টি পণ্য`}
+            </p>
+          </div>
 
-        {cart.length > 0 && (
-          <div className="overflow-x-auto rounded-2xl border border-line bg-surface shadow-sm">
+          {results.length > 0 && (
+            <div className="rounded-2xl bg-white shadow-sm border border-line overflow-hidden">
+              <div className="grid grid-cols-[1fr_75px_75px_40px] gap-1 border-b border-line bg-canvas/50 px-2 py-3 text-[11px] font-bold text-ink">
+                <div>Product</div>
+                <div className="text-center">Box</div>
+                <div className="text-center">Pata</div>
+                <div className="text-center">Sel</div>
+              </div>
+
+              <div className="divide-y divide-line">
+                {[
+                  ...results,
+                  ...cart.filter(l => l.medicine.id.startsWith("custom_")).map(l => l.medicine)
+                ].map((m) => {
+                  const inCart = inCartSet.has(m.id);
+                  const boxes = step1Boxes[m.id] ?? 1;
+                  const patas = step1Patas[m.id] ?? 0;
+                  
+                  return (
+                    <div key={m.id} className="grid grid-cols-[1fr_75px_75px_40px] items-center gap-1 p-2">
+                      <div className="min-w-0 pr-1">
+                        <div className="break-words font-display text-xs font-extrabold uppercase text-brand-strong leading-snug">
+                          {m.name}
+                        </div>
+                        <div className="break-words text-[10px] text-muted">
+                          {m.genericName}
+                        </div>
+                        <div className="mt-1 flex flex-col gap-0.5 text-[10px] font-medium text-muted">
+                          <span className="text-ink">Rate: {formatTaka(m.boxPricePaisa)}</span>
+                          <span className={m.stockPatas < 0 ? "text-danger font-bold" : ""}>
+                            Stock: {Math.floor(m.stockPatas / m.patasPerBox)} box
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Box Stepper */}
+                      <div className={`flex items-center justify-center rounded-lg border ${inCart ? "border-brand" : "border-line"} h-[28px] w-full px-0.5`}>
+                        <button type="button" onClick={() => handleStep1BoxesChange(m, boxes - 1)} className={`grid h-full flex-1 place-items-center text-sm font-bold ${inCart ? "text-brand" : "text-muted"}`}>−</button>
+                        <input type="number" min={0} value={boxes} onChange={(e) => handleStep1BoxesChange(m, Number(e.target.value))} className={`w-5 border-0 bg-transparent p-0 text-center text-xs font-bold focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none ${inCart ? "text-ink" : "text-muted"}`} />
+                        <button type="button" onClick={() => handleStep1BoxesChange(m, boxes + 1)} className={`grid h-full flex-1 place-items-center text-sm font-bold ${inCart ? "text-brand" : "text-muted"}`}>+</button>
+                      </div>
+
+                      {/* Pata Stepper */}
+                      <div className={`flex items-center justify-center rounded-lg border ${inCart ? "border-brand" : "border-line"} h-[28px] w-full px-0.5`}>
+                        <button type="button" onClick={() => handleStep1PatasChange(m, patas - 1)} className={`grid h-full flex-1 place-items-center text-sm font-bold ${inCart ? "text-brand" : "text-muted"}`}>−</button>
+                        <input type="number" min={0} value={patas} onChange={(e) => handleStep1PatasChange(m, Number(e.target.value))} className={`w-5 border-0 bg-transparent p-0 text-center text-xs font-bold focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none ${inCart ? "text-ink" : "text-muted"}`} />
+                        <button type="button" onClick={() => handleStep1PatasChange(m, patas + 1)} className={`grid h-full flex-1 place-items-center text-sm font-bold ${inCart ? "text-brand" : "text-muted"}`}>+</button>
+                      </div>
+
+                      <div className="flex items-center justify-center">
+                        <input
+                          type="checkbox"
+                          checked={inCart}
+                          onChange={(e) => toggleCart(m, e.target.checked)}
+                          className="h-5 w-5 rounded border-line text-brand focus:ring-brand disabled:opacity-50"
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {!searching && query.trim() && results.length === 0 && (
+            <p className="mt-4 text-center text-sm text-muted">
+              "{query}" নামে কোনো মেডিসিন পাওয়া যায়নি।
+            </p>
+          )}
+
+          {allowCustomItems && (
+            <div className={`fixed right-4 z-40 flex flex-col items-end md:right-12 ${cart.length > 0 ? "bottom-[150px] sm:bottom-[150px] md:bottom-28" : "bottom-[90px] sm:bottom-[90px] md:bottom-20"}`}>
+              {showCustomForm ? (
+                <div className="mb-2 w-[300px] rounded-3xl border border-line bg-surface p-5 shadow-2xl">
+                  <h4 className="mb-4 text-sm font-bold text-brand-strong">Add Custom Item</h4>
+                  <div className="flex flex-col gap-3">
+                    <input
+                      placeholder="Item name"
+                      value={customName}
+                      onChange={(e) => setCustomName(e.target.value)}
+                      className="w-full rounded-xl border border-line px-4 py-3 text-sm focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none transition"
+                    />
+                    <div className="flex gap-3">
+                      <input
+                        type="number"
+                        placeholder="Price"
+                        value={customPrice}
+                        onChange={(e) => setCustomPrice(e.target.value)}
+                        className="w-full rounded-xl border border-line px-4 py-3 text-sm focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none transition"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Qty"
+                        min={1}
+                        value={customBoxes}
+                        onChange={(e) => setCustomBoxes(Number(e.target.value) || 1)}
+                        className="w-24 rounded-xl border border-line px-4 py-3 text-sm focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none transition"
+                      />
+                    </div>
+                    <div className="mt-2 flex gap-3">
+                      <button
+                        onClick={addCustomItem}
+                        className="flex-1 rounded-xl bg-brand py-3 text-sm font-bold text-white shadow-lg shadow-brand/30 hover:bg-brand-strong transition"
+                      >
+                        Add
+                      </button>
+                      <button
+                        onClick={() => setShowCustomForm(false)}
+                        className="rounded-xl border border-line bg-canvas px-5 py-3 text-sm font-bold text-ink hover:bg-line/50 transition"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowCustomForm(true)}
+                  className="flex items-center gap-2 rounded-full bg-brand-strong px-5 py-3 text-sm font-bold text-white shadow-xl shadow-brand-strong/30 hover:bg-brand-deep transition-transform hover:scale-105 active:scale-95"
+                >
+                  <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round">
+                    <path d="M12 5v14M5 12h14" />
+                  </svg>
+                  Custom Item
+                </button>
+              )}
+            </div>
+          )}
+
+          {cart.length > 0 && (
+            <div className="sticky bottom-20 z-20 mt-6 md:bottom-4">
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                className="flex w-full items-center justify-between rounded-full bg-brand px-6 py-4 font-bold text-white shadow-xl shadow-brand/30 transition hover:bg-brand-strong"
+              >
+                <span className="text-base">Checkout a jan</span>
+                <span className="font-display text-xl font-extrabold">
+                  {cart.length} ti product
+                </span>
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="rounded-3xl border border-line bg-surface p-5 shadow-md">
+            <div className="space-y-2">
+              <label htmlFor="buyerSelect" className="text-sm font-medium text-ink">
+                Buyer
+              </label>
+              <select
+                id="buyerSelect"
+                className={field}
+                value={buyerId}
+                onChange={(e) => setBuyerId(e.target.value)}
+                required
+              >
+                <option value="">— buyer select koro —</option>
+                {buyers.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name}
+                    {b.shopName ? ` — ${b.shopName}` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto rounded-3xl border border-line bg-surface shadow-md">
             <table className="w-full text-sm">
-              <thead className="border-b border-line text-left text-muted">
+              <thead className="border-b border-line text-left text-muted bg-canvas/50">
                 <tr>
-                  <th className={td}>Medicine</th>
-                  <th className={td}>Pack rate</th>
-                  <th className={td}>Poriman</th>
-                  <th className={`${td} text-right`}>Mot</th>
-                  <th className={td}></th>
+                  <th className={tdCls}>Medicine</th>
+                  <th className={tdCls}>Pack rate</th>
+                  <th className={tdCls}>Poriman</th>
+                  <th className={`${tdCls} text-right`}>Mot</th>
+                  <th className={tdCls}></th>
                 </tr>
               </thead>
               <tbody>
                 {cart.map((line, idx) => (
-                  <tr key={line.medicine.id} className="border-b border-line">
-                    <td className={td}>
-                      <div className="font-medium text-ink">{line.medicine.name}</div>
-                      <div className="text-xs text-muted">
+                  <tr key={line.medicine.id} className="border-b border-line/50 last:border-0">
+                    <td className={tdCls}>
+                      <div className="font-bold text-ink">{line.medicine.name}</div>
+                      <div className="text-xs font-medium text-muted mt-0.5">
                         {line.medicine.patasPerBox}{" "}
                         {unitLabelsFor(line.medicine.form).inner}/
                         {unitLabelsFor(line.medicine.form).outer}
                       </div>
                     </td>
-                    <td className={td}>{formatTaka(line.medicine.boxPricePaisa)}</td>
-                    <td className={td}>
+                    <td className={tdCls}>{formatTaka(line.medicine.boxPricePaisa)}</td>
+                    <td className={tdCls}>
                       <div className="flex items-center gap-1.5">
                         <input
                           type="number"
                           min={0}
                           value={line.boxes}
                           onChange={(e) => updateBoxes(idx, e.target.value)}
-                          className="w-16 rounded border border-line px-2 py-1 text-sm"
+                          className="w-16 rounded-xl border border-line px-2 py-1.5 text-sm focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition"
                         />
-                        <span className="text-xs text-muted">{unitLabelsFor(line.medicine.form).outer}</span>
+                        <span className="text-xs font-medium text-muted">{unitLabelsFor(line.medicine.form).outer}</span>
                         <input
                           type="number"
                           min={0}
                           value={line.patas}
                           onChange={(e) => updatePatas(idx, e.target.value)}
-                          className="w-16 rounded border border-line px-2 py-1 text-sm"
+                          className="w-16 rounded-xl border border-line px-2 py-1.5 text-sm focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition"
                         />
-                        <span className="text-xs text-muted">{unitLabelsFor(line.medicine.form).inner}</span>
+                        <span className="text-xs font-medium text-muted">{unitLabelsFor(line.medicine.form).inner}</span>
                       </div>
                       {line.boxes === 0 && line.patas === 0 && (
-                        <div className="text-[11px] font-medium text-muted">
+                        <div className="mt-1 text-[11px] font-medium text-muted">
                           invoice e thakbe, dam nai
                         </div>
                       )}
                     </td>
-                    <td className={`${td} text-right font-medium text-ink`}>
+                    <td className={`${tdCls} text-right font-bold text-ink`}>
                       {formatTaka(lineTotalFor(line))}
                     </td>
-                    <td className={td}>
+                    <td className={tdCls}>
                       <button
                         type="button"
                         onClick={() => removeLine(idx)}
-                        className="text-muted hover:text-danger"
+                        className="text-muted hover:text-danger rounded-full p-1 hover:bg-danger-bg transition"
                       >
                         ×
                       </button>
@@ -263,70 +571,74 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
               </tbody>
             </table>
           </div>
-        )}
 
-        <div className="grid gap-3 rounded-2xl border border-line bg-surface p-4 shadow-sm sm:grid-cols-3">
-          <div className="space-y-1">
-            <label htmlFor="discount" className="text-sm text-ink">Discount (%)</label>
-            {/* No min/max here on purpose: this input is inside the form that
-                submits the sale, and HTML constraint validation would block
-                the submit with a native bubble. Out-of-range values surface
-                through totalsError below, which also disables the button. */}
-            <input id="discount" type="number" step="0.01" className={field}
-              placeholder="0" value={discount}
-              onChange={(e) => setDiscount(e.target.value)} />
-          </div>
-          <div className="space-y-1">
-            <label htmlFor="paid" className="text-sm text-ink">Joma (৳)</label>
-            <input id="paid" type="number" step="0.01" min={0} className={field}
-              value={paid} onChange={(e) => setPaid(e.target.value)} />
-          </div>
-          <div className="space-y-3 rounded-full bg-brand-tint p-3">
-            <div className="flex justify-between text-sm text-muted">
-              <span>Subtotal</span>
-              <span>{formatTaka(subtotalPaisa)}</span>
+          <div className="grid gap-4 rounded-3xl border border-line bg-surface p-5 shadow-md sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <label htmlFor="discount" className="text-sm font-medium text-ink">Discount (%)</label>
+              <input id="discount" type="number" step="0.01" className={field}
+                placeholder="0" value={discount}
+                onChange={(e) => setDiscount(e.target.value)} />
             </div>
-            {discountPaisa > 0 && (
+            <div className="space-y-1.5">
+              <label htmlFor="paid" className="text-sm font-medium text-ink">Joma (৳)</label>
+              <input id="paid" type="number" step="0.01" min={0} className={field}
+                placeholder="0"
+                value={paid} onChange={(e) => setPaid(e.target.value)} />
+            </div>
+            <div className="space-y-3 rounded-2xl bg-brand/5 p-4 border border-brand/10">
               <div className="flex justify-between text-sm text-muted">
-                <span>Discount ({discountPercent}%)</span>
-                <span>− {formatTaka(discountPaisa)}</span>
+                <span>Subtotal</span>
+                <span>{formatTaka(subtotalPaisa)}</span>
               </div>
-            )}
-            {totalsError ? (
-              <p role="alert" className="text-sm text-danger">{totalsError}</p>
-            ) : (
-              <>
-                <div className="flex justify-between text-sm font-display font-bold text-ink">
-                  <span>Mot</span>
-                  <span>{formatTaka(totalPaisa)}</span>
+              {discountPaisa > 0 && (
+                <div className="flex justify-between text-sm text-muted">
+                  <span>Discount ({discountPercent}%)</span>
+                  <span>− {formatTaka(discountPaisa)}</span>
                 </div>
-                <div className="flex justify-between text-sm font-semibold text-danger">
-                  <span>Baki</span>
-                  <span>{formatTaka(duePaisa)}</span>
-                </div>
-              </>
-            )}
+              )}
+              {totalsError ? (
+                <p role="alert" className="text-sm text-danger">{totalsError}</p>
+              ) : (
+                <>
+                  <div className="flex justify-between text-sm font-display font-bold text-ink">
+                    <span>Mot</span>
+                    <span>{formatTaka(totalPaisa)}</span>
+                  </div>
+                  {duePaisa >= 0 ? (
+                    <div className="flex justify-between text-sm font-semibold text-danger">
+                      <span>Baki</span>
+                      <span>{formatTaka(duePaisa)}</span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between text-sm font-semibold text-teal-700">
+                      <span>Buyer pabe</span>
+                      <span>{formatTaka(Math.abs(duePaisa))}</span>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
-        </div>
 
-        {cart.length > 0 && !hasBillableLine && (
-          <p className="text-sm text-muted">
-            Shob line 0 — onto ekta line e poriman dile invoice kora jabe.
-          </p>
-        )}
+          {cart.length > 0 && !hasBillableLine && (
+            <p className="text-sm text-muted">
+              Shob line 0 — onto ekta line e poriman dile invoice kora jabe.
+            </p>
+          )}
 
-        {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+          {error && <p role="alert" className="text-sm text-danger px-2">{error}</p>}
 
-        <button
-          type="submit"
-          disabled={
-            busy || cart.length === 0 || !hasBillableLine || !buyerId || !!totalsError
-          }
-          className="rounded-full bg-brand hover:bg-brand-strong px-6 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {busy ? "Wait..." : "Bikri confirm koro"}
-        </button>
-      </form>
+          <button
+            type="submit"
+            disabled={
+              busy || cart.length === 0 || !hasBillableLine || !buyerId || !!totalsError
+            }
+            className="w-full rounded-full bg-brand hover:bg-brand-strong px-8 py-4 text-lg font-bold text-white shadow-xl shadow-brand/30 disabled:opacity-50 transition"
+          >
+            {busy ? "Wait..." : "Order Confirm Koro"}
+          </button>
+        </form>
+      )}
     </div>
   );
 }

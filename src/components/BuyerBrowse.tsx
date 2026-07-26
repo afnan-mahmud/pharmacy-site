@@ -10,7 +10,6 @@ import {
 import { formatTaka } from "@/lib/money";
 import { discountPercent } from "@/lib/discount";
 import { stockStatusLabel, type StockStatus } from "@/lib/stockStatus";
-import { unitLabelsFor, capitalize } from "@/lib/unitLabels";
 
 type CartLine = { medicine: BuyerMedicineOption; boxes: number };
 
@@ -20,22 +19,17 @@ export function BuyerBrowse() {
   const [results, setResults] = useState<BuyerMedicineOption[]>([]);
   const [searching, setSearching] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!query.trim()) {
-      setResults([]);
-      setSearching(false);
-      return;
-    }
+    // We now allow empty queries to load the initial list of active products.
     setSearching(true);
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
-        // Only availability, box rate and MRP come back — never the raw stock
-        // count or the retail (pata) price. See searchMedicinesForBuyer.
         const found = await searchMedicinesForBuyer(query);
         if (cancelled) return;
         setResults(found);
@@ -51,24 +45,27 @@ export function BuyerBrowse() {
     };
   }, [query]);
 
-  function add(medicine: BuyerMedicineOption) {
+  function toggleCart(medicine: BuyerMedicineOption, checked: boolean) {
     setDone("");
     setError("");
-    setCart((current) => {
-      const existing = current.find((l) => l.medicine.id === medicine.id);
-      if (existing) {
-        return current.map((l) =>
-          l.medicine.id === medicine.id ? { ...l, boxes: l.boxes + 1 } : l,
-        );
-      }
-      return [...current, { medicine, boxes: 1 }];
-    });
+    if (checked) {
+      setCart((current) => {
+        if (current.find((l) => l.medicine.id === medicine.id)) return current;
+        return [...current, { medicine, boxes: quantities[medicine.id] || 1 }];
+      });
+    } else {
+      setCart((current) => current.filter((l) => l.medicine.id !== medicine.id));
+    }
   }
 
-  function setBoxes(id: string, boxes: number) {
+  function handleQuantityChange(id: string, boxes: number) {
+    const validBoxes = Math.max(1, boxes);
+    setQuantities((prev) => ({ ...prev, [id]: validBoxes }));
+    
+    // If it's in the cart, update the cart too
     setCart((current) =>
       current.map((l) =>
-        l.medicine.id === id ? { ...l, boxes: Math.max(1, boxes) } : l,
+        l.medicine.id === id ? { ...l, boxes: validBoxes } : l,
       ),
     );
   }
@@ -104,110 +101,82 @@ export function BuyerBrowse() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
-      {/* Hero + search */}
-      <section className="rounded-3xl bg-gradient-to-br from-brand to-brand-deep px-5 py-6 text-white shadow-sm">
-        <h1 className="font-display text-xl font-extrabold">Order dao</h1>
-        <p className="mt-0.5 text-sm text-white/85">
-          Medicine khuje cart-e dao, malik approve korbe.
-        </p>
-        <div className="relative mt-4">
+    <form onSubmit={handleSubmit} className="flex flex-col pb-6">
+      
+      {/* Sticky Search Bar */}
+      <div className="sticky top-0 z-30 -mx-4 mb-4 bg-surface px-4 py-3 shadow-sm border-b border-line">
+        <div className="relative">
           <SearchIcon className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted" />
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Medicine er nam likho..."
-            className="w-full rounded-full border-0 bg-white py-3 pl-12 pr-4 text-sm text-ink shadow-sm placeholder:text-muted focus:ring-2 focus:ring-white/60"
+            placeholder="Medicine search করুন..."
+            className="w-full rounded-full border border-line bg-white py-3.5 pl-12 pr-4 text-sm font-medium text-ink shadow-sm placeholder:text-muted focus:border-brand focus:ring-1 focus:ring-brand"
           />
         </div>
-      </section>
+      </div>
 
-      {/* Search results */}
-      {query.trim() && (
-        <section className="space-y-2.5">
-          {searching && results.length === 0 ? (
-            <p className="px-1 text-sm text-muted">Khoja hocche...</p>
-          ) : results.length === 0 ? (
-            <p className="px-1 text-sm text-muted">
-              &ldquo;{query}&rdquo; naame kono medicine pawa jay ni.
-            </p>
-          ) : (
-            results.map((m) => (
-              <ProductCard
+      {/* Results Meta */}
+      <div className="mb-4">
+        <p className="font-bold text-brand-strong text-sm">
+          {searching ? "খোঁজা হচ্ছে..." : `${results.length} টি পণ্য`}
+        </p>
+      </div>
+
+      {/* Table Layout */}
+      {results.length > 0 && (
+        <div className="rounded-2xl bg-white shadow-sm border border-line overflow-hidden">
+          {/* Header */}
+          <div className="grid grid-cols-[1fr_80px_80px_60px] gap-2 border-b border-line bg-canvas/50 px-3 py-3 text-xs font-bold text-ink">
+            <div>Product</div>
+            <div className="text-center">Box</div>
+            <div className="text-center">MRP</div>
+            <div className="text-center">Select</div>
+          </div>
+
+          {/* Rows */}
+          <div className="divide-y divide-line">
+            {results.map((m) => (
+              <ProductTableRow
                 key={m.id}
                 medicine={m}
                 inCart={inCart.has(m.id)}
-                onAdd={() => add(m)}
+                boxes={quantities[m.id] || 1}
+                onBoxesChange={(val) => handleQuantityChange(m.id, val)}
+                onToggle={(checked) => toggleCart(m, checked)}
               />
-            ))
-          )}
-        </section>
+            ))}
+          </div>
+        </div>
       )}
 
-      {/* Cart */}
-      {cart.length > 0 && (
-        <section className="space-y-2.5">
-          <h2 className="px-1 font-display text-sm font-bold text-ink">
-            Cart · {cart.length} ta
-          </h2>
-          {cart.map((line) => (
-            <div
-              key={line.medicine.id}
-              className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-3.5 shadow-sm"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-display text-sm font-bold text-ink">
-                  {line.medicine.name}
-                </div>
-                <div className="text-xs text-muted">
-                  {formatTaka(line.medicine.boxPricePaisa)}/
-                  {unitLabelsFor(line.medicine.form).outer} ·{" "}
-                  <span className="font-semibold text-brand-strong">
-                    {formatTaka(line.medicine.boxPricePaisa * line.boxes)}
-                  </span>
-                </div>
-              </div>
-              <Stepper
-                value={line.boxes}
-                onChange={(v) => setBoxes(line.medicine.id, v)}
-                unitLabel={unitLabelsFor(line.medicine.form).outer}
-              />
-              <button
-                type="button"
-                onClick={() =>
-                  setCart((c) => c.filter((l) => l.medicine.id !== line.medicine.id))
-                }
-                aria-label="Bad dao"
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted hover:bg-danger-bg hover:text-danger"
-              >
-                <TrashIcon />
-              </button>
-            </div>
-          ))}
-        </section>
+      {!searching && query.trim() && results.length === 0 && (
+        <p className="mt-4 text-center text-sm text-muted">
+          "{query}" নামে কোনো মেডিসিন পাওয়া যায়নি।
+        </p>
       )}
 
       {error && (
-        <p role="alert" className="rounded-xl bg-danger-bg px-4 py-2.5 text-sm text-danger">
+        <p className="mt-4 rounded-xl bg-danger-bg px-4 py-2.5 text-sm text-danger text-center font-medium">
           {error}
         </p>
       )}
       {done && (
-        <p className="rounded-xl bg-brand-tint px-4 py-2.5 text-sm font-medium text-brand-strong">
+        <p className="mt-4 rounded-xl bg-brand-tint px-4 py-2.5 text-sm font-bold text-brand-strong text-center">
           {done}
         </p>
       )}
 
-      {/* Sticky order bar */}
+      {/* Sticky Order Bar */}
       {cart.length > 0 && (
-        <div className="sticky bottom-20 z-20 md:bottom-4">
+        <div className="sticky bottom-20 z-20 mt-6 md:bottom-4">
           <button
             type="submit"
             disabled={busy}
-            className="flex w-full items-center justify-between rounded-full bg-brand px-6 py-3.5 font-semibold text-white shadow-lg shadow-brand/25 transition hover:bg-brand-strong disabled:opacity-60"
+            className="flex w-full items-center justify-between rounded-full bg-brand px-6 py-4 font-bold text-white shadow-xl shadow-brand/30 transition hover:bg-brand-strong disabled:opacity-60"
           >
-            <span>{busy ? "Wait..." : "Order pathao"}</span>
-            <span className="font-display text-lg font-extrabold">
+            <span className="text-base">{busy ? "Wait..." : "Order pathao"}</span>
+            <span className="font-display text-xl font-extrabold">
               {formatTaka(total)}
             </span>
           </button>
@@ -217,129 +186,105 @@ export function BuyerBrowse() {
   );
 }
 
-function ProductCard({
+function ProductTableRow({
   medicine,
   inCart,
-  onAdd,
+  boxes,
+  onBoxesChange,
+  onToggle,
 }: {
   medicine: BuyerMedicineOption;
   inCart: boolean;
-  onAdd: () => void;
+  boxes: number;
+  onBoxesChange: (v: number) => void;
+  onToggle: (checked: boolean) => void;
 }) {
-  const off = discountPercent(medicine.mrpBoxPricePaisa, medicine.boxPricePaisa);
   const out = medicine.availability === "out";
 
   return (
-    <div
-      className={`flex items-center gap-3 rounded-2xl border border-line bg-surface p-3.5 shadow-sm ${
-        out ? "opacity-70" : ""
-      }`}
-    >
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate font-display text-sm font-bold text-ink">
-            {medicine.name}
-          </span>
-          <AvailabilityBadge status={medicine.availability} />
+    <div className={`grid grid-cols-[1fr_80px_80px_60px] items-center gap-2 p-3 ${out ? "opacity-60" : ""}`}>
+      {/* Product Details */}
+      <div className="min-w-0 pr-2">
+        <div className="break-words font-display text-[13px] font-extrabold uppercase text-brand-strong leading-snug">
+          {medicine.name}
         </div>
-        {medicine.company ? (
-          <div className="text-xs text-muted">{medicine.company}</div>
-        ) : null}
-        <div className="mt-1 flex items-center gap-2">
-          <span className="font-display text-base font-extrabold text-brand-strong">
-            {formatTaka(medicine.boxPricePaisa)}
-          </span>
-          {off > 0 && (
-            <>
-              <span className="text-xs text-muted line-through">
-                {formatTaka(medicine.mrpBoxPricePaisa)}
-              </span>
-              <span className="rounded-full bg-warm/15 px-2 py-0.5 text-[11px] font-bold text-warm">
-                -{off}%
-              </span>
-            </>
-          )}
-          <span className="text-[11px] text-muted">
-            /{unitLabelsFor(medicine.form).outer}
-          </span>
+        {medicine.company && (
+          <div className="break-words text-[11px] text-muted">
+            {medicine.company}
+          </div>
+        )}
+        {medicine.category && (
+          <div className="break-words text-[11px] text-muted">
+            {medicine.category}
+          </div>
+        )}
+        <div className="mt-1.5">
+          <AvailabilityBadge status={medicine.availability} />
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={onAdd}
-        disabled={out}
-        className={`shrink-0 rounded-full px-4 py-2 text-sm font-semibold transition ${
-          out
-            ? "cursor-not-allowed bg-line text-muted"
-            : inCart
-              ? "bg-brand-tint-2 text-brand-strong"
-              : "bg-brand text-white hover:bg-brand-strong"
-        }`}
-      >
-        {out ? "Nai" : inCart ? "✓ Add" : "+ Add"}
-      </button>
+      {/* Box Stepper */}
+      <div className={`flex items-center justify-center rounded-lg border ${inCart ? "border-brand" : "border-line"} h-[32px] w-full px-0.5`}>
+        <button
+          type="button"
+          disabled={out}
+          onClick={() => onBoxesChange(boxes - 1)}
+          className={`grid h-full flex-1 place-items-center text-sm font-bold ${inCart ? "text-brand" : "text-muted"} disabled:opacity-50`}
+        >
+          −
+        </button>
+        <input
+          type="number"
+          min={1}
+          disabled={out}
+          value={boxes}
+          onChange={(e) => onBoxesChange(Number(e.target.value))}
+          className={`w-6 border-0 bg-transparent p-0 text-center text-xs font-bold focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none ${inCart ? "text-ink" : "text-muted"}`}
+        />
+        <button
+          type="button"
+          disabled={out}
+          onClick={() => onBoxesChange(boxes + 1)}
+          className={`grid h-full flex-1 place-items-center text-sm font-bold ${inCart ? "text-brand" : "text-muted"} disabled:opacity-50`}
+        >
+          +
+        </button>
+      </div>
+
+      {/* MRP */}
+      <div className="flex flex-col items-center justify-center text-center">
+        <span className="text-[11px] text-muted line-through decoration-muted/50 font-medium">
+          {formatTaka(medicine.mrpBoxPricePaisa)}
+        </span>
+        <span className="text-[13px] font-extrabold text-ink mt-0.5">
+          {formatTaka(medicine.boxPricePaisa)}
+        </span>
+      </div>
+
+      {/* Select */}
+      <div className="flex items-center justify-center">
+        <input
+          type="checkbox"
+          disabled={out}
+          checked={inCart}
+          onChange={(e) => onToggle(e.target.checked)}
+          className="h-5 w-5 rounded border-line text-brand focus:ring-brand disabled:opacity-50"
+        />
+      </div>
     </div>
   );
 }
 
 function AvailabilityBadge({ status }: { status: StockStatus }) {
   const style: Record<StockStatus, string> = {
-    in: "bg-brand-tint-2 text-brand-strong",
-    low: "bg-warn-bg text-warn",
-    out: "bg-danger-bg text-danger",
-  };
-  const dot: Record<StockStatus, string> = {
-    in: "bg-brand",
-    low: "bg-warn",
-    out: "bg-danger",
+    in: "bg-brand-tint text-brand-strong border-brand-tint-2",
+    low: "bg-warn/10 text-warn-strong border-warn/20",
+    out: "bg-danger-bg text-danger border-danger/20",
   };
   return (
-    <span
-      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold ${style[status]}`}
-    >
-      <span className={`h-1.5 w-1.5 rounded-full ${dot[status]}`} />
+    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold ${style[status]}`}>
       {stockStatusLabel(status)}
     </span>
-  );
-}
-
-function Stepper({
-  value,
-  onChange,
-  unitLabel,
-}: {
-  value: number;
-  onChange: (v: number) => void;
-  unitLabel: string;
-}) {
-  return (
-    <div className="flex shrink-0 items-center rounded-full border border-line bg-canvas">
-      <button
-        type="button"
-        onClick={() => onChange(value - 1)}
-        aria-label="Kom"
-        className="grid h-8 w-8 place-items-center rounded-full text-brand-strong hover:bg-brand-tint-2"
-      >
-        −
-      </button>
-      <input
-        type="number"
-        min={1}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        aria-label={capitalize(unitLabel)}
-        className="w-9 border-0 bg-transparent p-0 text-center text-sm font-semibold text-ink [appearance:textfield] focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none"
-      />
-      <button
-        type="button"
-        onClick={() => onChange(value + 1)}
-        aria-label="Beshi"
-        className="grid h-8 w-8 place-items-center rounded-full text-brand-strong hover:bg-brand-tint-2"
-      >
-        +
-      </button>
-    </div>
   );
 }
 
@@ -348,14 +293,6 @@ function SearchIcon({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" className={className} fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
       <circle cx="11" cy="11" r="7" />
       <path d="m20 20-3.5-3.5" />
-    </svg>
-  );
-}
-
-function TrashIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0-1 13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1L6 7" />
     </svg>
   );
 }

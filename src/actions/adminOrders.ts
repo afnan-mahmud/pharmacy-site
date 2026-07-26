@@ -12,7 +12,13 @@ import { MedicineModel } from "@/models/Medicine";
 import { BuyerModel } from "@/models/Buyer";
 import { actionResult, type ActionResult } from "@/lib/actionResult";
 
-export type ApprovalItemInput = { medicineId: string; boxes: number };
+export type ApprovalItemInput = {
+  medicineId?: string;
+  customName?: string;
+  customPricePaisa?: number;
+  boxes: number;
+  patas?: number;
+};
 
 export async function listPendingOrders(): Promise<Serialized<OrderDoc>[]> {
   await requireAdminAction();
@@ -76,10 +82,20 @@ function validateApproval(items: ApprovalItemInput[]): void {
     throw new Error("Cart khali");
   }
   const seen = new Set<string>();
+  let customCounter = 0;
   for (const item of items) {
-    if (!mongoose.Types.ObjectId.isValid(item.medicineId)) {
-      throw new Error("Medicine pawa jay ni");
+    let idStr = item.medicineId;
+    if (idStr) {
+      if (!mongoose.Types.ObjectId.isValid(idStr)) {
+        throw new Error("Medicine pawa jay ni");
+      }
+    } else {
+      if (!item.customName || item.customPricePaisa === undefined) {
+        throw new Error("Custom item er nam o dam dite hobe");
+      }
+      idStr = `custom_${customCounter++}`;
     }
+
     if (
       typeof item.boxes !== "number" ||
       !Number.isInteger(item.boxes) ||
@@ -89,10 +105,17 @@ function validateApproval(items: ApprovalItemInput[]): void {
       // still prints. writeWholesaleSale rejects an all-zero approval.
       throw new Error("Poriman 0 er kom hote parbe na");
     }
-    if (seen.has(item.medicineId)) {
+    
+    if (item.patas !== undefined) {
+      if (typeof item.patas !== "number" || !Number.isInteger(item.patas) || item.patas < 0) {
+        throw new Error("Poriman 0 er kom hote parbe na");
+      }
+    }
+
+    if (seen.has(idStr)) {
       throw new Error("Ekta medicine ekbar er beshi dewa jabe na");
     }
-    seen.add(item.medicineId);
+    seen.add(idStr);
   }
 }
 
@@ -109,6 +132,8 @@ function validateApproval(items: ApprovalItemInput[]): void {
 export async function approveOrder(
   orderId: string,
   items: ApprovalItemInput[],
+  discountPercent: number = 0,
+  paidPaisa: number = 0,
 ): Promise<ActionResult<Serialized<SaleDoc>>> {
   return actionResult(async () => {
     const adminSession = await requireAdminAction();
@@ -134,16 +159,6 @@ export async function approveOrder(
         // "cart empty" when both are true of the call.
         validateApproval(items);
 
-        // Every approved line must have been in the order — the owner adjusts
-        // quantities, he does not add products the buyer never asked for.
-        const ordered = new Set(
-          order.items.map((line) => String(line.medicineId)),
-        );
-        for (const item of items) {
-          if (!ordered.has(item.medicineId)) {
-            throw new Error("Order er baire er medicine dewa jabe na");
-          }
-        }
 
         // The order denormalises the buyer's name and shop but not the phone,
         // so it is read here rather than left blank — a wholesale sale created
@@ -163,11 +178,9 @@ export async function approveOrder(
             shopName: order.buyerShopName,
             phone: buyerDoc?.phone ?? "",
           },
-          items,
-          discountPercent: 0,
-          // The buyer pays nothing at order time; it is all due, collected
-          // later through the Baki Khata.
-          paidPaisa: 0,
+          items: items.map(i => ({ ...i, patas: i.patas ?? 0 })),
+          discountPercent,
+          paidPaisa,
           createdBy: adminSession.userId,
           orderId: String(order._id),
         });

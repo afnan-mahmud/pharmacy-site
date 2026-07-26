@@ -1,97 +1,89 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { approveOrder, rejectOrder } from "@/actions/adminOrders";
 import { formatTaka } from "@/lib/money";
 import { formatDhakaDateTime } from "@/lib/dhakaDate";
+import type { Serialized } from "@/lib/serialize";
+import type { OrderDoc } from "@/models/Order";
+import Link from "next/link";
 import { unitLabelsFor } from "@/lib/unitLabels";
-import { parseQuantityInput } from "@/lib/quantityInput";
+import { approveOrder, rejectOrder } from "@/actions/adminOrders";
+import { useState } from "react";
 
-export type PendingOrderRow = {
-  id: string;
-  createdAt: string;
-  buyerName: string;
-  buyerShopName: string;
-  items: {
-    medicineId: string;
-    medicineName: string;
-    form: string;
-    boxes: number;
-    boxPricePaisa: number;
-  }[];
-};
+export type PendingOrderRow = Serialized<OrderDoc>;
 
-export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
-  const router = useRouter();
-  const [error, setError] = useState("");
+export function PendingOrders({
+  orders,
+}: {
+  orders: PendingOrderRow[];
+}) {
   const [busyId, setBusyId] = useState<string | null>(null);
-  // Editable box quantities, keyed by orderId → medicineId → boxes.
-  const [edits, setEdits] = useState<Record<string, Record<string, number>>>(() =>
-    Object.fromEntries(
-      orders.map((o) => [
-        o.id,
-        Object.fromEntries(o.items.map((i) => [i.medicineId, i.boxes])),
-      ]),
-    ),
-  );
+  const [printSaleId, setPrintSaleId] = useState<string | null>(null);
 
-  function setBoxes(orderId: string, medicineId: string, boxes: number) {
-    setEdits((current) => ({
-      ...current,
-      [orderId]: { ...current[orderId], [medicineId]: boxes },
-    }));
-  }
+  const handleReject = async (orderId: string) => {
+    const reason = window.prompt("Reject korar karon likhun:");
+    if (!reason) return;
 
-  async function handleApprove(order: PendingOrderRow) {
-    setError("");
-    setBusyId(order.id);
+    setBusyId(orderId);
     try {
-      // Every ordered line goes through, zeroes included: a line the owner
-      // cannot supply stays on the invoice at 0 so the buyer's paper shows
-      // what was asked for. Filtering them out here is what used to make an
-      // out-of-stock product vanish from the invoice without explanation.
-      const items = order.items.map((i) => ({
-        medicineId: i.medicineId,
-        boxes: edits[order.id]?.[i.medicineId] ?? i.boxes,
-      }));
-      const result = await approveOrder(order.id, items);
-      if (!result.ok) {
-        setError(result.error);
-        setBusyId(null);
-        return;
-      }
-      router.push(`/invoice/${result.data._id}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Kichu ekta bhul holo");
-      setBusyId(null);
-    }
-  }
-
-  async function handleReject(order: PendingOrderRow) {
-    const reason = window.prompt("Reject korar karon:");
-    if (reason === null) return;
-    setError("");
-    setBusyId(order.id);
-    try {
-      const result = await rejectOrder(order.id, reason);
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-      router.refresh();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Kichu ekta bhul holo");
+      const res = await rejectOrder(orderId, reason);
+      if (!res.ok) alert(res.error);
+    } catch (e: any) {
+      alert(e.message);
     } finally {
       setBusyId(null);
     }
-  }
+  };
+
+  const handleApprove = async (order: PendingOrderRow) => {
+    // 1-click approve cannot price custom items.
+    const hasCustomItems = order.items.some(i => !i.medicineId);
+    if (hasCustomItems) {
+      alert("Ei order e short items ase. Apnake Edit e click kore dam boshiye approve korte hobe.");
+      return;
+    }
+
+    if (!window.confirm("Apni ki order ti approve korte chan?")) return;
+
+    setBusyId(order._id);
+    try {
+      const approvalItems = order.items.map(item => ({
+        medicineId: item.medicineId || undefined,
+        boxes: item.boxes,
+      }));
+
+      const res = await approveOrder(order._id, approvalItems);
+      if (res.ok) {
+        setPrintSaleId(res.data._id);
+      } else {
+        alert(res.error);
+      }
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const HeroHeader = () => (
+    <section className="-mx-4 -mt-4 mb-6 sm:-mx-6 sm:-mt-6 rounded-b-3xl bg-gradient-to-br from-brand to-brand-deep px-6 pb-8 pt-8 text-white shadow-sm relative overflow-hidden">
+      <div className="absolute right-0 top-0 -translate-y-1/3 translate-x-1/3 h-64 w-64 rounded-full bg-white/5 blur-3xl"></div>
+      <div className="absolute left-0 bottom-0 translate-y-1/3 -translate-x-1/3 h-48 w-48 rounded-full bg-black/10 blur-2xl"></div>
+      <div className="relative z-10">
+        <h1 className="mb-2 font-display text-3xl font-extrabold leading-tight">
+          Pending Orders
+        </h1>
+        <p className="text-sm text-white/90">
+          Opekkhay thaka orders approve korun.
+        </p>
+      </div>
+    </section>
+  );
 
   if (orders.length === 0) {
     return (
-      <div>
-        <h1 className="mb-3 font-display text-lg font-extrabold text-ink">Pending Order</h1>
-        <p className="rounded-2xl border border-line bg-surface p-6 text-center text-muted shadow-sm">
+      <div className="flex flex-col pb-6">
+        <HeroHeader />
+        <p className="rounded-3xl border border-line bg-surface p-6 text-center text-muted shadow-md">
           Kono pending order nai.
         </p>
       </div>
@@ -99,95 +91,120 @@ export function PendingOrders({ orders }: { orders: PendingOrderRow[] }) {
   }
 
   return (
-    <div className="space-y-4">
-      <h1 className="font-display text-lg font-extrabold text-ink">Pending Order</h1>
-      {error && <p role="alert" className="text-sm text-danger">{error}</p>}
+    <div className="flex flex-col pb-6 space-y-4">
+      <HeroHeader />
 
       {orders.map((order) => {
-        const total = order.items.reduce(
-          (sum, i) => sum + i.boxPricePaisa * (edits[order.id]?.[i.medicineId] ?? i.boxes),
-          0,
+        // Calculate the total based on the requested boxes and snapshot price
+        const totalPaisa = order.items.reduce(
+          (sum, item) => sum + item.boxPricePaisa * item.boxes,
+          0
         );
-        // An approval where every line is zero bills nothing for nothing;
-        // writeWholesaleSale rejects it, so don't let it be sent.
-        const hasBillableLine = order.items.some(
-          (i) => (edits[order.id]?.[i.medicineId] ?? i.boxes) > 0,
-        );
+
         return (
-          <div key={order.id} className="rounded-2xl border border-line bg-surface p-4 shadow-sm">
-            <div className="flex items-center justify-between">
+          <div key={order._id} className="rounded-3xl border border-line bg-surface p-5 shadow-md mb-4">
+            <div className="flex items-center justify-between mb-4">
               <div>
                 <div className="font-medium text-ink">{order.buyerName}</div>
                 <div className="text-xs text-muted">{order.buyerShopName}</div>
               </div>
               <span className="text-xs text-muted">{formatDhakaDateTime(order.createdAt)}</span>
             </div>
-
-            <table className="mt-3 w-full text-sm">
-              <thead className="text-left text-muted">
-                <tr>
-                  <th className="py-1">Medicine</th>
-                  <th className="py-1">Pack rate</th>
-                  <th className="py-1">Order</th>
-                  <th className="py-1">Approve koto</th>
-                  <th className="py-1 text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {order.items.map((item) => {
-                  const boxes = edits[order.id]?.[item.medicineId] ?? item.boxes;
-                  const labels = unitLabelsFor(item.form);
-                  return (
-                    <tr key={item.medicineId} className="border-t border-line">
-                      <td className="py-2 font-medium text-ink">{item.medicineName}</td>
-                      <td className="py-2">{formatTaka(item.boxPricePaisa)}</td>
-                      <td className="py-2 text-muted">
-                        {item.boxes} {labels.outer}
-                      </td>
-                      <td className="py-2">
-                        <input type="number" min={0} value={boxes}
-                          onChange={(e) =>
-                            setBoxes(order.id, item.medicineId, parseQuantityInput(e.target.value, 0))
-                          }
-                          className="w-20 rounded-lg border border-line px-2 py-1" />
-                        <span className="ml-1 text-xs text-muted">{labels.outer}</span>
-                        {boxes === 0 && (
-                          <div className="text-[11px] font-medium text-muted">
-                            invoice e thakbe, dam nai
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-2 text-right">{formatTaka(item.boxPricePaisa * boxes)}</td>
+            
+            <div className="mb-4">
+              <div className="rounded-xl border border-line bg-canvas overflow-hidden">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-surface">
+                    <tr className="border-b border-line text-muted">
+                      <th className="py-2 px-3 font-medium">Item</th>
+                      <th className="py-2 px-3 font-medium text-right">Qty</th>
+                      <th className="py-2 px-3 font-medium text-right">Price</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
-              <span className="font-medium">
-                Mot {formatTaka(total)}
-                {!hasBillableLine && (
-                  <span className="ml-2 text-xs font-normal text-muted">
-                    — shob line 0, approve kora jabe na
-                  </span>
-                )}
-              </span>
-              <div className="flex gap-2">
-                <button onClick={() => handleReject(order)} disabled={busyId === order.id}
-                  className="rounded-lg border border-danger/50 px-4 py-2 text-sm text-danger hover:bg-danger-bg disabled:opacity-50">
-                  Reject
-                </button>
-                <button onClick={() => handleApprove(order)}
-                  disabled={busyId === order.id || !hasBillableLine}
-                  className="rounded-full bg-brand hover:bg-brand-strong px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-                  {busyId === order.id ? "Wait..." : "Approve ar invoice"}
-                </button>
+                  </thead>
+                  <tbody className="divide-y divide-line/50">
+                    {order.items.map((item, i) => (
+                      <tr key={i}>
+                        <td className="py-2 px-3 text-ink">
+                          {item.medicineName}
+                          {!item.medicineId && <span className="ml-2 inline-flex items-center rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-bold text-yellow-800">Short Item</span>}
+                        </td>
+                        <td className="py-2 px-3 text-right font-medium text-ink whitespace-nowrap">
+                          {item.boxes} {unitLabelsFor(item.form).outer}
+                        </td>
+                        <td className="py-2 px-3 text-right text-muted whitespace-nowrap">
+                          {item.medicineId ? formatTaka(item.boxes * item.boxPricePaisa) : "Pending"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-surface">
+                    <tr className="border-t border-line font-bold text-ink">
+                      <td className="py-2 px-3">Total</td>
+                      <td className="py-2 px-3 text-right">{order.items.length} items</td>
+                      <td className="py-2 px-3 text-right text-brand-strong">{formatTaka(totalPaisa)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
               </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-line">
+              <button
+                onClick={() => handleReject(order._id)}
+                disabled={busyId === order._id}
+                className="rounded-full bg-red-100 px-5 py-2 text-sm font-bold text-red-600 hover:bg-red-200 transition disabled:opacity-50"
+              >
+                Reject
+              </button>
+              
+              <Link
+                href={`/orders/${order._id}/edit`}
+                className="rounded-full bg-amber-100 px-5 py-2 text-sm font-bold text-amber-700 hover:bg-amber-200 transition flex items-center justify-center"
+              >
+                Edit
+              </Link>
+              
+              <button
+                onClick={() => handleApprove(order)}
+                disabled={busyId === order._id}
+                className="rounded-full bg-green-500 px-6 py-2.5 text-sm font-bold text-white shadow-md shadow-green-500/30 hover:bg-green-600 transition disabled:opacity-50"
+              >
+                Approve
+              </button>
             </div>
           </div>
         );
       })}
+
+      {/* Invoice Print Popup */}
+      {printSaleId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl bg-surface p-6 shadow-2xl relative text-center">
+            <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-green-100 text-green-600 text-3xl">
+              ✓
+            </div>
+            <h3 className="font-display text-xl font-bold text-ink mb-2">Order Approved!</h3>
+            <p className="text-sm text-muted mb-6">Apnar order ti successfully approve hoyeche.</p>
+            
+            <div className="flex flex-col gap-3">
+              <Link
+                href={`/invoice/${printSaleId}`}
+                target="_blank"
+                className="w-full rounded-2xl bg-brand px-4 py-3 text-sm font-bold text-white shadow-md transition hover:bg-brand-strong"
+                onClick={() => setPrintSaleId(null)}
+              >
+                Invoice Print Korun
+              </Link>
+              <button 
+                onClick={() => setPrintSaleId(null)}
+                className="w-full rounded-2xl bg-canvas px-4 py-3 text-sm font-bold text-ink border border-line transition hover:bg-surface-hover"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

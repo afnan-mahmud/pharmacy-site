@@ -6,7 +6,7 @@ import { describeDue, splitDueTotals } from "@/lib/dueDisplay";
 import type { DueRow } from "@/actions/due";
 import type { BuyerLedgerResult } from "@/actions/due";
 import { BuyerLedger } from "./BuyerLedger";
-import { card, pageTitle, thead, th, td as tdCls, trow, errorBox } from "@/components/ui";
+import { card, input as inputCls, pageTitle, thead, th, td as tdCls, trow, errorBox } from "@/components/ui";
 
 type Props = {
   dues: DueRow[];
@@ -23,6 +23,17 @@ export function DueTable({ dues, fetchLedger }: Props) {
   } | null>(null);
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+
+  const filtered = search.trim()
+    ? dues.filter((row) => {
+        const term = search.toLowerCase();
+        return (
+          row.buyerName.toLowerCase().includes(term) ||
+          row.buyerShopName.toLowerCase().includes(term)
+        );
+      })
+    : dues;
 
   async function handleOpen(row: DueRow) {
     setLoadingId(row.buyerId);
@@ -66,25 +77,44 @@ export function DueTable({ dues, fetchLedger }: Props) {
   const { totalDuePaisa, totalCreditPaisa } = splitDueTotals(dues);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className={pageTitle}>Baki Khata</h1>
-        <div className="text-right text-sm">
-          <div className="text-muted">
-            Mot baki:{" "}
-            <span className="font-display font-extrabold text-danger">
-              {formatTaka(totalDuePaisa)}
-            </span>
+    <div className="flex flex-col pb-6">
+      <section className="-mx-4 -mt-4 mb-6 sm:-mx-6 sm:-mt-6 rounded-b-3xl bg-gradient-to-br from-brand to-brand-deep px-6 pb-8 pt-8 text-white shadow-sm relative overflow-hidden">
+        <div className="absolute right-0 top-0 -translate-y-1/3 translate-x-1/3 h-64 w-64 rounded-full bg-white/5 blur-3xl"></div>
+        <div className="absolute left-0 bottom-0 translate-y-1/3 -translate-x-1/3 h-48 w-48 rounded-full bg-black/10 blur-2xl"></div>
+        
+        <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <h1 className="mb-1 font-display text-3xl font-extrabold leading-tight">
+              Baki Khata
+            </h1>
+            <p className="text-sm text-white/90">
+              Buyer der baki hisab.
+            </p>
           </div>
-          {totalCreditPaisa > 0 && (
-            <div className="text-xs text-brand-strong">
-              Buyer der total joma ache: {formatTaka(totalCreditPaisa)}
+          <div className="text-left md:text-right">
+            <div className="text-sm text-white/80">Mot baki</div>
+            <div className="font-display text-3xl font-extrabold text-yellow-300">
+              {formatTaka(totalDuePaisa)}
             </div>
-          )}
+            {totalCreditPaisa > 0 && (
+              <div className="mt-1 text-xs font-medium text-white/90">
+                Buyer der joma ache: {formatTaka(totalCreditPaisa)}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
 
-      {error && <p role="alert" className={errorBox}>{error}</p>}
+        <div className="relative z-10 mt-6">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buyer er nam diye khojo..."
+            className="w-full rounded-2xl border-0 bg-white/10 px-4 py-3 text-white placeholder:text-white/60 focus:bg-white focus:text-ink focus:placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-white transition"
+          />
+        </div>
+      </section>
+
+      {error && <p role="alert" className={`${errorBox} mb-4 mx-2`}>{error}</p>}
 
       <div className={`overflow-x-auto ${card}`}>
         <table className="w-full">
@@ -96,7 +126,7 @@ export function DueTable({ dues, fetchLedger }: Props) {
             </tr>
           </thead>
           <tbody>
-            {dues.map((row) => {
+            {filtered.map((row) => {
               const due = describeDue(row.duePaisa);
               return (
                 <tr key={row.buyerId} className={trow}>
@@ -119,10 +149,10 @@ export function DueTable({ dues, fetchLedger }: Props) {
                 </tr>
               );
             })}
-            {dues.length === 0 && (
+            {filtered.length === 0 && (
               <tr>
                 <td colSpan={3} className="p-8 text-center text-sm text-muted">
-                  Kono baki nai.
+                  {search.trim() ? `"${search}" e kono buyer pawa jay ni.` : "Kono baki nai."}
                 </td>
               </tr>
             )}
@@ -132,3 +162,4 @@ export function DueTable({ dues, fetchLedger }: Props) {
     </div>
   );
 }
+

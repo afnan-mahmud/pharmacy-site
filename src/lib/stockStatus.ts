@@ -19,19 +19,20 @@ export function stockStatus(
   stockPatas: number,
   lowStockThreshold: number,
 ): StockStatus {
-  if (stockPatas <= 0) return "out";
+  // Even if stock is negative or 0, we show it as low stock and allow ordering
+  if (stockPatas <= 0) return "low";
   if (lowStockThreshold > 0 && stockPatas <= lowStockThreshold) return "low";
   return "in";
 }
 
-/** The Banglish label shown to a buyer for each status. */
+/** The label shown to a buyer for each status. */
 export function stockStatusLabel(status: StockStatus): string {
   switch (status) {
     case "in":
-      return "Stock e ache";
+      return "In Stock";
     case "low":
-      return "Stock kom";
+      return "Low Stock";
     case "out":
-      return "Stock nai";
+      return "Out of Stock";
   }
 }

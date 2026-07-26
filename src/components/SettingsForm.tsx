@@ -14,6 +14,7 @@ export function SettingsForm({
     address: string;
     phone: string;
     invoicePrefix: string;
+    aboutUs: string;
   };
 }) {
   const router = useRouter();
@@ -42,6 +43,7 @@ export function SettingsForm({
         address: saved.address,
         phone: saved.phone,
         invoicePrefix: saved.invoicePrefix,
+        aboutUs: saved.aboutUs ?? "",
       });
       setDone(true);
       router.refresh();
@@ -99,6 +101,14 @@ export function SettingsForm({
         <p className="text-xs text-muted">
           Invoice number eirokom hobe: {values.invoicePrefix || "ABC"}-000041
         </p>
+      </div>
+
+      <div className="space-y-1.5">
+        <label htmlFor="aboutUs" className={labelCls}>Amader Somporke (About Us)</label>
+        <textarea id="aboutUs" className={`${input} min-h-[100px]`} value={values.aboutUs}
+          onChange={(e) => updateField({ aboutUs: e.target.value })}
+          placeholder="Apnar pharmacy somporke kichu kotha..." />
+        <p className="text-xs text-muted">Eta buyer dashboard e dekhabe.</p>
       </div>
 
       {error && <p role="alert" className={errorBox}>{error}</p>}

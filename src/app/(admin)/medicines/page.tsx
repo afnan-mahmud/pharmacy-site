@@ -17,6 +17,7 @@ export default async function MedicinesPage() {
     mrpBoxPricePaisa: m.mrpBoxPricePaisa ?? 0,
     lowStockThreshold: m.lowStockThreshold,
     stockPatas: m.stockPatas,
+    active: m.active,
   }));
 
   return <MedicineTable medicines={rows} />;

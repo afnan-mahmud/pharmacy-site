@@ -4,7 +4,7 @@ export type OrderStatus = "pending" | "approved" | "rejected" | "cancelled";
 
 const orderLineSchema = new Schema(
   {
-    medicineId: { type: Schema.Types.ObjectId, ref: "Medicine", required: true },
+    medicineId: { type: Schema.Types.ObjectId, ref: "Medicine", default: null },
     // Denormalised so the order still reads correctly if the medicine is
     // later renamed or deactivated.
     medicineName: { type: String, required: true },
@@ -66,6 +66,10 @@ export type OrderDoc = InferSchemaType<typeof orderSchema> & {
   _id: mongoose.Types.ObjectId;
   createdAt: Date;
 };
+
+if (process.env.NODE_ENV !== "production") {
+  delete mongoose.models.Order;
+}
 
 export const OrderModel: Model<OrderDoc> =
   (mongoose.models.Order as Model<OrderDoc>) ??

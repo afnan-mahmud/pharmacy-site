@@ -14,6 +14,7 @@ export type SettingsInput = {
   address: string;
   phone: string;
   invoicePrefix: string;
+  aboutUs?: string;
 };
 
 /**
@@ -152,6 +153,7 @@ function validate(input: SettingsInput): {
   address: string;
   phone: string;
   invoicePrefix: string;
+  aboutUs: string;
 } {
   if (typeof input.pharmacyName !== "string" || !input.pharmacyName.trim()) {
     throw new Error("Pharmacy name is required");
@@ -161,13 +163,14 @@ function validate(input: SettingsInput): {
   const tagline = toOptionalString(input.tagline, "tagline").trim();
   const address = toOptionalString(input.address, "address").trim();
   const phone = toOptionalString(input.phone, "phone").trim();
+  const aboutUs = toOptionalString(input.aboutUs, "aboutUs").trim();
 
   if (typeof input.invoicePrefix !== "string" || !input.invoicePrefix.trim()) {
     throw new Error("Invoice prefix is required");
   }
   const invoicePrefix = validateInvoicePrefix(input.invoicePrefix.trim());
 
-  return { pharmacyName, tagline, address, phone, invoicePrefix };
+  return { pharmacyName, tagline, address, phone, invoicePrefix, aboutUs };
 }
 
 export async function updateSettings(
@@ -177,14 +180,14 @@ export async function updateSettings(
     await requireAdminAction();
     await connectDb();
 
-    const { pharmacyName, tagline, address, phone, invoicePrefix } =
+    const { pharmacyName, tagline, address, phone, invoicePrefix, aboutUs } =
       validate(input);
 
     const settings = await withDuplicateKeyRetry(() =>
       SettingsModel.findOneAndUpdate(
         { key: "singleton" },
         {
-          $set: { pharmacyName, tagline, invoicePrefix, address, phone },
+          $set: { pharmacyName, tagline, invoicePrefix, address, phone, aboutUs },
           $setOnInsert: { key: "singleton" },
         },
         { upsert: true, new: true, setDefaultsOnInsert: true },

@@ -35,72 +35,6 @@ export function AdminBottomNav() {
 
   return (
     <>
-      {/* Slide-in drawer for the secondary menu. */}
-      <div
-        className={`fixed inset-0 z-40 md:hidden ${open ? "" : "pointer-events-none"}`}
-        aria-hidden={!open}
-      >
-        <button
-          type="button"
-          aria-label="Bondho koro"
-          onClick={() => setOpen(false)}
-          className={`absolute inset-0 bg-ink/40 transition-opacity ${
-            open ? "opacity-100" : "opacity-0"
-          }`}
-        />
-        <aside
-          className={`absolute right-0 top-0 flex h-full w-72 max-w-[82%] flex-col bg-surface shadow-2xl transition-transform duration-300 ${
-            open ? "translate-x-0" : "translate-x-full"
-          }`}
-        >
-          <div className="flex items-center justify-between border-b border-line px-4 py-3.5">
-            <span className="font-display text-base font-bold text-ink">
-              Aro menu
-            </span>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              aria-label="Bondho"
-              className="grid h-8 w-8 place-items-center rounded-full text-muted hover:bg-canvas"
-            >
-              ✕
-            </button>
-          </div>
-
-          <nav className="flex-1 overflow-y-auto p-2">
-            {MORE.map((link) => {
-              const active = isActive(pathname, link.href);
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setOpen(false)}
-                  aria-current={active ? "page" : undefined}
-                  className={`block rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                    active
-                      ? "bg-brand-tint-2 text-brand-strong"
-                      : "text-ink hover:bg-brand-tint"
-                  }`}
-                >
-                  {link.label}
-                </Link>
-              );
-            })}
-          </nav>
-
-          <div className="border-t border-line p-3">
-            <form action={logout}>
-              <button
-                type="submit"
-                className="w-full rounded-xl border border-line px-4 py-2.5 text-sm font-semibold text-muted transition hover:border-danger hover:text-danger"
-              >
-                Logout
-              </button>
-            </form>
-          </div>
-        </aside>
-      </div>
-
       {/* Bottom tab bar — mobile only; desktop uses the top nav. */}
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-surface/95 backdrop-blur md:hidden">
         <div className="mx-auto flex max-w-6xl">
@@ -127,23 +61,17 @@ export function AdminBottomNav() {
               </Link>
             );
           })}
-          <button
-            type="button"
-            onClick={() => setOpen(true)}
-            aria-expanded={open}
-            className={`flex flex-1 flex-col items-center gap-1 py-2 text-[10px] font-semibold transition ${
-              moreActive || open ? "text-brand-strong" : "text-muted"
-            }`}
-          >
-            <span
-              className={`grid h-8 w-8 place-items-center rounded-full transition ${
-                moreActive || open ? "bg-brand-tint-2" : ""
-              }`}
+          <form action={logout} className="flex flex-1">
+            <button
+              type="submit"
+              className="flex w-full flex-col items-center gap-1 py-2 text-[10px] font-semibold text-danger/80 transition hover:text-danger"
             >
-              <MoreIcon />
-            </span>
-            More
-          </button>
+              <span className="grid h-8 w-8 place-items-center rounded-full transition hover:bg-danger-bg">
+                <LogoutIcon />
+              </span>
+              Logout
+            </button>
+          </form>
         </div>
       </nav>
     </>
@@ -197,12 +125,12 @@ function ClipboardIcon() {
   );
 }
 
-function MoreIcon() {
+function LogoutIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-5 w-5" {...stroke}>
-      <circle cx="5" cy="12" r="1.4" fill="currentColor" stroke="none" />
-      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none" />
-      <circle cx="19" cy="12" r="1.4" fill="currentColor" stroke="none" />
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
     </svg>
   );
 }

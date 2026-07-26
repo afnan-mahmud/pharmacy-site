@@ -11,5 +11,5 @@ export default async function WholesalePage() {
     shopName: b.shopName,
   }));
 
-  return <WholesaleSaleForm buyers={buyerOptions} />;
+  return <WholesaleSaleForm buyers={buyerOptions} allowCustomItems />;
 }

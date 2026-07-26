@@ -16,6 +16,7 @@ import { toMedicineForm, type MedicineForm } from "@/lib/unitLabels";
 import { actionResult, type ActionResult } from "@/lib/actionResult";
 
 export type OrderItemInput = { medicineId: string; boxes: number };
+export type CustomOrderItemInput = { name: string; boxes: number };
 
 /**
  * Escapes regex metacharacters so a typed "." or "*" is matched literally.
@@ -32,6 +33,7 @@ export type BuyerMedicineOption = {
   id: string;
   name: string;
   company: string;
+  category: string;
   // Which unit words to show. Not sensitive: it is neither the stock count
   // nor the retail price.
   form: MedicineForm;
@@ -62,26 +64,28 @@ export async function searchMedicinesForBuyer(
     throw new Error("query must be a string");
   }
   const term = query.trim();
-  if (!term) return [];
+  let findFilter: any = { active: true };
+  
+  if (term) {
+    const pattern = { $regex: escapeRegex(term), $options: "i" };
+    findFilter.$or = [{ name: pattern }, { genericName: pattern }];
+  }
 
-  const pattern = { $regex: escapeRegex(term), $options: "i" };
   // stockPatas and lowStockThreshold are read only to derive the three-way
   // availability signal below — they are never returned to the client. The
   // exact count stays on the server; the buyer sees "in / low / out" only.
-  const docs = await MedicineModel.find({
-    active: true,
-    $or: [{ name: pattern }, { genericName: pattern }],
-  })
+  const docs = await MedicineModel.find(findFilter)
     .select(
-      "name company form boxPricePaisa mrpBoxPricePaisa stockPatas lowStockThreshold",
+      "name company category form boxPricePaisa mrpBoxPricePaisa stockPatas lowStockThreshold",
     )
     .sort({ name: 1 })
-    .limit(20)
+    .limit(500)
     .lean<
       {
         _id: mongoose.Types.ObjectId;
         name: string;
         company: string;
+        category?: string;
         form?: string;
         boxPricePaisa: number;
         mrpBoxPricePaisa: number;
@@ -94,6 +98,7 @@ export async function searchMedicinesForBuyer(
     id: String(m._id),
     name: m.name,
     company: m.company,
+    category: m.category ?? "",
     form: toMedicineForm(m.form),
     boxPricePaisa: m.boxPricePaisa,
     mrpBoxPricePaisa: m.mrpBoxPricePaisa ?? 0,
@@ -253,4 +258,95 @@ export async function myLedger(): Promise<{
   await connectDb();
   const { sales, payments } = await loadBuyerLedger(session.userId);
   return { sales: toPlainList(sales), payments: toPlainList(payments) };
+}
+
+/**
+ * Submits a shortlist of items. If the buyer already has a pending order,
+ * the new items are merged into it (same medicineId → boxes are summed,
+ * new medicineId → appended). If no pending order exists, a fresh one is
+ * created — identical in shape to what submitOrder produces.
+ *
+ * This is the buyer-facing "shortlist" flow: the buyer types product names,
+ * the client resolves them to medicineIds via searchMedicinesForBuyer, and
+ * this action handles the merge-or-create decision.
+ */
+export async function submitShortlist(
+  items: CustomOrderItemInput[],
+): Promise<ActionResult<Serialized<OrderDoc>>> {
+  return actionResult(async () => {
+    const session = await requireBuyerAction();
+    await connectDb();
+    
+    if (!Array.isArray(items) || items.length === 0) {
+      throw new Error("Cart khali");
+    }
+    for (const item of items) {
+      if (!item.name || typeof item.name !== "string" || item.name.trim() === "") {
+        throw new Error("Product er nam likhte hobe");
+      }
+      if (typeof item.boxes !== "number" || item.boxes < 1) {
+        throw new Error("Box kompokkhe 1 hote hobe");
+      }
+    }
+
+    const buyer = await BuyerModel.findById(session.userId);
+    if (!buyer || !buyer.active) {
+      throw new Error("Apnar account bondho ache");
+    }
+
+    // For shortlist, items are custom text. We do not look up in MedicineModel.
+    // We map them directly to order lines with medicineId: null.
+    const lines: any[] = [];
+    for (const item of items) {
+      lines.push({
+        medicineId: null,
+        medicineName: item.name.trim(),
+        form: "custom",
+        boxes: item.boxes,
+        boxPricePaisa: 0,
+      });
+    }
+
+    // Look for an existing pending order for this buyer.
+    const existing = await OrderModel.findOne({
+      buyerId: session.userId,
+      status: "pending",
+    });
+
+    let order: OrderDoc;
+
+    if (existing) {
+      // Merge into the existing pending order. For each new line, if the
+      // same name is already in the order (and has no medicineId), add the boxes together;
+      // otherwise append a new line.
+      for (const newLine of lines) {
+        const existingLine = existing.items.find(
+          (ci) => ci.medicineId === null && ci.medicineName.toLowerCase() === newLine.medicineName.toLowerCase(),
+        );
+        if (existingLine) {
+          // Mutate the subdocument directly so Mongoose detects the change
+          existingLine.boxes += newLine.boxes;
+        } else {
+          existing.items.push(newLine);
+        }
+      }
+
+      await existing.save();
+      order = existing.toObject() as OrderDoc;
+    } else {
+      // No pending order — create a fresh one.
+      const created = await OrderModel.create({
+        buyerId: buyer._id,
+        buyerName: buyer.name,
+        buyerShopName: buyer.shopName,
+        items: lines,
+        status: "pending",
+      });
+      order = created.toObject() as OrderDoc;
+    }
+
+    revalidatePath("/buyer/orders");
+    revalidatePath("/buyer/shortlist");
+    return toPlain(order);
+  });
 }

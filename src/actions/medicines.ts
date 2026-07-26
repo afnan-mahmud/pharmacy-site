@@ -188,7 +188,7 @@ export async function listMedicines(
   // rather than allowed to reach .trim() as a raw TypeError.
   const term = toOptionalString(query, "query").trim();
 
-  const filter: Record<string, unknown> = { active: true };
+  const filter: Record<string, unknown> = {};
   if (term) {
     filter.name = { $regex: escapeRegex(term), $options: "i" };
   }
@@ -227,8 +227,9 @@ export async function searchMedicines(
   return toPlainList(docs);
 }
 
-export async function deactivateMedicine(
+export async function toggleMedicineActive(
   id: string,
+  targetActive: boolean,
 ): Promise<ActionResult<void>> {
   return actionResult(async () => {
     await requireAdminAction();
@@ -239,7 +240,29 @@ export async function deactivateMedicine(
       throw new Error("Medicine not found");
     }
     // Deactivated, not deleted: past sales reference this medicine.
-    await MedicineModel.findByIdAndUpdate(id, { $set: { active: false } });
+    await MedicineModel.findByIdAndUpdate(id, { $set: { active: targetActive } });
+    revalidatePath("/medicines");
+  });
+}
+
+export async function deleteMedicine(
+  id: string,
+): Promise<ActionResult<void>> {
+  return actionResult(async () => {
+    await requireAdminAction();
+    await connectDb();
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throw new Error("Medicine not found");
+    }
+    
+    // Hard delete the medicine document. Note: Past sales and orders have 
+    // denormalised the medicine name, form, and price, so they will continue 
+    // to read correctly even after the referenced document is deleted.
+    const deleted = await MedicineModel.findByIdAndDelete(id);
+    if (!deleted) {
+      throw new Error("Medicine not found");
+    }
+    
     revalidatePath("/medicines");
   });
 }

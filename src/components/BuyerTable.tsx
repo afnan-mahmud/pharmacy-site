@@ -74,34 +74,47 @@ export function BuyerTable({ buyers }: { buyers: BuyerRow[] }) {
   );
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className={pageTitle}>Wholesale Buyer</h1>
-        <button onClick={() => setAdding(true)} className={btnPrimary}>
-          + Notun buyer
-        </button>
-      </div>
-
-      <div className="relative">
-        <SearchIcon className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Nam, dokan ba phone diye khojo..."
-          aria-label="Buyer khojo"
-          className={`${input} pl-10 ${searching ? "pr-10" : ""}`}
-        />
-        {searching && (
-          <button
-            type="button"
-            onClick={() => setQuery("")}
-            aria-label="Search muche dao"
-            className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted transition hover:bg-canvas hover:text-ink"
-          >
-            ×
+    <div className="flex flex-col pb-6">
+      <section className="-mx-4 -mt-4 mb-6 sm:-mx-6 sm:-mt-6 rounded-b-3xl bg-gradient-to-br from-brand to-brand-deep px-6 pb-8 pt-8 text-white shadow-sm relative overflow-hidden">
+        <div className="absolute right-0 top-0 -translate-y-1/3 translate-x-1/3 h-64 w-64 rounded-full bg-white/5 blur-3xl"></div>
+        <div className="absolute left-0 bottom-0 translate-y-1/3 -translate-x-1/3 h-48 w-48 rounded-full bg-black/10 blur-2xl"></div>
+        
+        <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <div>
+            <h1 className="mb-1 font-display text-3xl font-extrabold leading-tight">
+              Wholesale Buyer
+            </h1>
+            <p className="text-sm text-white/90">
+              Apnar shob buyer er list.
+            </p>
+          </div>
+          <button onClick={() => setAdding(true)} className="rounded-full bg-white px-6 py-2.5 text-sm font-bold text-brand-strong shadow-lg transition hover:bg-brand-tint">
+            + Notun buyer
           </button>
-        )}
-      </div>
+        </div>
+
+        <div className="relative z-10 mt-6 flex items-center">
+          <div className="absolute left-4">
+            <SearchIcon className="h-5 w-5 text-white/60" />
+          </div>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Nam, dokan ba phone diye khojo..."
+            className="w-full rounded-2xl border-0 bg-white/10 pl-11 pr-4 py-3 text-white placeholder:text-white/60 focus:bg-white focus:text-ink focus:placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-white transition"
+          />
+          {searching && (
+            <button
+              type="button"
+              onClick={() => setQuery("")}
+              aria-label="Search muche dao"
+              className="absolute right-3 grid h-6 w-6 place-items-center rounded-full bg-white/20 text-white transition hover:bg-white/30"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      </section>
 
       {error && <p role="alert" className={errorBox}>{error}</p>}
 
