@@ -340,8 +340,8 @@ export async function cancelSale(
         }
 
         for (const line of sale.items) {
-          // A positive delta: the "enough stock" half of applyStockDelta's
-          // precondition can never fail on a return, only "still exists".
+          // A positive delta, so this can only fail here if the medicine
+          // itself no longer exists — applyStockDelta's only precondition.
           const ok = await applyStockDelta(
             line.medicineId,
             line.patasDeducted,

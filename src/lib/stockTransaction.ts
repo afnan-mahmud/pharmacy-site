@@ -8,7 +8,8 @@ import { MedicineModel } from "@/models/Medicine";
  * Stock is allowed to go negative — a wholesale or retail sale, or a
  * buyer-order approval, may take more than is on hand. The only
  * precondition is that the medicine still exists. A decrement that would
- * take stock negative is allowed (see src/lib/stockTransaction.ts).
+ * take stock negative is allowed; see src/lib/units.ts's `formatStock` for
+ * how negative stock is displayed.
  *
  * `matchedCount === 0` afterwards means only that the medicine no longer
  * exists, not "insufficient stock." A caller that needs to distinguish

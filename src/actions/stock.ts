@@ -77,12 +77,11 @@ export async function stockIn(
 
         // See src/lib/stockTransaction.ts for why this goes through
         // applyStockDelta rather than a bare `updateOne(..., { $inc })`, even
-        // though stockIn's delta is always positive and so can never fail the
-        // "enough stock" half of the precondition — only the "still exists"
-        // half. matchedCount === 0 here can only mean the medicine stopped
-        // existing in the (very small) window since the read above, which
-        // this treats as the same "not found" failure the read itself already
-        // guards against.
+        // though stockIn's delta is always positive so the only way this can
+        // fail is if the medicine itself no longer exists. matchedCount === 0
+        // here can only mean the medicine stopped existing in the (very
+        // small) window since the read above, which this treats as the same
+        // "not found" failure the read itself already guards against.
         const matched = await applyStockDelta(
           medicine._id,
           patasAdded,

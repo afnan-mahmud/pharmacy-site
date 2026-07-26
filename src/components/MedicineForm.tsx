@@ -115,11 +115,10 @@ export function MedicineForm({
       }
 
       const targetId = initial?.id ?? result.data._id;
-      const boxesToAdd = Number(stockBoxes);
-      if (stockBoxes.trim() !== "" && Number.isInteger(boxesToAdd) && boxesToAdd > 0) {
+      if (stockBoxes.trim() !== "") {
         const stockResult = await stockIn({
           medicineId: targetId,
-          boxes: boxesToAdd,
+          boxes: Number(stockBoxes),
           note: stockNote,
         });
         if (!stockResult.ok) {
@@ -270,8 +269,8 @@ export function MedicineForm({
                     <td className="p-2 text-muted">
                       {new Date(entry.createdAt).toLocaleDateString("en-GB", { timeZone: "Asia/Dhaka" })}
                     </td>
-                    <td className="p-2">{entry.boxes} {labels.outer}</td>
-                    <td className="p-2 text-muted">{entry.patasAdded} {labels.inner}</td>
+                    <td className="p-2">{entry.boxes} {unitLabelsFor(entry.form).outer}</td>
+                    <td className="p-2 text-muted">{entry.patasAdded} {unitLabelsFor(entry.form).inner}</td>
                     <td className="p-2 text-muted">{entry.note}</td>
                   </tr>
                 ))}
