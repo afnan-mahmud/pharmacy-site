@@ -87,7 +87,7 @@ export function DashboardCards({ summary }: { summary: DashboardSummary }) {
             </table>
           </div>
           <p className="mt-2 text-xs text-muted">
-            Stock In menu theke notun maal dhukao.
+            Medicine edit korte giye notun maal dhukao.
           </p>
         </section>
       )}

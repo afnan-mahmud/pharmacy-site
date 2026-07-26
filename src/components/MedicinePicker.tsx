@@ -100,7 +100,11 @@ export function MedicinePicker({
                     {medicine.genericName}
                   </span>
                 </span>
-                <span className="shrink-0 text-xs font-medium text-muted">
+                <span
+                  className={`shrink-0 text-xs font-medium ${
+                    medicine.stockPatas < 0 ? "text-danger" : "text-muted"
+                  }`}
+                >
                   {formatStock(medicine.stockPatas, medicine.patasPerBox, medicine.form)}
                 </span>
               </button>
