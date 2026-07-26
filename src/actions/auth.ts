@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { connectDb } from "@/lib/db";
 import { AdminUserModel } from "@/models/AdminUser";
 import { BuyerModel } from "@/models/Buyer";
-import { verifyPassword, createSessionToken } from "@/lib/auth";
+import { verifyPassword, createSessionToken, hashPassword } from "@/lib/auth";
 import { SESSION_COOKIE } from "@/lib/session";
 
 export type LoginResult = { ok: true } | { ok: false; error: string };
@@ -108,4 +108,77 @@ export async function buyerLogout(): Promise<void> {
   const store = await cookies();
   store.delete(SESSION_COOKIE);
   redirect("/buyer/login");
+}
+
+export async function registerBuyer(
+  name: string,
+  phone: string,
+  shopName: string,
+  address: string,
+  password: string,
+): Promise<LoginResult> {
+  if (
+    typeof name !== "string" ||
+    typeof phone !== "string" ||
+    typeof shopName !== "string" ||
+    typeof address !== "string" ||
+    typeof password !== "string"
+  ) {
+    return { ok: false, error: "Tothyo sothik noy" };
+  }
+
+  const cleanName = name.trim();
+  const cleanPhone = phone.trim();
+  const cleanShopName = shopName.trim();
+  const cleanAddress = address.trim();
+
+  if (!cleanName) return { ok: false, error: "Nam dorkar" };
+  if (!cleanPhone) return { ok: false, error: "Phone number dorkar" };
+  // We'll let hashPassword throw if the password is too short (min 6).
+  let passwordHash: string;
+  try {
+    passwordHash = await hashPassword(password);
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Password sothik noy",
+    };
+  }
+
+  await connectDb();
+
+  try {
+    const buyer = await BuyerModel.create({
+      name: cleanName,
+      phone: cleanPhone,
+      shopName: cleanShopName,
+      address: cleanAddress,
+      passwordHash,
+      active: true, // Auto-active for self-registration
+    });
+
+    // Auto-login after successful registration
+    const token = await createSessionToken({
+      userId: String(buyer._id),
+      role: "buyer",
+      name: buyer.name,
+    });
+
+    const store = await cookies();
+    store.set(SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+
+    return { ok: true };
+  } catch (error) {
+    if ((error as { code?: number })?.code === 11000) {
+      return { ok: false, error: "Ei phone number already ase" };
+    }
+    console.error("Buyer registration error:", error);
+    return { ok: false, error: "Registration e shomossha hoyeche" };
+  }
 }

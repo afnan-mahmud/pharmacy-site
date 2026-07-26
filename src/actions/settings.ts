@@ -129,15 +129,15 @@ export async function getSettings(): Promise<Serialized<SettingsDoc>> {
  * updateSettings() (still admin-only) is the only path that persists real
  * values.
  */
-export async function readSettings(): Promise<SettingsDoc> {
+export async function readSettings(): Promise<Serialized<SettingsDoc>> {
   await connectDb();
 
   const settings = await SettingsModel.findOne({
     key: "singleton",
   }).lean<SettingsDoc>();
-  if (settings) return settings;
+  if (settings) return toPlain(settings);
 
-  return new SettingsModel({ key: "singleton" }).toObject() as SettingsDoc;
+  return toPlain(new SettingsModel({ key: "singleton" }).toObject() as SettingsDoc);
 }
 
 /**
