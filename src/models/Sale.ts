@@ -22,6 +22,11 @@ const saleLineSchema = new Schema(
     // returns nothing. Stored so cancellation can return exactly what was
     // taken, even if the medicine's pack size changed in between.
     patasDeducted: { type: Number, required: true, min: 0 },
+    // Leftover patas sold alongside `quantity` boxes on a wholesale line (e.g.
+    // 10 boxes + 3 patas). Always 0 for a retail line and for a wholesale line
+    // that is whole boxes only. See wholesaleLineTotal in src/lib/saleTotals.ts
+    // for how this and `quantity` together produce lineTotalPaisa.
+    leftoverPatas: { type: Number, required: true, default: 0, min: 0 },
     // Which unit words this line prints with, snapshotted for the same reason
     // medicineName and ratePaisa are: an invoice printed last month must not
     // re-word itself because the medicine's form was corrected today. The

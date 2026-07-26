@@ -251,7 +251,7 @@ describe("recordWholesaleSale", () => {
 
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 3 }],
+      items: [{ medicineId: medicine._id, boxes: 3, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 36000,
     }));
@@ -270,7 +270,7 @@ describe("recordWholesaleSale", () => {
   it("assigns a sequential invoice number using the settings prefix", async () => {
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
-    const line = { medicineId: medicine._id, boxes: 1 };
+    const line = { medicineId: medicine._id, boxes: 1, patas: 0 };
 
     const first = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
@@ -300,7 +300,7 @@ describe("recordWholesaleSale", () => {
 
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 1 }],
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 12000,
     }));
@@ -313,7 +313,7 @@ describe("recordWholesaleSale", () => {
 
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 3 }],
+      items: [{ medicineId: medicine._id, boxes: 3, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 20000,
     }));
@@ -329,7 +329,7 @@ describe("recordWholesaleSale", () => {
 
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 3 }],
+      items: [{ medicineId: medicine._id, boxes: 3, patas: 0 }],
       discountPercent: 10,
       paidPaisa: 0,
     }));
@@ -348,7 +348,7 @@ describe("recordWholesaleSale", () => {
 
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 3 }],
+      items: [{ medicineId: medicine._id, boxes: 3, patas: 0 }],
       discountPercent: 2.5,
       paidPaisa: 0,
     }));
@@ -364,7 +364,7 @@ describe("recordWholesaleSale", () => {
 
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 1 }],
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 0,
     }));
@@ -378,7 +378,7 @@ describe("recordWholesaleSale", () => {
     const buyer = await makeBuyer();
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 1 }],
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 12000,
     }));
@@ -392,7 +392,7 @@ describe("recordWholesaleSale", () => {
 
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 3 }],
+      items: [{ medicineId: medicine._id, boxes: 3, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 0,
     }));
@@ -411,7 +411,7 @@ describe("recordWholesaleSale", () => {
     await expect(
       unwrap(recordWholesaleSale({
         buyerId: buyer._id,
-        items: [{ medicineId: "507f1f77bcf86cd799439011", boxes: 1 }],
+        items: [{ medicineId: "507f1f77bcf86cd799439011", boxes: 1, patas: 0 }],
         discountPercent: 0,
         paidPaisa: 0,
       })),
@@ -419,7 +419,7 @@ describe("recordWholesaleSale", () => {
 
     const after = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: good._id, boxes: 1 }],
+      items: [{ medicineId: good._id, boxes: 1, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 12000,
     }));
@@ -437,7 +437,7 @@ describe("recordWholesaleSale", () => {
     await expect(
       unwrap(recordWholesaleSale({
         buyerId: "507f1f77bcf86cd799439011",
-        items: [{ medicineId: medicine._id, boxes: 1 }],
+        items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
         discountPercent: 0,
         paidPaisa: 0,
       })),
@@ -453,7 +453,7 @@ describe("recordWholesaleSale", () => {
     await expect(
       unwrap(recordWholesaleSale({
         buyerId: buyer._id,
-        items: [{ medicineId: medicine._id, boxes: 1 }],
+        items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
         discountPercent: 0,
         paidPaisa: 0,
       })),
@@ -466,7 +466,7 @@ describe("recordWholesaleSale", () => {
     await expect(
       unwrap(recordWholesaleSale({
         buyerId: buyer._id,
-        items: [{ medicineId: medicine._id, boxes: 1 }],
+        items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
         discountPercent: 101,
         paidPaisa: 0,
       })),
@@ -479,7 +479,7 @@ describe("recordWholesaleSale", () => {
     await expect(
       unwrap(recordWholesaleSale({
         buyerId: buyer._id,
-        items: [{ medicineId: medicine._id, boxes: 1 }],
+        items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
         discountPercent: -1,
         paidPaisa: 0,
       })),
@@ -491,7 +491,7 @@ describe("recordWholesaleSale", () => {
     const buyer = await makeBuyer();
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 1 }],
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
       discountPercent: 100,
       paidPaisa: 0,
     }));
@@ -505,7 +505,7 @@ describe("recordWholesaleSale", () => {
     await expect(
       unwrap(recordWholesaleSale({
         buyerId: buyer._id,
-        items: [{ medicineId: medicine._id, boxes: 1 }],
+        items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
         discountPercent: 0,
         paidPaisa: 99999,
       })),
@@ -518,7 +518,7 @@ describe("recordWholesaleSale", () => {
     await expect(
       unwrap(recordWholesaleSale({
         buyerId: buyer._id,
-        items: [{ medicineId: medicine._id, boxes: 0 }],
+        items: [{ medicineId: medicine._id, boxes: 0, patas: 0 }],
         discountPercent: 0,
         paidPaisa: 0,
       })),
@@ -530,7 +530,7 @@ describe("recordWholesaleSale", () => {
     await expect(
       unwrap(recordWholesaleSale({
         buyerId: "507f1f77bcf86cd799439011",
-        items: [{ medicineId: "507f1f77bcf86cd799439011", boxes: 1 }],
+        items: [{ medicineId: "507f1f77bcf86cd799439011", boxes: 1, patas: 0 }],
         discountPercent: 0,
         paidPaisa: 0,
       })),
@@ -544,7 +544,7 @@ describe("cancelSale", () => {
     const buyer = await makeBuyer();
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 3 }],
+      items: [{ medicineId: medicine._id, boxes: 3, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 36000,
     }));
@@ -560,7 +560,7 @@ describe("cancelSale", () => {
     const buyer = await makeBuyer();
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 1 }],
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 12000,
     }));
@@ -579,7 +579,7 @@ describe("cancelSale", () => {
     const buyer = await makeBuyer();
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 1 }],
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 12000,
     }));
@@ -640,7 +640,7 @@ describe("cancelSale", () => {
     const buyer = await makeBuyer();
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 2 }],
+      items: [{ medicineId: medicine._id, boxes: 2, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 24000,
     }));
@@ -718,7 +718,7 @@ describe("sale lines snapshot the medicine form", () => {
 
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: syrup._id, boxes: 2 }],
+      items: [{ medicineId: syrup._id, boxes: 2, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 0,
     }));
@@ -757,8 +757,8 @@ describe("zero-quantity wholesale lines", () => {
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [
-        { medicineId: supplied._id, boxes: 3 },
-        { medicineId: outOfStock._id, boxes: 0 },
+        { medicineId: supplied._id, boxes: 3, patas: 0 },
+        { medicineId: outOfStock._id, boxes: 0, patas: 0 },
       ],
       discountPercent: 0,
       paidPaisa: 0,
@@ -780,8 +780,8 @@ describe("zero-quantity wholesale lines", () => {
     await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [
-        { medicineId: supplied._id, boxes: 3 },
-        { medicineId: outOfStock._id, boxes: 0 },
+        { medicineId: supplied._id, boxes: 3, patas: 0 },
+        { medicineId: outOfStock._id, boxes: 0, patas: 0 },
       ],
       discountPercent: 0,
       paidPaisa: 0,
@@ -799,8 +799,8 @@ describe("zero-quantity wholesale lines", () => {
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
       items: [
-        { medicineId: supplied._id, boxes: 3 },
-        { medicineId: outOfStock._id, boxes: 0 },
+        { medicineId: supplied._id, boxes: 3, patas: 0 },
+        { medicineId: outOfStock._id, boxes: 0, patas: 0 },
       ],
       discountPercent: 0,
       paidPaisa: 0,
@@ -820,7 +820,33 @@ describe("zero-quantity wholesale lines", () => {
     await expect(
       unwrap(recordWholesaleSale({
         buyerId: buyer._id,
-        items: [{ medicineId: medicine._id, boxes: -1 }],
+        items: [{ medicineId: medicine._id, boxes: -1, patas: 0 }],
+        discountPercent: 0,
+        paidPaisa: 0,
+      })),
+    ).rejects.toThrow("Poriman 0 er kom hote parbe na");
+  });
+
+  it("rejects a negative patas quantity", async () => {
+    const medicine = await makeMedicine();
+    const buyerDoc = await makeBuyer();
+    await expect(
+      unwrap(recordWholesaleSale({
+        buyerId: String(buyerDoc._id),
+        items: [{ medicineId: String(medicine._id), boxes: 1, patas: -1 }],
+        discountPercent: 0,
+        paidPaisa: 0,
+      })),
+    ).rejects.toThrow("Poriman 0 er kom hote parbe na");
+  });
+
+  it("rejects a fractional patas quantity", async () => {
+    const medicine = await makeMedicine();
+    const buyerDoc = await makeBuyer();
+    await expect(
+      unwrap(recordWholesaleSale({
+        buyerId: String(buyerDoc._id),
+        items: [{ medicineId: String(medicine._id), boxes: 1, patas: 1.5 }],
         discountPercent: 0,
         paidPaisa: 0,
       })),
@@ -958,7 +984,7 @@ describe("lookupRetailCustomer", () => {
     const buyer = await makeBuyer({ phone: "01733333333" });
     await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 1 }],
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 0,
     }));

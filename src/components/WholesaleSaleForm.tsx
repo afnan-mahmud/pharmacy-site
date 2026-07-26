@@ -106,7 +106,7 @@ export function WholesaleSaleForm({ buyers }: { buyers: BuyerOption[] }) {
     try {
       const result = await recordWholesaleSale({
         buyerId,
-        items: cart.map((l) => ({ medicineId: l.medicine.id, boxes: l.boxes })),
+        items: cart.map((l) => ({ medicineId: l.medicine.id, boxes: l.boxes, patas: 0 })),
         discountPercent: Number(discount || 0),
         paidPaisa: Math.round(takaToPaisa(paid || 0)),
       });

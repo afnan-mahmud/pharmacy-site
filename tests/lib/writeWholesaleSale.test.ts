@@ -34,7 +34,7 @@ async function run(params: {
     shopName: string;
     phone?: string;
   };
-  items: { medicineId: string; boxes: number }[];
+  items: { medicineId: string; boxes: number; patas?: number }[];
   discountPercent?: number;
   paidPaisa?: number;
   orderId?: string | null;
@@ -119,5 +119,39 @@ describe("writeWholesaleSale", () => {
     });
     expect(sale!.totalPaisa).toBe(36000);
     expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(-5);
+  });
+
+  it("prices a line with boxes and leftover patas together", async () => {
+    const medicine = await makeMedicine(); // patasPerBox 10, boxPricePaisa 12000
+    const sale = await run({
+      buyer: buyer(),
+      items: [{ medicineId: String(medicine._id), boxes: 2, patas: 3 }],
+    });
+    // 23 total patas * 12000 / 10 = 27600 exactly.
+    expect(sale!.totalPaisa).toBe(27600);
+    expect(sale!.items[0].quantity).toBe(2);
+    expect(sale!.items[0].leftoverPatas).toBe(3);
+    expect(sale!.items[0].patasDeducted).toBe(23);
+    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(477);
+  });
+
+  it("treats a patas-only line (zero boxes) as billable", async () => {
+    const medicine = await makeMedicine();
+    const sale = await run({
+      buyer: buyer(),
+      items: [{ medicineId: String(medicine._id), boxes: 0, patas: 4 }],
+    });
+    expect(sale!.items[0].leftoverPatas).toBe(4);
+    expect(sale!.totalPaisa).toBe(4800); // 4 * 12000 / 10
+  });
+
+  it("defaults patas to 0 when a caller omits it (order approval)", async () => {
+    const medicine = await makeMedicine();
+    const sale = await run({
+      buyer: buyer(),
+      items: [{ medicineId: String(medicine._id), boxes: 2 }],
+    });
+    expect(sale!.items[0].leftoverPatas).toBe(0);
+    expect(sale!.totalPaisa).toBe(24000);
   });
 });

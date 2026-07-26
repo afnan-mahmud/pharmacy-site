@@ -1,7 +1,7 @@
 import mongoose, { type ClientSession } from "mongoose";
 import { boxesToPatas } from "@/lib/units";
 import { applyStockDelta } from "@/lib/stockTransaction";
-import { lineTotal, computeTotals } from "@/lib/saleTotals";
+import { computeTotals, wholesaleLineTotal } from "@/lib/saleTotals";
 import { nextInvoiceSeq, formatInvoiceNo } from "@/lib/invoiceNumber";
 import { MedicineModel } from "@/models/Medicine";
 import { SettingsModel } from "@/models/Settings";
@@ -15,7 +15,7 @@ export type WriteWholesaleSaleParams = {
     shopName: string;
     phone: string;
   };
-  items: { medicineId: string; boxes: number }[];
+  items: { medicineId: string; boxes: number; patas?: number }[];
   /** A percentage of the subtotal, 0-100. May be fractional. */
   discountPercent: number;
   paidPaisa: number;
@@ -45,7 +45,7 @@ export async function writeWholesaleSale(
   // lives here rather than in either caller's validator so the wholesale form
   // and order approval cannot drift into two different ideas of what a sale
   // is; the per-field shape checks stay at each action's trust boundary.
-  if (!params.items.some((item) => item.boxes > 0)) {
+  if (!params.items.some((item) => item.boxes > 0 || (item.patas ?? 0) > 0)) {
     throw new Error("Onto ekta line e poriman dite hobe");
   }
 
@@ -57,14 +57,15 @@ export async function writeWholesaleSale(
     );
     if (!medicine) throw new Error("Medicine pawa jay ni");
 
-    const patas = boxesToPatas(item.boxes, medicine.patasPerBox);
+    const leftoverPatas = item.patas ?? 0;
+    const totalPatas = boxesToPatas(item.boxes, medicine.patasPerBox) + leftoverPatas;
 
     // A zero line takes nothing off the shelf. Skipped rather than passed
     // through applyStockDelta as a delta of 0, which would issue an `$inc: 0`
     // that changes nothing; its other half — "does this medicine still
     // exist" — is already covered by the findById above.
-    if (patas > 0) {
-      const ok = await applyStockDelta(medicine._id, -patas, session);
+    if (totalPatas > 0) {
+      const ok = await applyStockDelta(medicine._id, -totalPatas, session);
       if (!ok) throw new Error("Medicine pawa jay ni");
     }
 
@@ -74,19 +75,21 @@ export async function writeWholesaleSale(
       form: medicine.form,
       unit: "box" as const,
       quantity: item.boxes,
+      leftoverPatas,
       ratePaisa: medicine.boxPricePaisa,
-      lineTotalPaisa: lineTotal({
-        ratePaisa: medicine.boxPricePaisa,
-        quantity: item.boxes,
-      }),
-      patasDeducted: patas,
+      lineTotalPaisa: wholesaleLineTotal(totalPatas, medicine.boxPricePaisa, medicine.patasPerBox),
+      patasDeducted: totalPatas,
     });
   }
 
-  // discountPaisa comes back from computeTotals rather than being worked out
-  // here, so the amount stored is exactly the one the form previewed.
+  // computeTotals normally re-derives the subtotal itself, via
+  // ratePaisa * quantity per line — an assumption that breaks for a mixed
+  // box+pata line, where lineTotalPaisa is not ratePaisa * quantity. Passing
+  // quantity: 1 and ratePaisa: the line's own already-computed total sidesteps
+  // that: lineTotal(ratePaisa, 1) is just ratePaisa, so the sum reproduces
+  // exactly what was priced above, for every line, mixed or not.
   const { subtotalPaisa, discountPaisa, totalPaisa, duePaisa } = computeTotals(
-    lines.map((l) => ({ ratePaisa: l.ratePaisa, quantity: l.quantity })),
+    lines.map((l) => ({ ratePaisa: l.lineTotalPaisa, quantity: 1 })),
     params.discountPercent,
     params.paidPaisa,
   );

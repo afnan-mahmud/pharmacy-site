@@ -300,7 +300,7 @@ describe("myDueBalance and myLedger — buyer-scoped reads", () => {
     });
     await unwrap(recordWholesaleSale({
       buyerId: String(otherBuyer._id),
-      items: [{ medicineId: String(medicine._id), boxes: 5 }], // 60000 paisa
+      items: [{ medicineId: String(medicine._id), boxes: 5, patas: 0 }], // 60000 paisa
       discountPercent: 0,
       paidPaisa: 0,
     }));
@@ -308,7 +308,7 @@ describe("myDueBalance and myLedger — buyer-scoped reads", () => {
     // The session buyer's own sale, partially paid, plus a separate payment.
     await unwrap(recordWholesaleSale({
       buyerId: BUYER_USER_ID,
-      items: [{ medicineId: String(medicine._id), boxes: 1 }], // 12000 paisa
+      items: [{ medicineId: String(medicine._id), boxes: 1, patas: 0 }], // 12000 paisa
       discountPercent: 0,
       paidPaisa: 2000,
     }));

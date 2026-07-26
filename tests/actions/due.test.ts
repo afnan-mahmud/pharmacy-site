@@ -61,14 +61,14 @@ describe("listBuyerDues", () => {
     // Total: 360, paid 200, due 160
     await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 3 }], // 36000
+      items: [{ medicineId: medicine._id, boxes: 3, patas: 0 }], // 36000
       discountPercent: 0,
       paidPaisa: 20000,
     }));
     // Total: 240, paid 240, due 0
     await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 2 }], // 24000
+      items: [{ medicineId: medicine._id, boxes: 2, patas: 0 }], // 24000
       discountPercent: 0,
       paidPaisa: 24000,
     }));
@@ -85,7 +85,7 @@ describe("listBuyerDues", () => {
     
     await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 3 }],
+      items: [{ medicineId: medicine._id, boxes: 3, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 20000, // Due 16000
     }));
@@ -101,7 +101,7 @@ describe("listBuyerDues", () => {
     
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 3 }],
+      items: [{ medicineId: medicine._id, boxes: 3, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 0, // Due 36000
     }));
@@ -122,13 +122,13 @@ describe("listBuyerDues", () => {
 
     const saleA = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 10 }], // 120000 paisa
+      items: [{ medicineId: medicine._id, boxes: 10, patas: 0 }], // 120000 paisa
       discountPercent: 0,
       paidPaisa: 0,
     }));
     await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 5 }], // 60000 paisa
+      items: [{ medicineId: medicine._id, boxes: 5, patas: 0 }], // 60000 paisa
       discountPercent: 0,
       paidPaisa: 0,
     }));
@@ -147,13 +147,13 @@ describe("listBuyerDues", () => {
 
     await unwrap(recordWholesaleSale({
       buyerId: buyer1._id,
-      items: [{ medicineId: medicine._id, boxes: 1 }],
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 10000, // Due 2000
     }));
     await unwrap(recordWholesaleSale({
       buyerId: buyer2._id,
-      items: [{ medicineId: medicine._id, boxes: 1 }],
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 0, // Due 12000
     }));
@@ -174,7 +174,7 @@ describe("buyerDueBalance", () => {
 
     await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 1 }],
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 10000, // Due 2000
     }));
@@ -209,13 +209,13 @@ describe("buyerDueBalance", () => {
 
     const saleA = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 10 }], // 120000 paisa
+      items: [{ medicineId: medicine._id, boxes: 10, patas: 0 }], // 120000 paisa
       discountPercent: 0,
       paidPaisa: 0,
     }));
     await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 5 }], // 60000 paisa
+      items: [{ medicineId: medicine._id, boxes: 5, patas: 0 }], // 60000 paisa
       discountPercent: 0,
       paidPaisa: 0,
     }));
@@ -236,7 +236,7 @@ describe("buyerDueBalance", () => {
 
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 10 }], // 120000 paisa
+      items: [{ medicineId: medicine._id, boxes: 10, patas: 0 }], // 120000 paisa
       discountPercent: 0,
       paidPaisa: 0,
     }));
@@ -258,7 +258,7 @@ describe("recordPayment", () => {
     
     await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 1 }],
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 0, // Due 12000
     }));
@@ -278,7 +278,7 @@ describe("recordPayment", () => {
     
     await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 1 }],
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 10000, // Due 2000
     }));
@@ -301,7 +301,7 @@ describe("recordPayment", () => {
 
     const sale = await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 10 }], // 120000 paisa
+      items: [{ medicineId: medicine._id, boxes: 10, patas: 0 }], // 120000 paisa
       discountPercent: 0,
       paidPaisa: 0,
     }));
@@ -324,7 +324,7 @@ describe("recordPayment", () => {
 
     await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 1 }], // 12000 paisa due
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }], // 12000 paisa due
       discountPercent: 0,
       paidPaisa: 0,
     }));
@@ -352,7 +352,7 @@ describe("buyerLedger", () => {
     
     await unwrap(recordWholesaleSale({
       buyerId: buyer._id,
-      items: [{ medicineId: medicine._id, boxes: 1 }],
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
       discountPercent: 0,
       paidPaisa: 0,
     }));

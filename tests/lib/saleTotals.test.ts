@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { lineTotal, computeTotals } from "@/lib/saleTotals";
+import { lineTotal, computeTotals, wholesaleLineTotal } from "@/lib/saleTotals";
 
 describe("lineTotal", () => {
   it("multiplies rate by quantity", () => {
@@ -159,5 +159,38 @@ describe("computeTotals", () => {
     expect(() => computeTotals(lines, 0, 0.5)).toThrow(
       "paidPaisa must be a whole number",
     );
+  });
+});
+
+describe("wholesaleLineTotal", () => {
+  it("prices an exact number of boxes the same as boxes * rate", () => {
+    // 10 boxes, patasPerBox 10, box rate ৳525.00 -> 10 boxes worth of patas.
+    expect(wholesaleLineTotal(100, 52500, 10)).toBe(525000);
+  });
+
+  it("prices a box plus leftover patas as a fraction of the box rate", () => {
+    // 10 boxes + 3 patas = 103 total patas, patasPerBox 10, box rate ৳525.00.
+    // 103 * 52500 / 10 = 540750 exactly.
+    expect(wholesaleLineTotal(103, 52500, 10)).toBe(540750);
+  });
+
+  it("rounds once over the whole line when the division is not exact", () => {
+    // patasPerBox 7, box rate ৳600.00 (60000 paisa): 60000/7 = 8571.428...
+    // per pata. 1 box + 2 patas = 9 total patas.
+    // 9 * 60000 / 7 = 77142.857... -> rounds to 77143.
+    expect(wholesaleLineTotal(9, 60000, 7)).toBe(77143);
+  });
+
+  it("prices zero patas as zero", () => {
+    expect(wholesaleLineTotal(0, 52500, 10)).toBe(0);
+  });
+
+  it("rejects a negative total or rate", () => {
+    expect(() => wholesaleLineTotal(-1, 52500, 10)).toThrow("cannot be negative");
+    expect(() => wholesaleLineTotal(10, -1, 10)).toThrow("cannot be negative");
+  });
+
+  it("rejects a non-positive patasPerBox", () => {
+    expect(() => wholesaleLineTotal(10, 52500, 0)).toThrow("patasPerBox must be at least 1");
   });
 });

@@ -168,7 +168,7 @@ export async function recordRetailSale(
 
 export type WholesaleSaleInput = {
   buyerId: string;
-  items: { medicineId: string; boxes: number }[];
+  items: { medicineId: string; boxes: number; patas: number }[];
   /** A percentage of the subtotal, 0-100. May be fractional. */
   discountPercent: number;
   paidPaisa: number;
@@ -194,6 +194,13 @@ function validateWholesale(input: WholesaleSaleInput): void {
     ) {
       // 0 is legal here — see the zero-line rule in writeWholesaleSale,
       // which is what stops an invoice from being zero all the way down.
+      throw new Error("Poriman 0 er kom hote parbe na");
+    }
+    if (
+      typeof item.patas !== "number" ||
+      !Number.isInteger(item.patas) ||
+      item.patas < 0
+    ) {
       throw new Error("Poriman 0 er kom hote parbe na");
     }
     if (seen.has(item.medicineId)) {
