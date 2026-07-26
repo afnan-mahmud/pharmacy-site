@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import {
   submitShortlist,
 } from "@/actions/buyerOrders";
+import { toast } from "sonner";
 
 type ShortlistRow = {
   name: string;
   boxes: number;
+  patas: number;
 };
 
 export function BuyerShortlist({
@@ -23,13 +25,11 @@ export function BuyerShortlist({
   const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1);
   const [rows, setRows] = useState<ShortlistRow[]>([
-    { name: "", boxes: 1 },
-    { name: "", boxes: 1 },
-    { name: "", boxes: 1 },
-    { name: "", boxes: 1 },
+    { name: "", boxes: 1, patas: 0 },
+    { name: "", boxes: 1, patas: 0 },
+    { name: "", boxes: 1, patas: 0 },
+    { name: "", boxes: 1, patas: 0 },
   ]);
-  const [error, setError] = useState("");
-  const [done, setDone] = useState("");
   const [busy, setBusy] = useState(false);
 
   // Delivery form state
@@ -38,7 +38,7 @@ export function BuyerShortlist({
   const [dAddress, setDAddress] = useState(buyerAddress);
 
   function addRow() {
-    setRows((prev) => [...prev, { name: "", boxes: 1 }]);
+    setRows((prev) => [...prev, { name: "", boxes: 1, patas: 0 }]);
   }
 
   function removeRow(idx: number) {
@@ -56,7 +56,15 @@ export function BuyerShortlist({
   function updateBoxes(idx: number, boxes: number) {
     setRows((prev) =>
       prev.map((row, i) =>
-        i === idx ? { ...row, boxes: Math.max(1, boxes) } : row,
+        i === idx ? { ...row, boxes: Math.max(0, boxes) } : row,
+      ),
+    );
+  }
+
+  function updatePatas(idx: number, patas: number) {
+    setRows((prev) =>
+      prev.map((row, i) =>
+        i === idx ? { ...row, patas: Math.max(0, patas) } : row,
       ),
     );
   }
@@ -66,35 +74,33 @@ export function BuyerShortlist({
   function handleNext(e: React.FormEvent) {
     e.preventDefault();
     if (filledRows.length === 0) {
-      setError("কমপক্ষে একটি প্রোডাক্ট এর নাম লিখুন");
+      toast.error("কমপক্ষে একটি প্রোডাক্ট এর নাম লিখুন");
       return;
     }
-    setError("");
     setStep(2);
   }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setBusy(true);
-    setError("");
-    setDone("");
     try {
       const result = await submitShortlist(
         filledRows.map((r) => ({
           name: r.name,
           boxes: r.boxes,
+          patas: r.patas,
         })),
       );
       if (!result.ok) {
-        setError(result.error);
+        toast.error(result.error);
         return;
       }
-      setDone("অর্ডার সফলভাবে পাঠানো হয়েছে!");
+      toast.success("অর্ডার সফলভাবে পাঠানো হয়েছে!");
       setTimeout(() => {
         router.push("/buyer/orders");
       }, 1500);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "কিছু একটা ভুল হয়েছে");
+      toast.error(err instanceof Error ? err.message : "কিছু একটা ভুল হয়েছে");
     } finally {
       setBusy(false);
     }
@@ -116,9 +122,10 @@ export function BuyerShortlist({
         {/* Input Card */}
         <form onSubmit={handleNext} className="relative z-20 -mt-14 space-y-5 rounded-3xl bg-white px-4 py-6 shadow-md border border-line/50">
           
-          <div className="grid grid-cols-[1fr_80px_40px] gap-2 px-2 pb-2 text-xs font-bold tracking-wider text-muted/70 uppercase">
+          <div className="grid grid-cols-[1fr_65px_65px_40px] gap-1 px-1 pb-2 text-[11px] font-bold tracking-wider text-muted/70 uppercase">
             <div>Product</div>
             <div className="text-center">Box</div>
+            <div className="text-center">Pata</div>
             <div className="text-right">Del</div>
           </div>
 
@@ -129,6 +136,7 @@ export function BuyerShortlist({
                 row={row}
                 onNameChange={(q) => updateName(idx, q)}
                 onBoxesChange={(b) => updateBoxes(idx, b)}
+                onPatasChange={(p) => updatePatas(idx, p)}
                 onRemove={rows.length > 1 ? () => removeRow(idx) : undefined}
               />
             ))}
@@ -141,12 +149,6 @@ export function BuyerShortlist({
           >
             <span className="text-lg leading-none">+</span> Add Another Product
           </button>
-
-          {error && (
-            <p className="mt-4 rounded-xl bg-danger-bg px-4 py-2 text-center text-sm text-danger">
-              {error}
-            </p>
-          )}
 
           <button
             type="submit"
@@ -187,7 +189,7 @@ export function BuyerShortlist({
                   <span className="font-display text-base font-bold text-ink">{r.name}</span>
                   <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">Short Item</span>
                 </div>
-                <div className="mt-1 text-xs text-muted">× {r.boxes}</div>
+                <div className="mt-1 text-xs text-muted">Box: {r.boxes}, Pata: {r.patas}</div>
               </div>
               <div className="text-sm font-semibold text-muted">দাম confirm হবে</div>
             </div>
@@ -250,17 +252,6 @@ export function BuyerShortlist({
           />
         </div>
 
-        {error && (
-          <p className="rounded-xl bg-danger-bg px-4 py-2 text-center text-sm text-danger">
-            {error}
-          </p>
-        )}
-        {done && (
-          <p className="rounded-xl bg-brand-tint px-4 py-2 text-center text-sm font-bold text-brand-strong">
-            {done}
-          </p>
-        )}
-
         <button
           type="submit"
           disabled={busy}
@@ -285,49 +276,76 @@ function ShortlistRowInput({
   row,
   onNameChange,
   onBoxesChange,
+  onPatasChange,
   onRemove,
 }: {
   row: ShortlistRow;
   onNameChange: (name: string) => void;
   onBoxesChange: (boxes: number) => void;
+  onPatasChange: (patas: number) => void;
   onRemove?: () => void;
 }) {
   const hasName = row.name.trim() !== "";
 
   return (
-    <div className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
+    <div className="grid grid-cols-[1fr_65px_65px_40px] items-center gap-1">
       {/* Name Input */}
       <div className="relative min-w-0">
         <input
           value={row.name}
           onChange={(e) => onNameChange(e.target.value)}
-          placeholder="Enter Product Name"
-          className={`w-full rounded-xl border-0 px-3 py-3 text-sm font-medium focus:ring-2 focus:ring-brand ${
+          placeholder="Product Name"
+          className={`w-full rounded-xl border-0 px-2 py-3 text-sm font-medium focus:ring-2 focus:ring-brand ${
             hasName ? "bg-canvas text-ink" : "bg-canvas/50 text-muted"
           }`}
         />
       </div>
 
       {/* Stepper */}
-      <div className={`flex items-center rounded-xl border ${hasName ? "border-brand bg-white" : "border-line bg-canvas"} h-[44px] px-1`}>
+      <div className={`flex items-center rounded-xl border ${hasName ? "border-brand bg-white" : "border-line bg-canvas"} h-[44px] px-0.5 w-full`}>
         <button
           type="button"
           onClick={() => onBoxesChange(row.boxes - 1)}
-          className={`grid h-8 w-8 place-items-center text-lg ${hasName ? "text-brand" : "text-muted"}`}
+          className={`grid h-full flex-1 place-items-center text-lg ${hasName ? "text-brand" : "text-muted"}`}
         >
           −
         </button>
         <input
           type="number"
-          min={1}
+          min={0}
           value={row.boxes}
           onChange={(e) => onBoxesChange(Number(e.target.value))}
-          className={`w-8 border-0 bg-transparent p-0 text-center text-sm font-bold focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none ${hasName ? "text-ink" : "text-muted"}`}
+          className={`w-6 border-0 bg-transparent p-0 text-center text-sm font-bold focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none ${hasName ? "text-ink" : "text-muted"}`}
         />
         <button
           type="button"
           onClick={() => onBoxesChange(row.boxes + 1)}
-          className={`grid h-8 w-8 place-items-center text-lg ${hasName ? "text-brand" : "text-muted"}`}
+          className={`grid h-full flex-1 place-items-center text-lg ${hasName ? "text-brand" : "text-muted"}`}
+        >
+          +
+        </button>
+      </div>
+
+      {/* Pata Stepper */}
+      <div className={`flex items-center rounded-xl border ${hasName ? "border-brand bg-white" : "border-line bg-canvas"} h-[44px] px-0.5 w-full`}>
+        <button
+          type="button"
+          onClick={() => onPatasChange(row.patas - 1)}
+          className={`grid h-full flex-1 place-items-center text-lg ${hasName ? "text-brand" : "text-muted"}`}
+        >
+          −
+        </button>
+        <input
+          type="number"
+          min={0}
+          value={row.patas}
+          onChange={(e) => onPatasChange(Number(e.target.value))}
+          className={`w-6 border-0 bg-transparent p-0 text-center text-sm font-bold focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none ${hasName ? "text-ink" : "text-muted"}`}
+        />
+        <button
+          type="button"
+          onClick={() => onPatasChange(row.patas + 1)}
+          className={`grid h-full flex-1 place-items-center text-lg ${hasName ? "text-brand" : "text-muted"}`}
         >
           +
         </button>
@@ -338,7 +356,7 @@ function ShortlistRowInput({
         type="button"
         onClick={onRemove}
         disabled={!onRemove}
-        className="grid h-[44px] w-[44px] place-items-center rounded-xl bg-danger-bg text-danger hover:bg-danger hover:text-white transition disabled:opacity-30 disabled:hover:bg-danger-bg disabled:hover:text-danger"
+        className="grid h-[44px] w-full place-items-center rounded-xl bg-danger-bg text-danger hover:bg-danger hover:text-white transition disabled:opacity-30 disabled:hover:bg-danger-bg disabled:hover:text-danger"
       >
         <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 6h18" />

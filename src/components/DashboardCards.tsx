@@ -69,9 +69,9 @@ export function DashboardCards({ summary }: { summary: DashboardSummary }) {
         />
         <GridCard
           href="/reports"
-          title="Report"
+          title="Sob Bikrir Hisab"
           value="📈"
-          subtitle="Bikrir hisab"
+          subtitle="Khuchra paikari sob bikrir hisab eksathe"
           bgTint="bg-indigo-50"
           valueColor="text-indigo-600"
         />

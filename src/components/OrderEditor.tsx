@@ -91,7 +91,7 @@ export function OrderEditor({
       return;
     }
     const parsedPrice = parseFloat(customPrice);
-    if (isNaN(parsedPrice) || parsedPrice <= 0) {
+    if (isNaN(parsedPrice) || parsedPrice < 0) {
       alert("Thikmoto dam din");
       return;
     }
@@ -119,8 +119,8 @@ export function OrderEditor({
     
     // Validate custom items have prices
     for (const item of items) {
-      if (!item.medicineId && item.boxPricePaisa <= 0) {
-        setError(`"${item.medicineName}" er dam dite hobe!`);
+      if (!item.medicineId && item.boxPricePaisa < 0) {
+        setError(`"${item.medicineName}" er dam thik nai!`);
         return;
       }
     }
@@ -180,7 +180,7 @@ export function OrderEditor({
   const paidPaisa = Math.round(takaToPaisa(parseFloat(paidStr) || 0));
   const duePaisa = netTotalPaisa - paidPaisa;
 
-  const hasBillableLine = items.some((i) => i.boxes > 0 || i.patas > 0);
+  const hasBillableLine = items.some((i) => i.boxes > 0 || i.patas > 0 || !i.medicineId);
 
   return (
     <div className="flex flex-col pb-32 space-y-4">

@@ -124,7 +124,7 @@ export function WholesaleSaleForm({ buyers, allowCustomItems = false }: { buyers
   }
 
   const subtotalPaisa = cart.reduce((sum, line) => sum + lineTotalFor(line), 0);
-  const hasBillableLine = cart.some((line) => line.boxes > 0 || line.patas > 0);
+  const hasBillableLine = cart.some((line) => line.boxes > 0 || line.patas > 0 || line.medicine.id.startsWith("custom_"));
   const discountPercent = Number(discount || 0);
   const paidPaisa = Math.round(takaToPaisa(paid || 0));
 

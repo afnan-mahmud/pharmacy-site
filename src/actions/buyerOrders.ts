@@ -15,8 +15,8 @@ import { type SaleDoc } from "@/models/Sale";
 import { toMedicineForm, type MedicineForm } from "@/lib/unitLabels";
 import { actionResult, type ActionResult } from "@/lib/actionResult";
 
-export type OrderItemInput = { medicineId: string; boxes: number };
-export type CustomOrderItemInput = { name: string; boxes: number };
+export type OrderItemInput = { medicineId: string; boxes: number; patas: number };
+export type CustomOrderItemInput = { name: string; boxes: number; patas: number };
 
 /**
  * Escapes regex metacharacters so a typed "." or "*" is matched literally.
@@ -37,6 +37,7 @@ export type BuyerMedicineOption = {
   // Which unit words to show. Not sensitive: it is neither the stock count
   // nor the retail price.
   form: MedicineForm;
+  patasPerBox: number;
   boxPricePaisa: number;
   // The struck-through list price, or 0 for none. Never the internal cost.
   mrpBoxPricePaisa: number;
@@ -65,7 +66,7 @@ export async function searchMedicinesForBuyer(
   }
   const term = query.trim();
   let findFilter: any = { active: true };
-  
+
   if (term) {
     const pattern = { $regex: escapeRegex(term), $options: "i" };
     findFilter.$or = [{ name: pattern }, { genericName: pattern }];
@@ -76,7 +77,7 @@ export async function searchMedicinesForBuyer(
   // exact count stays on the server; the buyer sees "in / low / out" only.
   const docs = await MedicineModel.find(findFilter)
     .select(
-      "name company category form boxPricePaisa mrpBoxPricePaisa stockPatas lowStockThreshold",
+      "name company category form patasPerBox boxPricePaisa mrpBoxPricePaisa stockPatas lowStockThreshold",
     )
     .sort({ name: 1 })
     .limit(500)
@@ -87,6 +88,7 @@ export async function searchMedicinesForBuyer(
         company: string;
         category?: string;
         form?: string;
+        patasPerBox: number;
         boxPricePaisa: number;
         mrpBoxPricePaisa: number;
         stockPatas: number;
@@ -100,6 +102,7 @@ export async function searchMedicinesForBuyer(
     company: m.company,
     category: m.category ?? "",
     form: toMedicineForm(m.form),
+    patasPerBox: m.patasPerBox,
     boxPricePaisa: m.boxPricePaisa,
     mrpBoxPricePaisa: m.mrpBoxPricePaisa ?? 0,
     availability: stockStatus(m.stockPatas, m.lowStockThreshold),
@@ -122,9 +125,19 @@ function validateItems(items: OrderItemInput[]): void {
     if (
       typeof item.boxes !== "number" ||
       !Number.isInteger(item.boxes) ||
-      item.boxes < 1
+      item.boxes < 0
     ) {
-      throw new Error("Poriman 1 er kom hote parbe na");
+      throw new Error("Box er poriman thik nai");
+    }
+    if (
+      typeof item.patas !== "number" ||
+      !Number.isInteger(item.patas) ||
+      item.patas < 0
+    ) {
+      throw new Error("Pata er poriman thik nai");
+    }
+    if (item.boxes === 0 && item.patas === 0) {
+      throw new Error("Ontoto ekta box ba pata order korte hobe");
     }
     if (seen.has(item.medicineId)) {
       throw new Error("Ekta medicine ekbar er beshi order kora jabe na");
@@ -157,6 +170,7 @@ export async function submitOrder(
         medicineName: medicine.name,
         form: medicine.form,
         boxes: item.boxes,
+        patas: item.patas,
         // Snapshot the box price the buyer is ordering at.
         boxPricePaisa: medicine.boxPricePaisa,
       });
@@ -276,7 +290,7 @@ export async function submitShortlist(
   return actionResult(async () => {
     const session = await requireBuyerAction();
     await connectDb();
-    
+
     if (!Array.isArray(items) || items.length === 0) {
       throw new Error("Cart khali");
     }
@@ -284,8 +298,14 @@ export async function submitShortlist(
       if (!item.name || typeof item.name !== "string" || item.name.trim() === "") {
         throw new Error("Product er nam likhte hobe");
       }
-      if (typeof item.boxes !== "number" || item.boxes < 1) {
-        throw new Error("Box kompokkhe 1 hote hobe");
+      if (typeof item.boxes !== "number" || item.boxes < 0) {
+        throw new Error("Box kompokkhe 0 hote hobe");
+      }
+      if (typeof item.patas !== "number" || item.patas < 0) {
+        throw new Error("Pata kompokkhe 0 hote hobe");
+      }
+      if (item.boxes === 0 && item.patas === 0) {
+        throw new Error("Ontoto ekta box ba pata order korte hobe");
       }
     }
 
@@ -303,6 +323,7 @@ export async function submitShortlist(
         medicineName: item.name.trim(),
         form: "custom",
         boxes: item.boxes,
+        patas: item.patas,
         boxPricePaisa: 0,
       });
     }
@@ -326,6 +347,7 @@ export async function submitShortlist(
         if (existingLine) {
           // Mutate the subdocument directly so Mongoose detects the change
           existingLine.boxes += newLine.boxes;
+          existingLine.patas += newLine.patas;
         } else {
           existing.items.push(newLine);
         }

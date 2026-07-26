@@ -2,16 +2,18 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   searchMedicinesForBuyer,
   submitOrder,
   type BuyerMedicineOption,
 } from "@/actions/buyerOrders";
 import { formatTaka } from "@/lib/money";
-import { discountPercent } from "@/lib/discount";
+import { wholesaleLineTotal } from "@/lib/saleTotals";
+import { unitLabelsFor } from "@/lib/unitLabels";
 import { stockStatusLabel, type StockStatus } from "@/lib/stockStatus";
 
-type CartLine = { medicine: BuyerMedicineOption; boxes: number };
+type CartLine = { medicine: BuyerMedicineOption; boxes: number; patas: number };
 
 export function BuyerBrowse() {
   const router = useRouter();
@@ -19,9 +21,8 @@ export function BuyerBrowse() {
   const [results, setResults] = useState<BuyerMedicineOption[]>([]);
   const [searching, setSearching] = useState(false);
   const [cart, setCart] = useState<CartLine[]>([]);
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
-  const [error, setError] = useState("");
-  const [done, setDone] = useState("");
+  const [quantitiesBoxes, setQuantitiesBoxes] = useState<Record<string, number>>({});
+  const [quantitiesPatas, setQuantitiesPatas] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -34,7 +35,7 @@ export function BuyerBrowse() {
         if (cancelled) return;
         setResults(found);
       } catch {
-        if (!cancelled) setError("Medicine khoja jacche na, abar chesta koro");
+        if (!cancelled) toast.error("Medicine khoja jacche na, abar chesta koro");
       } finally {
         if (!cancelled) setSearching(false);
       }
@@ -46,32 +47,32 @@ export function BuyerBrowse() {
   }, [query]);
 
   function toggleCart(medicine: BuyerMedicineOption, checked: boolean) {
-    setDone("");
-    setError("");
     if (checked) {
       setCart((current) => {
         if (current.find((l) => l.medicine.id === medicine.id)) return current;
-        return [...current, { medicine, boxes: quantities[medicine.id] || 1 }];
+        const b = quantitiesBoxes[medicine.id] ?? (quantitiesPatas[medicine.id] > 0 ? 0 : 1);
+        const p = quantitiesPatas[medicine.id] ?? 0;
+        return [...current, { medicine, boxes: b, patas: p }];
       });
     } else {
       setCart((current) => current.filter((l) => l.medicine.id !== medicine.id));
     }
   }
 
-  function handleQuantityChange(id: string, boxes: number) {
-    const validBoxes = Math.max(1, boxes);
-    setQuantities((prev) => ({ ...prev, [id]: validBoxes }));
-    
-    // If it's in the cart, update the cart too
-    setCart((current) =>
-      current.map((l) =>
-        l.medicine.id === id ? { ...l, boxes: validBoxes } : l,
-      ),
-    );
+  function handleQuantityChangeBoxes(id: string, boxes: number) {
+    const validBoxes = Math.max(0, boxes);
+    setQuantitiesBoxes((prev) => ({ ...prev, [id]: validBoxes }));
+    setCart((current) => current.map((l) => l.medicine.id === id ? { ...l, boxes: validBoxes } : l));
+  }
+
+  function handleQuantityChangePatas(id: string, patas: number) {
+    const validPatas = Math.max(0, patas);
+    setQuantitiesPatas((prev) => ({ ...prev, [id]: validPatas }));
+    setCart((current) => current.map((l) => l.medicine.id === id ? { ...l, patas: validPatas } : l));
   }
 
   const total = cart.reduce(
-    (sum, l) => sum + l.medicine.boxPricePaisa * l.boxes,
+    (sum, l) => sum + wholesaleLineTotal(l.boxes * l.medicine.patasPerBox + l.patas, l.medicine.boxPricePaisa, l.medicine.patasPerBox),
     0,
   );
   const inCart = new Set(cart.map((l) => l.medicine.id));
@@ -80,21 +81,19 @@ export function BuyerBrowse() {
     event.preventDefault();
     if (cart.length === 0) return;
     setBusy(true);
-    setError("");
-    setDone("");
     try {
       const result = await submitOrder(
-        cart.map((l) => ({ medicineId: l.medicine.id, boxes: l.boxes })),
+        cart.map((l) => ({ medicineId: l.medicine.id, boxes: l.boxes, patas: l.patas })),
       );
       if (!result.ok) {
-        setError(result.error);
+        toast.error(result.error);
         return;
       }
-      setDone("Order pathano hoyeche. Malik approve korle janiye deya hobe.");
+      toast.success("Order pathano hoyeche. Malik approve korle janiye deya hobe.");
       setCart([]);
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Kichu ekta bhul holo");
+      toast.error(err instanceof Error ? err.message : "Kichu ekta bhul holo");
     } finally {
       setBusy(false);
     }
@@ -127,11 +126,12 @@ export function BuyerBrowse() {
       {results.length > 0 && (
         <div className="rounded-2xl bg-white shadow-sm border border-line overflow-hidden">
           {/* Header */}
-          <div className="grid grid-cols-[1fr_80px_80px_60px] gap-2 border-b border-line bg-canvas/50 px-3 py-3 text-xs font-bold text-ink">
+          <div className="grid grid-cols-[1fr_65px_65px_65px_40px] gap-1 border-b border-line bg-canvas/50 px-2 py-3 text-xs font-bold text-ink">
             <div>Product</div>
             <div className="text-center">Box</div>
+            <div className="text-center">Pata</div>
             <div className="text-center">MRP</div>
-            <div className="text-center">Select</div>
+            <div className="text-center">Sel</div>
           </div>
 
           {/* Rows */}
@@ -141,8 +141,10 @@ export function BuyerBrowse() {
                 key={m.id}
                 medicine={m}
                 inCart={inCart.has(m.id)}
-                boxes={quantities[m.id] || 1}
-                onBoxesChange={(val) => handleQuantityChange(m.id, val)}
+                boxes={quantitiesBoxes[m.id] ?? (quantitiesPatas[m.id] > 0 ? 0 : 1)}
+                patas={quantitiesPatas[m.id] ?? 0}
+                onBoxesChange={(val) => handleQuantityChangeBoxes(m.id, val)}
+                onPatasChange={(val) => handleQuantityChangePatas(m.id, val)}
                 onToggle={(checked) => toggleCart(m, checked)}
               />
             ))}
@@ -153,17 +155,6 @@ export function BuyerBrowse() {
       {!searching && query.trim() && results.length === 0 && (
         <p className="mt-4 text-center text-sm text-muted">
           "{query}" নামে কোনো মেডিসিন পাওয়া যায়নি।
-        </p>
-      )}
-
-      {error && (
-        <p className="mt-4 rounded-xl bg-danger-bg px-4 py-2.5 text-sm text-danger text-center font-medium">
-          {error}
-        </p>
-      )}
-      {done && (
-        <p className="mt-4 rounded-xl bg-brand-tint px-4 py-2.5 text-sm font-bold text-brand-strong text-center">
-          {done}
         </p>
       )}
 
@@ -190,21 +181,25 @@ function ProductTableRow({
   medicine,
   inCart,
   boxes,
+  patas,
   onBoxesChange,
+  onPatasChange,
   onToggle,
 }: {
   medicine: BuyerMedicineOption;
   inCart: boolean;
   boxes: number;
+  patas: number;
   onBoxesChange: (v: number) => void;
+  onPatasChange: (v: number) => void;
   onToggle: (checked: boolean) => void;
 }) {
   const out = medicine.availability === "out";
 
   return (
-    <div className={`grid grid-cols-[1fr_80px_80px_60px] items-center gap-2 p-3 ${out ? "opacity-60" : ""}`}>
+    <div className={`grid grid-cols-[1fr_65px_65px_65px_40px] items-center gap-1 p-2 ${out ? "opacity-60" : ""}`}>
       {/* Product Details */}
-      <div className="min-w-0 pr-2">
+      <div className="min-w-0 pr-1">
         <div className="break-words font-display text-[13px] font-extrabold uppercase text-brand-strong leading-snug">
           {medicine.name}
         </div>
@@ -213,13 +208,9 @@ function ProductTableRow({
             {medicine.company}
           </div>
         )}
-        {medicine.category && (
-          <div className="break-words text-[11px] text-muted">
-            {medicine.category}
-          </div>
-        )}
-        <div className="mt-1.5">
+        <div className="mt-1.5 flex flex-wrap gap-1">
           <AvailabilityBadge status={medicine.availability} />
+          <span className="text-[10px] text-muted border border-line rounded-full px-1.5 py-0.5">{medicine.patasPerBox} {unitLabelsFor(medicine.form).inner}/{unitLabelsFor(medicine.form).outer}</span>
         </div>
       </div>
 
@@ -235,16 +226,44 @@ function ProductTableRow({
         </button>
         <input
           type="number"
-          min={1}
+          min={0}
           disabled={out}
           value={boxes}
           onChange={(e) => onBoxesChange(Number(e.target.value))}
-          className={`w-6 border-0 bg-transparent p-0 text-center text-xs font-bold focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none ${inCart ? "text-ink" : "text-muted"}`}
+          className={`w-5 border-0 bg-transparent p-0 text-center text-xs font-bold focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none ${inCart ? "text-ink" : "text-muted"}`}
         />
         <button
           type="button"
           disabled={out}
           onClick={() => onBoxesChange(boxes + 1)}
+          className={`grid h-full flex-1 place-items-center text-sm font-bold ${inCart ? "text-brand" : "text-muted"} disabled:opacity-50`}
+        >
+          +
+        </button>
+      </div>
+
+      {/* Pata Stepper */}
+      <div className={`flex items-center justify-center rounded-lg border ${inCart ? "border-brand" : "border-line"} h-[32px] w-full px-0.5`}>
+        <button
+          type="button"
+          disabled={out}
+          onClick={() => onPatasChange(patas - 1)}
+          className={`grid h-full flex-1 place-items-center text-sm font-bold ${inCart ? "text-brand" : "text-muted"} disabled:opacity-50`}
+        >
+          −
+        </button>
+        <input
+          type="number"
+          min={0}
+          disabled={out}
+          value={patas}
+          onChange={(e) => onPatasChange(Number(e.target.value))}
+          className={`w-5 border-0 bg-transparent p-0 text-center text-xs font-bold focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none ${inCart ? "text-ink" : "text-muted"}`}
+        />
+        <button
+          type="button"
+          disabled={out}
+          onClick={() => onPatasChange(patas + 1)}
           className={`grid h-full flex-1 place-items-center text-sm font-bold ${inCart ? "text-brand" : "text-muted"} disabled:opacity-50`}
         >
           +

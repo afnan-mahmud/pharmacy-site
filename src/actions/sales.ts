@@ -59,9 +59,9 @@ function validateRetail(input: RetailSaleInput): void {
     if (
       typeof item.patas !== "number" ||
       !Number.isInteger(item.patas) ||
-      item.patas < 1
+      item.patas < 0
     ) {
-      throw new Error("Poriman 1 er kom hote parbe na");
+      throw new Error("Poriman 0 er kom hote parbe na");
     }
     // Two lines for one medicine would each pass their own stock check and
     // could together oversell it.

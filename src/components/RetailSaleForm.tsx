@@ -67,10 +67,9 @@ export function RetailSaleForm() {
     setCart((prev) => [...prev, { medicine, patas: 1 }]);
   }
 
-  // Minimum 1: a retail sale prints nothing, so a zero line would have no
-  // reader. Dropping an item means removing the line, not zeroing it.
+  // Allowed to be 0: if a product is out of stock but requested, it can be zeroed.
   function updatePatas(idx: number, raw: string) {
-    const patas = parseQuantityInput(raw, 1);
+    const patas = parseQuantityInput(raw, 0);
     setCart((prev) =>
       prev.map((line, i) => (i === idx ? { ...line, patas } : line)),
     );
@@ -205,7 +204,7 @@ export function RetailSaleForm() {
                     <div className="flex items-center">
                       <input
                         type="number"
-                        min={1}
+                        min={0}
                         value={line.patas}
                         onChange={(e) => updatePatas(idx, e.target.value)}
                         className="w-20 rounded-xl border border-line px-2 py-1.5 text-sm focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition"

@@ -8,7 +8,8 @@ const orderLineSchema = new Schema(
     // Denormalised so the order still reads correctly if the medicine is
     // later renamed or deactivated.
     medicineName: { type: String, required: true },
-    boxes: { type: Number, required: true, min: 1 },
+    boxes: { type: Number, required: true, min: 0 },
+    patas: { type: Number, required: true, default: 0, min: 0 },
     // Snapshotted at order time: a price change before approval must never
     // silently rewrite what the buyer thought he was ordering.
     boxPricePaisa: { type: Number, required: true, min: 0 },
