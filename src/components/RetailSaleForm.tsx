@@ -187,7 +187,6 @@ export function RetailSaleForm() {
                     <input
                       type="number"
                       min={1}
-                      max={line.medicine.stockPatas}
                       value={line.patas}
                       onChange={(e) => updatePatas(idx, e.target.value)}
                       className="w-20 rounded border border-line px-2 py-1 text-sm"
