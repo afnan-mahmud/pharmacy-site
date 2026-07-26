@@ -109,7 +109,6 @@ export async function stockIn(
       await session.endSession();
     }
 
-    revalidatePath("/stock");
     revalidatePath("/medicines");
   });
 }
