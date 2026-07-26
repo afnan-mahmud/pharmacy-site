@@ -236,6 +236,28 @@ describe("listStockEntries", () => {
     expect(entries[0].boxes).toBe(2);
     expect(entries[1].boxes).toBe(1);
   });
+
+  it("filters to a single medicine when given an id", async () => {
+    const a = await unwrap(createMedicine(napa));
+    const b = await unwrap(createMedicine({ ...napa, name: "Ace" }));
+    await unwrap(stockIn({ medicineId: String(a._id), boxes: 1, note: "" }));
+    await unwrap(stockIn({ medicineId: String(b._id), boxes: 2, note: "" }));
+    await unwrap(stockIn({ medicineId: String(a._id), boxes: 3, note: "" }));
+
+    const entries = await listStockEntries(String(a._id));
+    expect(entries).toHaveLength(2);
+    expect(entries.every((e) => e.medicineId === String(a._id))).toBe(true);
+  });
+
+  it("returns every medicine's entries when no id is given, unchanged from before", async () => {
+    const a = await unwrap(createMedicine(napa));
+    const b = await unwrap(createMedicine({ ...napa, name: "Ace" }));
+    await unwrap(stockIn({ medicineId: String(a._id), boxes: 1, note: "" }));
+    await unwrap(stockIn({ medicineId: String(b._id), boxes: 2, note: "" }));
+
+    const entries = await listStockEntries();
+    expect(entries).toHaveLength(2);
+  });
 });
 
 // stockIn/listStockEntries are network-reachable Server Actions with no page

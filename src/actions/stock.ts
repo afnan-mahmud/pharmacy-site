@@ -115,11 +115,19 @@ export async function stockIn(
 }
 
 export async function listStockEntries(
+  medicineId?: string,
   limit = 50,
 ): Promise<Serialized<StockEntryDoc>[]> {
   await requireAdminAction();
   await connectDb();
-  const docs = await StockEntryModel.find()
+
+  const filter: Record<string, unknown> = {};
+  if (medicineId !== undefined) {
+    if (!mongoose.Types.ObjectId.isValid(medicineId)) return [];
+    filter.medicineId = medicineId;
+  }
+
+  const docs = await StockEntryModel.find(filter)
     .sort({ createdAt: -1 })
     .limit(limit)
     .lean<StockEntryDoc[]>();
