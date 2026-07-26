@@ -69,6 +69,7 @@ export default async function InvoicePage({
           unit: item.unit,
           form: item.form,
           quantity: item.quantity,
+          leftoverPatas: item.leftoverPatas,
           ratePaisa: item.ratePaisa,
           lineTotalPaisa: item.lineTotalPaisa,
         }))}

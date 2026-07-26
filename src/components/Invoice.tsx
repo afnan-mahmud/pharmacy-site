@@ -16,6 +16,7 @@ type InvoiceProps = {
     // renders those as the box/pata wording they were printed with.
     form?: string;
     quantity: number;
+    leftoverPatas?: number;
     ratePaisa: number;
     lineTotalPaisa: number;
   }[];
@@ -37,6 +38,24 @@ function formatDate(iso: string): string {
     month: "2-digit",
     year: "numeric",
   });
+}
+
+/**
+ * A wholesale line's quantity, e.g. "10bx 3pt". `leftoverPatas` is absent or
+ * 0 on every retail line and on a wholesale line that is whole boxes only,
+ * so the old "10bx" rendering is what those keep showing.
+ */
+function formatWholesaleQty(
+  boxes: number,
+  leftoverPatas: number,
+  outerShort: string,
+  innerShort: string,
+): string {
+  if (boxes === 0 && leftoverPatas === 0) return `0${outerShort}`;
+  const parts: string[] = [];
+  if (boxes > 0) parts.push(`${boxes}${outerShort}`);
+  if (leftoverPatas > 0) parts.push(`${leftoverPatas}${innerShort}`);
+  return parts.join(" ");
 }
 
 export function Invoice({
@@ -108,21 +127,26 @@ export function Invoice({
         <tbody>
           {items.map((item, idx) => {
             const labels = unitLabelsFor(item.form);
+            const leftoverPatas = item.leftoverPatas ?? 0;
+            const isZeroLine = item.unit === "box"
+              ? item.quantity === 0 && leftoverPatas === 0
+              : item.quantity === 0;
             return (
               <tr key={idx} className="border-b border-dashed border-slate-200">
                 <td className="py-1 pr-1">{item.medicineName}</td>
                 <td className="py-1 text-right">
-                  {item.quantity}
-                  {item.unit === "box" ? labels.outerShort : labels.innerShort}
+                  {item.unit === "box"
+                    ? formatWholesaleQty(item.quantity, leftoverPatas, labels.outerShort, labels.innerShort)
+                    : `${item.quantity}${labels.innerShort}`}
                 </td>
                 {/* A zero line is on the paper to show what was ordered and
                     could not be supplied, so it carries no price at all —
                     neither a rate nor an amount. */}
                 <td className="py-1 text-right">
-                  {item.quantity === 0 ? "" : formatTaka(item.ratePaisa)}
+                  {isZeroLine ? "" : formatTaka(item.ratePaisa)}
                 </td>
                 <td className="py-1 text-right">
-                  {item.quantity === 0 ? "" : formatTaka(item.lineTotalPaisa)}
+                  {isZeroLine ? "" : formatTaka(item.lineTotalPaisa)}
                 </td>
               </tr>
             );
