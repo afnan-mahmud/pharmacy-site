@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createMedicine, updateMedicine } from "@/actions/medicines";
+import { stockIn, listStockEntries } from "@/actions/stock";
 import { takaToPaisa, paisaToTaka } from "@/lib/money";
+import { boxesToPatas, formatStock } from "@/lib/units";
+import type { StockEntryDoc } from "@/models/StockEntry";
+import type { Serialized } from "@/lib/serialize";
 // Aliased: `MedicineForm` is this file's component (a <form>), while the
 // imported type is the dosage form (tablet, syrup, ...).
 import {
@@ -33,7 +37,7 @@ export function MedicineForm({
   initial,
   onDone,
 }: {
-  initial?: MedicineFormValues;
+  initial?: MedicineFormValues & { stockPatas?: number };
   onDone: () => void;
 }) {
   const router = useRouter();
@@ -60,10 +64,24 @@ export function MedicineForm({
   );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [stockBoxes, setStockBoxes] = useState("");
+  const [stockNote, setStockNote] = useState("");
+  const [stockEntries, setStockEntries] = useState<Serialized<StockEntryDoc>[]>([]);
   const labels = unitLabelsFor(form);
   // "other" has no outer pack — it's counted in pieces only, so the box
   // fields collapse into the piece price (1 box === 1 piece).
   const isOther = form === "other";
+
+  useEffect(() => {
+    if (!initial?.id) return;
+    let cancelled = false;
+    listStockEntries(initial.id).then((entries) => {
+      if (!cancelled) setStockEntries(entries);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [initial?.id]);
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -94,6 +112,21 @@ export function MedicineForm({
         setError(result.error);
         setBusy(false);
         return;
+      }
+
+      const targetId = initial?.id ?? result.data._id;
+      const boxesToAdd = Number(stockBoxes);
+      if (stockBoxes.trim() !== "" && Number.isInteger(boxesToAdd) && boxesToAdd > 0) {
+        const stockResult = await stockIn({
+          medicineId: targetId,
+          boxes: boxesToAdd,
+          note: stockNote,
+        });
+        if (!stockResult.ok) {
+          setError(stockResult.error);
+          setBusy(false);
+          return;
+        }
       }
 
       router.refresh();
@@ -189,6 +222,64 @@ export function MedicineForm({
             onChange={(e) => setThreshold(e.target.value)} />
         </div>
       </div>
+
+      <div className="space-y-2 rounded-xl border border-line bg-canvas p-3.5">
+        <h3 className="text-sm font-semibold text-ink">Stock add koro</h3>
+        {initial?.id && (
+          <p className="text-xs text-muted">
+            Ekhon ache: {formatStock(initial.stockPatas ?? 0, Number(patasPerBox) || 1, form)}
+          </p>
+        )}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <label htmlFor="stockBoxes" className={labelCls}>
+              Koto {labels.outer} dhuklo
+            </label>
+            <input id="stockBoxes" type="number" min={0} className={input}
+              value={stockBoxes} onChange={(e) => setStockBoxes(e.target.value)} />
+            {stockBoxes && Number.isInteger(Number(stockBoxes)) && Number(stockBoxes) > 0 && (
+              <p className="text-xs text-muted">
+                = {boxesToPatas(Number(stockBoxes), Number(patasPerBox) || 1)} {labels.inner}
+              </p>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <label htmlFor="stockNote" className={labelCls}>Note (optional)</label>
+            <input id="stockNote" className={input} value={stockNote}
+              onChange={(e) => setStockNote(e.target.value)} />
+          </div>
+        </div>
+      </div>
+
+      {initial?.id && stockEntries.length > 0 && (
+        <div className="space-y-1.5">
+          <h3 className="text-sm font-semibold text-ink">Ager stock entry</h3>
+          <div className="overflow-x-auto rounded-xl border border-line">
+            <table className="w-full text-xs">
+              <thead className="border-b border-line text-left text-muted">
+                <tr>
+                  <th className="p-2">Date</th>
+                  <th className="p-2">Pack</th>
+                  <th className="p-2">Unit</th>
+                  <th className="p-2">Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stockEntries.map((entry) => (
+                  <tr key={entry._id} className="border-b border-line">
+                    <td className="p-2 text-muted">
+                      {new Date(entry.createdAt).toLocaleDateString("en-GB", { timeZone: "Asia/Dhaka" })}
+                    </td>
+                    <td className="p-2">{entry.boxes} {labels.outer}</td>
+                    <td className="p-2 text-muted">{entry.patasAdded} {labels.inner}</td>
+                    <td className="p-2 text-muted">{entry.note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {error && <p role="alert" className={errorBox}>{error}</p>}
 
