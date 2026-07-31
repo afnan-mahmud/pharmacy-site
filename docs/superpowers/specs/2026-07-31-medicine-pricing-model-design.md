@@ -2,12 +2,17 @@
 
 Date: 2026-07-31
 
-Part of a larger owner request (purchasing cost + separate wholesale/khuchra
-rates) split into two independent sub-projects. This spec covers the first
-and foundational slice: the Medicine schema's pricing fields, the medicine
-add/edit form, and how retail and wholesale sales price a line. A follow-up
-spec (not yet written) covers letting buyers order pata-wise in the buyer
-portal, which depends on the `wholesalePataPricePaisa` field this spec adds.
+Covers the owner's request for purchasing cost plus separate wholesale and
+khuchra (retail) rates: the Medicine schema's pricing fields, the medicine
+add/edit form, and every place a rate is read — retail sales, wholesale
+sales, and the buyer order flow (browse, submit, admin approval). These
+were initially going to split into two specs (medicine pricing, then buyer
+pata-ordering as a follow-up), but research turned up that the buyer order
+flow (`Order` model, `BuyerBrowse.tsx`, `submitOrder`, `approveOrder`)
+already carries `boxes` *and* `patas` per line end to end — it just prices
+the patas by prorating the box rate (`wholesaleLineTotal`), the same
+proration this spec removes from the wholesale sale form. Fixing that
+proration is one change, not two, so both are covered here.
 
 ## Problem
 
@@ -26,11 +31,17 @@ portal, which depends on the `wholesalePataPricePaisa` field this spec adds.
    `StockEntry` — so margin can never be computed from stored data.
 4. Retail sales cannot sell by box at all; `RetailSaleInput.items` is
    `{ medicineId, patas }[]`.
+5. The buyer order flow already collects `boxes` *and* `patas` per line
+   (`Order.orderLineSchema`, `BuyerBrowse.tsx`) but only ever snapshots and
+   bills the box rate: `OrderEditor.tsx` hardcodes `patas: 0` when it loads
+   a pending order for editing, and `PendingOrders.tsx`'s one-click approve
+   never sends `patas` to `approveOrder` at all. A buyer who orders loose
+   patas today has them silently dropped from the invoice at approval time.
 
 The owner wants four independent, explicit selling rates (wholesale box,
 wholesale pata, khuchra box, khuchra pata) plus a purchasing cost, with each
 channel's rate used only by that channel — no more proration standing in
-for a rate nobody set.
+for a rate nobody set, and no more dropped patas in the buyer-order path.
 
 ## Scope
 
@@ -42,17 +53,21 @@ for a rate nobody set.
 - `src/actions/sales.ts` (`recordRetailSale`), `src/components/RetailSaleForm.tsx`,
   `src/components/MedicinePicker.tsx` — retail sale gains box selling
 - `src/components/WholesaleSaleForm.tsx` — cart total math update
-- Every other reader of the renamed fields: `MedicineTable.tsx`,
-  `medicines/page.tsx`, `src/actions/adminOrders.ts` (`currentBoxPrices`),
-  `src/actions/buyerOrders.ts`, `src/models/Order.ts`, `OrderEditor.tsx`,
-  `PendingOrders.tsx`, `BuyerBrowse.tsx`, `BuyerOrderList.tsx` — renamed
-  field references only, no structural change (buyer ordering stays
-  wholesale-box-only in this spec)
-- A one-off migration script for existing Atlas data
-
-Out of scope (queued as a separate spec): buyer portal pata-wise ordering,
-which needs `Order` line items, `OrderEditor`, and the buyer cart UI to
-carry both boxes and patas.
+- `src/models/Order.ts` — order line snapshots both wholesale rates
+- `src/actions/buyerOrders.ts` (`searchMedicinesForBuyer`, `submitOrder`,
+  `submitShortlist`) — buyer sees and orders against both wholesale rates
+- `src/components/BuyerBrowse.tsx`, `src/components/BuyerOrderList.tsx`,
+  `src/app/(buyer)/buyer/orders/page.tsx` — buyer-facing cart/list totals
+  drop proration, same split as the wholesale form
+- `src/actions/adminOrders.ts` (`currentBoxPrices` → `currentWholesalePrices`,
+  `approveOrder`/`validateApproval`) — admin sees/approves both rates
+- `src/components/OrderEditor.tsx`, `src/components/PendingOrders.tsx`,
+  `src/app/(admin)/orders/[id]/edit/page.tsx` — order approval actually
+  bills the patas a buyer ordered, not just the boxes
+- `src/components/MedicineTable.tsx`, `src/app/(admin)/medicines/page.tsx` —
+  renamed field references
+- A one-off migration script for existing Atlas data (`Medicine` documents
+  and any `Order` documents' line items)
 
 ## Approach
 
@@ -142,10 +157,56 @@ pata-quantity input per cart line, same layout pattern
 mechanism (`applyStockDelta`), just now driven by
 `boxes * patasPerBox + patas` total patas instead of `patas` alone.
 
-### 6. Migration
+### 6. Buyer order flow: snapshot and bill both wholesale rates
+
+`Order.orderLineSchema` gains `wholesalePataPricePaisa` (required, `min: 0`)
+alongside the renamed `wholesaleBoxPricePaisa`, mirroring the sale line's
+snapshot pattern. A line's total is the same plain split used everywhere
+else: `boxes * wholesaleBoxPricePaisa + patas * wholesalePataPricePaisa`.
+
+- `searchMedicinesForBuyer` (`buyerOrders.ts`) projects
+  `wholesalePataPricePaisa` in addition to `wholesaleBoxPricePaisa` —
+  this is a wholesale-buyer-facing rate the buyer is meant to see, unlike
+  the khuchra rates, which stay hidden (same rule as today, just extended
+  to the second wholesale field).
+- `submitOrder` snapshots both rates from the medicine onto the order line,
+  same as it snapshots `wholesaleBoxPricePaisa` today.
+- `submitShortlist` (custom/free-text lines with no catalog match) sets
+  both rates to `0`, same as it does for `boxPricePaisa` today — the admin
+  fills in a real price during approval.
+- `BuyerBrowse.tsx`'s cart total drops `wholesaleLineTotal` for the plain
+  split, reading `medicine.wholesalePataPricePaisa` off the (now expanded)
+  `BuyerMedicineOption`.
+- `BuyerOrderList.tsx` / `buyer/orders/page.tsx`: `OrderRow` gains `patas`
+  and `wholesalePataPricePaisa` per item; the per-item and total display
+  add the patas leg.
+- `adminOrders.ts`'s `currentBoxPrices` is renamed `currentWholesalePrices`
+  and returns `Record<string, { boxPricePaisa: number; pataPricePaisa: number }>`
+  (reads `wholesaleBoxPricePaisa`/`wholesalePataPricePaisa`) instead of a
+  bare number, so the order-edit screen can show/re-price both legs at
+  today's rate.
+- `OrderEditor.tsx`: stops hardcoding `patas: 0` when it loads a pending
+  order — it now initializes each line's `patas` from `order.items[].patas`
+  and its pata rate from `currentWholesalePrices` (falling back to the
+  order's own `wholesalePataPricePaisa` snapshot, same fallback rule the
+  box rate already has). A pata-quantity input is added next to the
+  existing box-quantity input per line (catalog items only — custom items
+  stay box-only, matching `writeWholesaleSale`'s existing custom-item
+  handling, which never reads patas for a custom line). The subtotal sums
+  both legs per line instead of boxes only.
+- `PendingOrders.tsx`'s one-click approve now includes `patas: item.patas`
+  in the items it sends to `approveOrder`, and its preview total sums both
+  legs — today it silently bills boxes only and drops any patas the buyer
+  ordered.
+- `adminOrders.ts`'s `ApprovalItemInput`/`validateApproval` already accept
+  `patas` for catalog items; no change needed there beyond the rename.
+
+### 7. Migration
 
 A one-off script run against Atlas (not a Mongoose default, since it must
 touch every existing document once):
+
+**`medicines` collection**, per document:
 
 ```
 wholesaleBoxPricePaisa   = boxPricePaisa                          // rename
@@ -155,18 +216,24 @@ retailBoxPricePaisa      = pataPricePaisa * patasPerBox
 purchasePricePaisa       = 0   // no historical cost data exists
 ```
 
-Then `$unset` the old `boxPricePaisa`/`pataPricePaisa` fields. Run once,
-by hand, against the live Atlas database as part of shipping this change —
-not an app-startup migration.
+Then `$unset` the old `boxPricePaisa`/`pataPricePaisa` fields.
 
-### 7. Everything else that reads the renamed fields
+**`orders` collection**, per document, for every line in `items[]`:
 
-Updated to the new names, no structural change: `MedicineTable.tsx`,
-`medicines/page.tsx`, `adminOrders.ts`'s `currentBoxPrices` (now reads
-`wholesaleBoxPricePaisa`), `buyerOrders.ts`, `Order.ts`, `OrderEditor.tsx`,
-`PendingOrders.tsx`, `BuyerBrowse.tsx`, `BuyerOrderList.tsx`. Buyer-facing
-ordering stays wholesale-box-only in this spec — pata ordering is the
-follow-up spec.
+```
+items[].wholesaleBoxPricePaisa  = items[].boxPricePaisa            // rename
+items[].wholesalePataPricePaisa = 0   // no wholesale pata rate existed when these orders were placed
+```
+
+Then `$unset` `items[].boxPricePaisa`. Every order (any status) is
+migrated, not just pending ones, so historical orders keep reading
+correctly under the renamed field. A pata rate of `0` for pre-migration
+orders is honest: no such rate existed when they were placed, and any
+`patas` already on those lines were being billed as free (see Problem #5)
+— this migration does not retroactively invent a charge for them.
+
+Run once, by hand, against the live Atlas database as part of shipping
+this change — not an app-startup migration.
 
 ## Data flow
 
@@ -185,6 +252,14 @@ strip of a medicine with `retailBoxPricePaisa: 55000`,
 `retailPataPricePaisa: 5800`. Line total = `2 * 55000 + 1 * 5800 = 115800`
 paisa.
 
+**Buyer order with loose patas:** a wholesale buyer browses the catalog,
+sees a medicine at `wholesaleBoxPricePaisa: 50000` /
+`wholesalePataPricePaisa: 5200`, and orders 4 boxes + 6 patas. The order
+line snapshots both rates; the owner opens the order to approve it, sees
+"4 box, 6 pata" with a pata quantity input pre-filled from the order (not
+0), and the preview and resulting sale both total
+`4 * 50000 + 6 * 5200 = 231200` paisa.
+
 ## Error handling
 
 | Condition | Result |
@@ -194,6 +269,8 @@ paisa.
 | `purchasePricePaisa` omitted | Defaults to `0`, same as MRP today |
 | `form === "other"` | Box/pata rate pairs forced equal at the form layer, same as today |
 | Retail sale line with `boxes: 0, patas: 0` | Rejected — same zero-quantity-line guard retail already has |
+| Buyer order line with `boxes: 0, patas: 0` | Rejected — same guard `validateItems` already has in `buyerOrders.ts` |
+| One-click approve on an order containing a custom (non-catalog) item | Blocked, same as today — `PendingOrders.tsx` still redirects to the edit screen for pricing |
 
 ## Testing
 
@@ -206,11 +283,16 @@ paisa.
   wholesale rates directly (no proration); custom items unchanged
 - `sales.test.ts` — `recordRetailSale` with boxes-only, patas-only, and
   mixed lines, each priced from the two khuchra rates
-- `Order.test.ts`, `adminOrders`/`buyerOrders` tests — renamed field
-  references updated, no behavior change asserted
-- Migration script — dry-run against a copy of representative data,
-  verifying the rename/derive/default math above before running against
-  live Atlas
+- `buyerOrders.test.ts` — `submitOrder` snapshots both wholesale rates onto
+  a line; `submitShortlist` sets both to 0; `searchMedicinesForBuyer`
+  returns `wholesalePataPricePaisa` and still omits both khuchra rates
+- `adminOrders.test.ts` — `currentWholesalePrices` returns both rates;
+  `approveOrder` bills a line's patas at `wholesalePataPricePaisa`, not 0
+  or a prorated box fraction
+- `Order.test.ts` — schema accepts `wholesalePataPricePaisa`
+- Migration script — dry-run against a copy of representative data
+  (`medicines` and `orders` collections), verifying the rename/derive/
+  default math above before running against live Atlas
 
 ## Verification
 
@@ -218,7 +300,11 @@ Checked in a browser before this is called done: add a new medicine with
 all 5 rates filled in and confirm it saves; edit an existing (migrated)
 medicine and confirm the derived wholesale-pata and khuchra-box rates
 appear as expected starting values; run a mixed wholesale sale (boxes +
-loose patas) and check the invoice total against the two-rate formula by
-hand; run a retail sale with both a box line and a pata line and check the
-same; confirm an "other"-form medicine (e.g. a syrup) still shows one rate
-input per channel.
+loose patas) from the admin wholesale form and check the invoice total
+against the two-rate formula by hand; run a retail sale with both a box
+line and a pata line and check the same; confirm an "other"-form medicine
+(e.g. a syrup) still shows one rate input per channel; as a buyer, browse
+the catalog and order a medicine with both boxes and loose patas, then as
+the owner open that order for approval and confirm the patas show up
+(not silently dropped) and price correctly, both via the edit screen and
+via one-click approve on a patas-only catalog order.
