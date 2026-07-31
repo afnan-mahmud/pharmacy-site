@@ -21,10 +21,16 @@ export type MedicineInput = {
   // which is what every medicine created before this field existed is.
   form?: MedicineForm;
   patasPerBox: number;
-  boxPricePaisa: number;
-  pataPricePaisa: number;
+  // Optional; omitted or 0 means "not entered yet" — no historical cost
+  // data exists for medicines created before this field existed.
+  purchasePricePaisa?: number;
+  wholesaleBoxPricePaisa: number;
+  wholesalePataPricePaisa: number;
+  retailBoxPricePaisa: number;
+  retailPataPricePaisa: number;
   // Optional list price (MRP) per box for the struck-through display; omitted
-  // or 0 means no MRP. When present it must sit at or above boxPricePaisa.
+  // or 0 means no MRP. When present it must sit at or above
+  // wholesaleBoxPricePaisa.
   mrpBoxPricePaisa?: number;
   lowStockThreshold: number;
 };
@@ -88,16 +94,20 @@ function validate(input: MedicineInput): void {
   ) {
     throw new Error("patasPerBox must be at least 1");
   }
-  validateNonNegativeInteger(input.boxPricePaisa, "boxPricePaisa");
-  validateNonNegativeInteger(input.pataPricePaisa, "pataPricePaisa");
+  validateNonNegativeInteger(input.wholesaleBoxPricePaisa, "wholesaleBoxPricePaisa");
+  validateNonNegativeInteger(input.wholesalePataPricePaisa, "wholesalePataPricePaisa");
+  validateNonNegativeInteger(input.retailBoxPricePaisa, "retailBoxPricePaisa");
+  validateNonNegativeInteger(input.retailPataPricePaisa, "retailPataPricePaisa");
+  const purchasePricePaisa = input.purchasePricePaisa ?? 0;
+  validateNonNegativeInteger(purchasePricePaisa, "purchasePricePaisa");
   const mrp = input.mrpBoxPricePaisa ?? 0;
   validateNonNegativeInteger(mrp, "mrpBoxPricePaisa");
   validateNonNegativeInteger(input.lowStockThreshold, "lowStockThreshold");
 
   // MRP is the struck-through "was" price, so it must sit above the selling
-  // box price — an MRP below it would show a negative discount. 0 is the
-  // "no MRP" sentinel and is always allowed.
-  if (mrp > 0 && mrp < input.boxPricePaisa) {
+  // wholesale box price — an MRP below it would show a negative discount. 0
+  // is the "no MRP" sentinel and is always allowed.
+  if (mrp > 0 && mrp < input.wholesaleBoxPricePaisa) {
     throw new Error("MRP pack rate er cheye kom hote parbe na");
   }
 }
@@ -111,8 +121,11 @@ function toFields(input: MedicineInput) {
     company: toOptionalString(input.company, "company").trim(),
     form: toMedicineForm(input.form),
     patasPerBox: input.patasPerBox,
-    boxPricePaisa: input.boxPricePaisa,
-    pataPricePaisa: input.pataPricePaisa,
+    purchasePricePaisa: input.purchasePricePaisa ?? 0,
+    wholesaleBoxPricePaisa: input.wholesaleBoxPricePaisa,
+    wholesalePataPricePaisa: input.wholesalePataPricePaisa,
+    retailBoxPricePaisa: input.retailBoxPricePaisa,
+    retailPataPricePaisa: input.retailPataPricePaisa,
     mrpBoxPricePaisa: input.mrpBoxPricePaisa ?? 0,
     lowStockThreshold: input.lowStockThreshold,
   };

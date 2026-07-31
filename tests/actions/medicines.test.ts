@@ -35,8 +35,11 @@ const napa = {
   genericName: "Paracetamol",
   company: "Beximco",
   patasPerBox: 10,
-  boxPricePaisa: 12000,
-  pataPricePaisa: 1400,
+  purchasePricePaisa: 9000,
+  wholesaleBoxPricePaisa: 12000,
+  wholesalePataPricePaisa: 1300,
+  retailBoxPricePaisa: 13000,
+  retailPataPricePaisa: 1400,
   lowStockThreshold: 20,
 };
 
@@ -48,10 +51,19 @@ describe("createMedicine", () => {
     expect(medicine.active).toBe(true);
   });
 
-  it("stores both the box rate and the pata rate", async () => {
+  it("stores all four channel rates and the purchase rate", async () => {
     const medicine = await unwrap(createMedicine(napa));
-    expect(medicine.boxPricePaisa).toBe(12000);
-    expect(medicine.pataPricePaisa).toBe(1400);
+    expect(medicine.purchasePricePaisa).toBe(9000);
+    expect(medicine.wholesaleBoxPricePaisa).toBe(12000);
+    expect(medicine.wholesalePataPricePaisa).toBe(1300);
+    expect(medicine.retailBoxPricePaisa).toBe(13000);
+    expect(medicine.retailPataPricePaisa).toBe(1400);
+  });
+
+  it("defaults purchasePricePaisa to 0 when omitted", async () => {
+    const { purchasePricePaisa, ...rest } = napa;
+    const medicine = await unwrap(createMedicine(rest as unknown as typeof napa));
+    expect(medicine.purchasePricePaisa).toBe(0);
   });
 
   it("rejects an empty name", async () => {
@@ -78,28 +90,43 @@ describe("createMedicine", () => {
     );
   });
 
-  it("rejects negative prices", async () => {
+  it.each([
+    "wholesaleBoxPricePaisa",
+    "wholesalePataPricePaisa",
+    "retailBoxPricePaisa",
+    "retailPataPricePaisa",
+  ] as const)("rejects a negative %s", async (field) => {
     await expect(
-      unwrap(createMedicine({ ...napa, boxPricePaisa: -1 })),
+      unwrap(createMedicine({ ...napa, [field]: -1 })),
     ).rejects.toThrow("cannot be negative");
   });
 
-  it("rejects a non-integer price", async () => {
+  it.each([
+    "wholesaleBoxPricePaisa",
+    "wholesalePataPricePaisa",
+    "retailBoxPricePaisa",
+    "retailPataPricePaisa",
+  ] as const)("rejects a non-integer %s", async (field) => {
     await expect(
-      unwrap(createMedicine({ ...napa, boxPricePaisa: 100.5 })),
+      unwrap(createMedicine({ ...napa, [field]: 100.5 })),
     ).rejects.toThrow("whole number");
   });
 
-  it("rejects a NaN price", async () => {
+  it.each([
+    "wholesaleBoxPricePaisa",
+    "wholesalePataPricePaisa",
+    "retailBoxPricePaisa",
+    "retailPataPricePaisa",
+  ] as const)("rejects a NaN %s", async (field) => {
     await expect(
-      unwrap(createMedicine({ ...napa, pataPricePaisa: NaN })),
+      unwrap(createMedicine({ ...napa, [field]: NaN })),
     ).rejects.toThrow("whole number");
   });
 
-  it("rejects an Infinity price", async () => {
+  it("rejects a negative purchasePricePaisa when provided", async () => {
     await expect(
-      unwrap(createMedicine({ ...napa, boxPricePaisa: Infinity })),
-    ).rejects.toThrow("whole number");
+      unwrap(createMedicine({ ...napa, purchasePricePaisa: -1 })),
+    ).rejects.toThrow("cannot be negative");
   });
 
   it("rejects a non-integer lowStockThreshold", async () => {
@@ -141,6 +168,22 @@ describe("createMedicine", () => {
     }));
     expect(medicine.genericName).toBe("");
     expect(medicine.company).toBe("");
+  });
+
+  it("accepts an MRP at or above the wholesale box rate", async () => {
+    const medicine = await unwrap(createMedicine({ ...napa, mrpBoxPricePaisa: 12000 }));
+    expect(medicine.mrpBoxPricePaisa).toBe(12000);
+  });
+
+  it("rejects an MRP below the wholesale box rate", async () => {
+    await expect(
+      unwrap(createMedicine({ ...napa, mrpBoxPricePaisa: 11000 })),
+    ).rejects.toThrow("MRP pack rate er cheye kom hote parbe na");
+  });
+
+  it("allows 0 as the no-MRP sentinel regardless of the wholesale box rate", async () => {
+    const medicine = await unwrap(createMedicine({ ...napa, mrpBoxPricePaisa: 0 }));
+    expect(medicine.mrpBoxPricePaisa).toBe(0);
   });
 });
 
@@ -228,9 +271,9 @@ describe("updateMedicine", () => {
     const medicine = await unwrap(createMedicine(napa));
     const updated = await unwrap(updateMedicine(String(medicine._id), {
       ...napa,
-      boxPricePaisa: 13000,
+      wholesaleBoxPricePaisa: 13000,
     }));
-    expect(updated.boxPricePaisa).toBe(13000);
+    expect(updated.wholesaleBoxPricePaisa).toBe(13000);
   });
 
   it("does not touch stock", async () => {
@@ -257,7 +300,7 @@ describe("updateMedicine", () => {
   it("rejects invalid input, same as createMedicine", async () => {
     const medicine = await unwrap(createMedicine(napa));
     await expect(
-      unwrap(updateMedicine(String(medicine._id), { ...napa, boxPricePaisa: -1 })),
+      unwrap(updateMedicine(String(medicine._id), { ...napa, wholesaleBoxPricePaisa: -1 })),
     ).rejects.toThrow("cannot be negative");
   });
 });
