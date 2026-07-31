@@ -90,32 +90,3 @@ export function computeTotals(
     duePaisa: totalPaisa - paidPaisa,
   };
 }
-
-/**
- * Prices a wholesale line that may include a partial box (e.g. 10 boxes + 3
- * loose patas) as a single figure, rather than pricing the box portion and
- * the leftover patas separately.
- *
- * The leftover patas are priced as a fair fraction of the box rate — not the
- * separate (and usually higher) retail per-pata rate — so a buyer taking 10
- * boxes and 3 patas pays the same per-unit price on all 103 patas. Rounding
- * happens once, over the whole line's total patas, rather than rounding a
- * per-pata rate first and multiplying: that keeps a whole-box portion's
- * contribution exact and puts all the rounding error — at most half a paisa
- * either way — on the leftover patas alone.
- */
-export function wholesaleLineTotal(
-  totalPatas: number,
-  boxPricePaisa: number,
-  patasPerBox: number,
-): number {
-  assertWholeNonNegative(totalPatas, "totalPatas");
-  assertWholeNonNegative(boxPricePaisa, "boxPricePaisa");
-  if (!Number.isInteger(patasPerBox) || patasPerBox < 1) {
-    throw new Error("patasPerBox must be at least 1");
-  }
-  // toFixed(4) before rounding for the same reason computeTotals's discount
-  // math does it: binary floating point renders some exact products as
-  // x.99999…, which a bare Math.round would take down to the wrong paisa.
-  return Math.round(Number(((totalPatas * boxPricePaisa) / patasPerBox).toFixed(4)));
-}
