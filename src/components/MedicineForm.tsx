@@ -27,8 +27,11 @@ export type MedicineFormValues = {
   company: string;
   form: DosageForm;
   patasPerBox: number;
-  boxPricePaisa: number;
-  pataPricePaisa: number;
+  purchasePricePaisa: number;
+  wholesaleBoxPricePaisa: number;
+  wholesalePataPricePaisa: number;
+  retailBoxPricePaisa: number;
+  retailPataPricePaisa: number;
   mrpBoxPricePaisa: number;
   lowStockThreshold: number;
 };
@@ -50,11 +53,20 @@ export function MedicineForm({
   const [patasPerBox, setPatasPerBox] = useState(
     String(initial?.patasPerBox ?? 10),
   );
-  const [boxPrice, setBoxPrice] = useState(
-    initial ? String(paisaToTaka(initial.boxPricePaisa)) : "",
+  const [purchasePrice, setPurchasePrice] = useState(
+    initial?.purchasePricePaisa ? String(paisaToTaka(initial.purchasePricePaisa)) : "",
   );
-  const [pataPrice, setPataPrice] = useState(
-    initial ? String(paisaToTaka(initial.pataPricePaisa)) : "",
+  const [wholesaleBoxPrice, setWholesaleBoxPrice] = useState(
+    initial ? String(paisaToTaka(initial.wholesaleBoxPricePaisa)) : "",
+  );
+  const [wholesalePataPrice, setWholesalePataPrice] = useState(
+    initial ? String(paisaToTaka(initial.wholesalePataPricePaisa)) : "",
+  );
+  const [retailBoxPrice, setRetailBoxPrice] = useState(
+    initial ? String(paisaToTaka(initial.retailBoxPricePaisa)) : "",
+  );
+  const [retailPataPrice, setRetailPataPrice] = useState(
+    initial ? String(paisaToTaka(initial.retailPataPricePaisa)) : "",
   );
   const [mrp, setMrp] = useState(
     initial?.mrpBoxPricePaisa ? String(paisaToTaka(initial.mrpBoxPricePaisa)) : "",
@@ -89,15 +101,22 @@ export function MedicineForm({
     setError("");
 
     try {
-      const pataPricePaisa = takaToPaisa(pataPrice || 0);
+      const wholesalePataPricePaisa = takaToPaisa(wholesalePataPrice || 0);
+      const retailPataPricePaisa = takaToPaisa(retailPataPrice || 0);
       const medicineInput = {
         name,
         genericName,
         company,
         form,
         patasPerBox: isOther ? 1 : Number(patasPerBox),
-        boxPricePaisa: isOther ? pataPricePaisa : takaToPaisa(boxPrice || 0),
-        pataPricePaisa,
+        purchasePricePaisa: takaToPaisa(purchasePrice || 0),
+        // "other" has no outer pack, so each channel's box rate collapses to
+        // its own pata rate (1 box === 1 piece) — same rule the pack-size field
+        // above already follows.
+        wholesaleBoxPricePaisa: isOther ? wholesalePataPricePaisa : takaToPaisa(wholesaleBoxPrice || 0),
+        wholesalePataPricePaisa,
+        retailBoxPricePaisa: isOther ? retailPataPricePaisa : takaToPaisa(retailBoxPrice || 0),
+        retailPataPricePaisa,
         mrpBoxPricePaisa: takaToPaisa(mrp || 0),
         lowStockThreshold: Number(threshold),
       };
@@ -183,35 +202,51 @@ export function MedicineForm({
               onChange={(e) => setPatasPerBox(e.target.value)} required />
           </div>
         )}
-        {!isOther && (
-          <div className="space-y-1.5">
-            <label htmlFor="boxPrice" className={labelCls}>
-              {capitalize(labels.outer)} rate (৳) — wholesale
-            </label>
-            <input id="boxPrice" type="number" step="0.01" min={0} className={input}
-              value={boxPrice} onChange={(e) => setBoxPrice(e.target.value)} required />
+        <div className="space-y-1.5">
+          <label htmlFor="purchasePrice" className={labelCls}>
+            Purchase rate (৳) — per {isOther ? labels.inner : labels.outer}
+          </label>
+          <input id="purchasePrice" type="number" step="0.01" min={0} className={input}
+            value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)}
+            placeholder="Kena dam" />
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <p className={labelCls}>Wholesale rate</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {!isOther && (
+              <input id="wholesaleBoxPrice" type="number" step="0.01" min={0} className={input}
+                value={wholesaleBoxPrice} onChange={(e) => setWholesaleBoxPrice(e.target.value)}
+                placeholder={`${capitalize(labels.outer)} rate (৳)`} required />
+            )}
+            <input id="wholesalePataPrice" type="number" step="0.01" min={0} className={input}
+              value={wholesalePataPrice} onChange={(e) => setWholesalePataPrice(e.target.value)}
+              placeholder={`${capitalize(isOther ? labels.inner : labels.inner)} rate (৳)`} required />
           </div>
-        )}
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <p className={labelCls}>Khuchra rate</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {!isOther && (
+              <input id="retailBoxPrice" type="number" step="0.01" min={0} className={input}
+                value={retailBoxPrice} onChange={(e) => setRetailBoxPrice(e.target.value)}
+                placeholder={`${capitalize(labels.outer)} rate (৳)`} required />
+            )}
+            <input id="retailPataPrice" type="number" step="0.01" min={0} className={input}
+              value={retailPataPrice} onChange={(e) => setRetailPataPrice(e.target.value)}
+              placeholder={`${capitalize(labels.inner)} rate (৳)`} required />
+          </div>
+        </div>
         <div className="space-y-1.5">
           <label htmlFor="mrp" className={labelCls}>
             MRP {labels.outer} rate (৳) — optional
           </label>
           <input id="mrp" type="number" step="0.01" min={0} className={input}
             value={mrp} onChange={(e) => setMrp(e.target.value)} placeholder="Kata dam dekhate hole" />
-          {/* Explicit {" "}: relying on JSX's whitespace handling between an
-              expression and the text after it rendered "Cartonrate" here. */}
           <p className="text-xs text-muted">
             {capitalize(labels.outer)}{" "}
-            rate er cheye beshi dile buyer &ldquo;kata dam&rdquo; ar discount
+            wholesale rate er cheye beshi dile buyer &ldquo;kata dam&rdquo; ar discount
             dekhbe.
           </p>
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor="pataPrice" className={labelCls}>
-            {capitalize(labels.inner)} rate (৳) — khuchra
-          </label>
-          <input id="pataPrice" type="number" step="0.01" min={0} className={input}
-            value={pataPrice} onChange={(e) => setPataPrice(e.target.value)} required />
         </div>
         <div className="space-y-1.5">
           <label htmlFor="threshold" className={labelCls}>
