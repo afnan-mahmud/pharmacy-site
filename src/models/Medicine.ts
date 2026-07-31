@@ -20,11 +20,25 @@ const medicineSchema = new Schema(
       default: "tablet",
     },
     patasPerBox: { type: Number, required: true, min: 1 },
-    boxPricePaisa: { type: Number, required: true, min: 0 },
-    pataPricePaisa: { type: Number, required: true, min: 0 },
+    // Purchasing/cost rate, per box. Never shown to a buyer or a retail
+    // customer — this is the pharmacy's own cost basis, kept only so margin
+    // can eventually be computed. 0 means "not entered yet".
+    purchasePricePaisa: { type: Number, required: true, default: 0, min: 0 },
+    // Wholesale channel: what a wholesale buyer (the buyer portal, the
+    // WholesaleSaleForm) pays. Two independent rates — a box rate and a
+    // per-pata rate for loose quantities — not one rate prorated into the
+    // other. See src/lib/writeWholesaleSale.ts.
+    wholesaleBoxPricePaisa: { type: Number, required: true, min: 0 },
+    wholesalePataPricePaisa: { type: Number, required: true, min: 0 },
+    // Khuchra (retail) channel: what a walk-in counter customer pays. Same
+    // two-rate shape as wholesale, independent of it. See recordRetailSale
+    // in src/actions/sales.ts.
+    retailBoxPricePaisa: { type: Number, required: true, min: 0 },
+    retailPataPricePaisa: { type: Number, required: true, min: 0 },
     // Optional list price (MRP) per box, for the struck-through "was" price
-    // and a discount badge. 0 means no MRP — nothing struck through. When set,
-    // it is kept at or above boxPricePaisa (a discount, not a markup).
+    // and a discount badge. 0 means no MRP — nothing struck through. When
+    // set, it is kept at or above wholesaleBoxPricePaisa (a discount, not a
+    // markup) — see the validation in src/actions/medicines.ts.
     mrpBoxPricePaisa: { type: Number, required: true, default: 0, min: 0 },
     // Canonical stock. Always patas, never boxes. May be negative — a sale can
     // outrun what is on hand; see src/lib/stockTransaction.ts. See src/lib/units.ts.
