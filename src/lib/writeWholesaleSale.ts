@@ -1,7 +1,7 @@
 import mongoose, { type ClientSession } from "mongoose";
 import { boxesToPatas } from "@/lib/units";
 import { applyStockDelta } from "@/lib/stockTransaction";
-import { computeTotals, wholesaleLineTotal } from "@/lib/saleTotals";
+import { computeTotals } from "@/lib/saleTotals";
 import { nextInvoiceSeq, formatInvoiceNo } from "@/lib/invoiceNumber";
 import { MedicineModel } from "@/models/Medicine";
 import { SettingsModel } from "@/models/Settings";
@@ -83,8 +83,10 @@ export async function writeWholesaleSale(
         unit: "box" as const,
         quantity: item.boxes,
         leftoverPatas,
-        ratePaisa: medicine.boxPricePaisa,
-        lineTotalPaisa: wholesaleLineTotal(totalPatas, medicine.boxPricePaisa, medicine.patasPerBox),
+        ratePaisa: medicine.wholesaleBoxPricePaisa,
+        lineTotalPaisa:
+          item.boxes * medicine.wholesaleBoxPricePaisa +
+          leftoverPatas * medicine.wholesalePataPricePaisa,
         patasDeducted: totalPatas,
       });
     } else {
