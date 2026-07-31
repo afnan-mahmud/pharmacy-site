@@ -58,8 +58,11 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
             company: m.company,
             form: toMedicineForm(m.form),
             patasPerBox: m.patasPerBox,
-            boxPricePaisa: m.boxPricePaisa,
-            pataPricePaisa: m.pataPricePaisa,
+            purchasePricePaisa: m.purchasePricePaisa ?? 0,
+            wholesaleBoxPricePaisa: m.wholesaleBoxPricePaisa,
+            wholesalePataPricePaisa: m.wholesalePataPricePaisa,
+            retailBoxPricePaisa: m.retailBoxPricePaisa,
+            retailPataPricePaisa: m.retailPataPricePaisa,
             mrpBoxPricePaisa: m.mrpBoxPricePaisa ?? 0,
             lowStockThreshold: m.lowStockThreshold,
             stockPatas: m.stockPatas,
@@ -235,7 +238,7 @@ function DesktopRows({
             <th className={th}>Nam</th>
             <th className={th}>Company</th>
             <th className={th}>Pack</th>
-            <th className={th}>Pack rate</th>
+            <th className={th}>Wholesale Rate</th>
             <th className={th}>Khuchra rate</th>
             <th className={th}>Stock</th>
             <th className={th}>Obostha</th>
@@ -256,10 +259,10 @@ function DesktopRows({
                 {row.patasPerBox} {unitLabelsFor(row.form).inner} / {unitLabelsFor(row.form).outer}
               </td>
               <td className={`${td} font-medium text-ink`}>
-                {formatTaka(row.boxPricePaisa)}
+                {formatTaka(row.wholesaleBoxPricePaisa)}
               </td>
               <td className={`${td} font-medium text-ink`}>
-                {formatTaka(row.pataPricePaisa)} / {unitLabelsFor(row.form).inner}
+                {formatTaka(row.retailPataPricePaisa)} / {unitLabelsFor(row.form).inner}
               </td>
               <td className={td}>
                 {formatStock(row.stockPatas, row.patasPerBox, row.form)}
@@ -302,12 +305,12 @@ function MobileCards({
           
           <div className="mt-3 flex items-center justify-between rounded-lg bg-canvas p-2 text-xs">
             <div>
-              <div className="text-muted">Pack Rate</div>
-              <div className="font-semibold text-ink">{formatTaka(row.boxPricePaisa)}</div>
+              <div className="text-muted">Wholesale Rate</div>
+              <div className="font-semibold text-ink">{formatTaka(row.wholesaleBoxPricePaisa)}</div>
             </div>
             <div>
               <div className="text-muted">Khuchra Rate</div>
-              <div className="font-semibold text-ink">{formatTaka(row.pataPricePaisa)}</div>
+              <div className="font-semibold text-ink">{formatTaka(row.retailPataPricePaisa)}</div>
             </div>
           </div>
           
