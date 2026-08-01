@@ -32,19 +32,20 @@ export async function listPendingOrders(): Promise<Serialized<OrderDoc>[]> {
 }
 
 /**
- * The current box price of each given medicine, keyed by medicine id.
+ * The current wholesale box and pata rate of each given medicine, keyed by
+ * medicine id.
  *
- * An order snapshots the price the buyer saw, but approval bills at the
- * medicine's *current* price (see approveOrder → writeWholesaleSale). The
+ * An order snapshots the rates the buyer saw, but approval bills at the
+ * medicine's *current* rates (see approveOrder → writeWholesaleSale). The
  * pending-orders screen shows this map so its preview total matches the
  * invoice the owner is about to create — a snapshot-priced preview would
- * quietly disagree with the sale whenever a price changed since the order.
+ * quietly disagree with the sale whenever a rate changed since the order.
  * A medicine that no longer exists or is deactivated is simply absent; the
- * caller falls back to the order's snapshot for display.
+ * caller falls back to the order's own snapshot for display.
  */
-export async function currentBoxPrices(
+export async function currentWholesalePrices(
   medicineIds: string[],
-): Promise<Record<string, number>> {
+): Promise<Record<string, { boxPricePaisa: number; pataPricePaisa: number }>> {
   await requireAdminAction();
   await connectDb();
 
@@ -58,11 +59,14 @@ export async function currentBoxPrices(
     _id: { $in: validIds },
     active: true,
   })
-    .select("boxPricePaisa")
-    .lean<{ _id: mongoose.Types.ObjectId; boxPricePaisa: number }[]>();
+    .select("wholesaleBoxPricePaisa wholesalePataPricePaisa")
+    .lean<{ _id: mongoose.Types.ObjectId; wholesaleBoxPricePaisa: number; wholesalePataPricePaisa: number }[]>();
 
   return Object.fromEntries(
-    medicines.map((m) => [m._id.toString(), m.boxPricePaisa]),
+    medicines.map((m) => [
+      m._id.toString(),
+      { boxPricePaisa: m.wholesaleBoxPricePaisa, pataPricePaisa: m.wholesalePataPricePaisa },
+    ]),
   );
 }
 

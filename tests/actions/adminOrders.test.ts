@@ -15,7 +15,7 @@ import {
   getOrderForAdmin,
   approveOrder,
   rejectOrder,
-  currentBoxPrices,
+  currentWholesalePrices,
 } from "@/actions/adminOrders";
 import { BuyerModel } from "@/models/Buyer";
 import { MedicineModel } from "@/models/Medicine";
@@ -49,8 +49,11 @@ async function makeMedicine(overrides = {}, stockPatas = 500) {
     genericName: "Paracetamol",
     company: "Beximco",
     patasPerBox: 10,
-    boxPricePaisa: 12000,
-    pataPricePaisa: 1400,
+    purchasePricePaisa: 9000,
+    wholesaleBoxPricePaisa: 12000,
+    wholesalePataPricePaisa: 1300,
+    retailBoxPricePaisa: 13000,
+    retailPataPricePaisa: 1400,
     stockPatas,
     lowStockThreshold: 20,
     active: true,
@@ -61,8 +64,9 @@ async function makeMedicine(overrides = {}, stockPatas = 500) {
 
 async function makeOrder(
   buyerId: mongoose.Types.ObjectId,
-  medicine: { _id: mongoose.Types.ObjectId; name: string; boxPricePaisa: number },
+  medicine: { _id: mongoose.Types.ObjectId; name: string; wholesaleBoxPricePaisa: number; wholesalePataPricePaisa: number },
   boxes = 3,
+  patas = 0,
 ) {
   return OrderModel.create({
     buyerId,
@@ -73,7 +77,9 @@ async function makeOrder(
         medicineId: medicine._id,
         medicineName: medicine.name,
         boxes,
-        boxPricePaisa: medicine.boxPricePaisa,
+        patas,
+        wholesaleBoxPricePaisa: medicine.wholesaleBoxPricePaisa,
+        wholesalePataPricePaisa: medicine.wholesalePataPricePaisa,
       },
     ],
     status: "pending",
@@ -84,21 +90,24 @@ beforeEach(async () => {
   setSessionCookie(cookieStore, await adminToken());
 });
 
-describe("currentBoxPrices", () => {
-  it("returns each medicine's current box price, not any snapshot", async () => {
+describe("currentWholesalePrices", () => {
+  it("returns each medicine's current wholesale box and pata rate, not any snapshot", async () => {
     const a = await makeMedicine();
-    const b = await makeMedicine({ name: "Ace", boxPricePaisa: 5000 });
-    // Raise A's price after it was made — the current price is what matters.
-    await MedicineModel.updateOne({ _id: a._id }, { $set: { boxPricePaisa: 13000 } });
+    const b = await makeMedicine({ name: "Ace", wholesaleBoxPricePaisa: 5000, wholesalePataPricePaisa: 550 });
+    // Raise A's rates after it was made — the current rate is what matters.
+    await MedicineModel.updateOne(
+      { _id: a._id },
+      { $set: { wholesaleBoxPricePaisa: 13000, wholesalePataPricePaisa: 1350 } },
+    );
 
-    const prices = await currentBoxPrices([String(a._id), String(b._id)]);
-    expect(prices[String(a._id)]).toBe(13000);
-    expect(prices[String(b._id)]).toBe(5000);
+    const prices = await currentWholesalePrices([String(a._id), String(b._id)]);
+    expect(prices[String(a._id)]).toEqual({ boxPricePaisa: 13000, pataPricePaisa: 1350 });
+    expect(prices[String(b._id)]).toEqual({ boxPricePaisa: 5000, pataPricePaisa: 550 });
   });
 
   it("omits a deactivated or unknown medicine so the caller falls back to the snapshot", async () => {
     const gone = await makeMedicine({ active: false });
-    const prices = await currentBoxPrices([
+    const prices = await currentWholesalePrices([
       String(gone._id),
       "507f1f77bcf86cd799439011",
       "not-an-id",
@@ -108,7 +117,7 @@ describe("currentBoxPrices", () => {
 
   it("rejects a buyer caller", async () => {
     setSessionCookie(cookieStore, await buyerToken());
-    await expect(currentBoxPrices([])).rejects.toThrow(ADMIN_ONLY_ERROR);
+    await expect(currentWholesalePrices([])).rejects.toThrow(ADMIN_ONLY_ERROR);
   });
 });
 
@@ -276,8 +285,8 @@ describe("zero-quantity approval lines", () => {
   /** An order for two medicines, so one can be zeroed and one supplied. */
   async function makeTwoItemOrder(
     buyerId: mongoose.Types.ObjectId,
-    supplied: { _id: mongoose.Types.ObjectId; name: string; boxPricePaisa: number },
-    outOfStock: { _id: mongoose.Types.ObjectId; name: string; boxPricePaisa: number },
+    supplied: { _id: mongoose.Types.ObjectId; name: string; wholesaleBoxPricePaisa: number; wholesalePataPricePaisa: number },
+    outOfStock: { _id: mongoose.Types.ObjectId; name: string; wholesaleBoxPricePaisa: number; wholesalePataPricePaisa: number },
   ) {
     return OrderModel.create({
       buyerId,
@@ -288,13 +297,15 @@ describe("zero-quantity approval lines", () => {
           medicineId: supplied._id,
           medicineName: supplied.name,
           boxes: 3,
-          boxPricePaisa: supplied.boxPricePaisa,
+          wholesaleBoxPricePaisa: supplied.wholesaleBoxPricePaisa,
+          wholesalePataPricePaisa: supplied.wholesalePataPricePaisa,
         },
         {
           medicineId: outOfStock._id,
           medicineName: outOfStock.name,
           boxes: 10,
-          boxPricePaisa: outOfStock.boxPricePaisa,
+          wholesaleBoxPricePaisa: outOfStock.wholesaleBoxPricePaisa,
+          wholesalePataPricePaisa: outOfStock.wholesalePataPricePaisa,
         },
       ],
       status: "pending",
