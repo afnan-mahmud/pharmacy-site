@@ -23,6 +23,20 @@ type EditingItem = {
   isAdded: boolean;
 };
 
+/**
+ * A line's billable total, mirroring writeWholesaleSale's actual rule
+ * (src/lib/writeWholesaleSale.ts): a custom item is box-only — its
+ * customPricePaisa is charged as boxes * customPricePaisa, with no patas
+ * leg, even if the line carries a buyer-submitted `patas` count. Catalog
+ * items bill both legs. Used at every place in this file that previously
+ * inlined `boxPricePaisa * boxes + pataPricePaisa * patas`, so the preview
+ * can't drift from what approval will actually invoice.
+ */
+function itemTotal(item: EditingItem): number {
+  if (!item.medicineId) return item.boxPricePaisa * item.boxes;
+  return item.boxPricePaisa * item.boxes + item.pataPricePaisa * item.patas;
+}
+
 export function OrderEditor({
   order,
   currentPrices,
@@ -178,9 +192,7 @@ export function OrderEditor({
     }
   };
 
-  const subtotalPaisa = items.reduce((sum, item) => {
-    return sum + item.boxPricePaisa * item.boxes + item.pataPricePaisa * item.patas;
-  }, 0);
+  const subtotalPaisa = items.reduce((sum, item) => sum + itemTotal(item), 0);
 
   const discountPercent = parseFloat(discountPercentStr) || 0;
   const discountPaisa = Math.round(subtotalPaisa * (discountPercent / 100));
@@ -246,7 +258,13 @@ export function OrderEditor({
                           className="w-full max-w-[100px] rounded-lg border border-line px-2 py-1.5 text-sm focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
                         />
                       </div>
-                   ) : (
+                   ) : null}
+                   {isCustom && item.patas > 0 && (
+                     <p className="mt-1 text-[11px] text-muted leading-snug">
+                       Buyer {item.patas} pata-o cheyechilo, kintu custom item shudhu {labels.outer} rate-e bill hobe.
+                     </p>
+                   )}
+                   {!isCustom && (
                      <div className="text-sm font-semibold">
                        {formatTaka(item.boxPricePaisa)}<span className="text-xs text-muted font-normal">/{labels.outer}</span>
                        {" · "}
@@ -296,7 +314,7 @@ export function OrderEditor({
 
                <div className="mt-3 flex justify-between items-center bg-canvas -mx-4 -mb-4 px-4 py-2 border-t border-line/50">
                   <div className="text-xs font-semibold text-brand-strong">
-                    Total: {formatTaka(item.boxPricePaisa * item.boxes + item.pataPricePaisa * item.patas)}
+                    Total: {formatTaka(itemTotal(item))}
                   </div>
                   {item.isAdded && (
                     <button onClick={() => setItems(prev => prev.filter(i => i.id !== item.id))} className="text-xs text-danger font-medium hover:underline">

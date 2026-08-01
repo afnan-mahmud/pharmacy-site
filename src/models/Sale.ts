@@ -24,8 +24,10 @@ const saleLineSchema = new Schema(
     patasDeducted: { type: Number, required: true, min: 0 },
     // Leftover patas sold alongside `quantity` boxes on a wholesale line (e.g.
     // 10 boxes + 3 patas). Always 0 for a retail line and for a wholesale line
-    // that is whole boxes only. See wholesaleLineTotal in src/lib/saleTotals.ts
-    // for how this and `quantity` together produce lineTotalPaisa.
+    // that is whole boxes only. See writeWholesaleSale in
+    // src/lib/writeWholesaleSale.ts for how this and `quantity` together
+    // produce lineTotalPaisa (quantity * wholesaleBoxPricePaisa +
+    // leftoverPatas * wholesalePataPricePaisa).
     leftoverPatas: { type: Number, required: true, default: 0, min: 0 },
     // Which unit words this line prints with, snapshotted for the same reason
     // medicineName and ratePaisa are: an invoice printed last month must not

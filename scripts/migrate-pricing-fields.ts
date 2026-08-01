@@ -4,6 +4,12 @@
  * purchasePricePaisa, wholesaleBoxPricePaisa, wholesalePataPricePaisa,
  * retailBoxPricePaisa, retailPataPricePaisa.
  *
+ * DEPLOY ORDER: this script MUST be run against the Atlas database BEFORE
+ * this branch's code is deployed. The app code only reads/writes the new
+ * five-field shape — against un-migrated (old two-field) documents, medicine
+ * prices render/compute as NaN, medicine forms fail validation, and sales
+ * and orders fail to save. There is no fallback path for the old shape.
+ *
  * medicines: boxPricePaisa -> wholesaleBoxPricePaisa (rename, same value)
  *            pataPricePaisa -> retailPataPricePaisa (rename, same value)
  *            wholesalePataPricePaisa = round(boxPricePaisa / patasPerBox)

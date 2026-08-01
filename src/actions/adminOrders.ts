@@ -37,9 +37,12 @@ export async function listPendingOrders(): Promise<Serialized<OrderDoc>[]> {
  *
  * An order snapshots the rates the buyer saw, but approval bills at the
  * medicine's *current* rates (see approveOrder → writeWholesaleSale). The
- * pending-orders screen shows this map so its preview total matches the
- * invoice the owner is about to create — a snapshot-priced preview would
- * quietly disagree with the sale whenever a rate changed since the order.
+ * order-edit screen (OrderEditor.tsx) shows this map so its preview total
+ * matches the invoice the owner is about to create — a snapshot-priced
+ * preview would quietly disagree with the sale whenever a rate changed
+ * since the order. The one-click pending-orders list (PendingOrders.tsx)
+ * does not call this: it still previews from the order's own snapshot,
+ * which can be stale relative to the current rate.
  * A medicine that no longer exists or is deactivated is simply absent; the
  * caller falls back to the order's own snapshot for display.
  */

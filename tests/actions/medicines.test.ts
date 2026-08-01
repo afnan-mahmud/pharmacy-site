@@ -117,6 +117,17 @@ describe("createMedicine", () => {
     "wholesalePataPricePaisa",
     "retailBoxPricePaisa",
     "retailPataPricePaisa",
+  ] as const)("rejects an Infinity %s", async (field) => {
+    await expect(
+      unwrap(createMedicine({ ...napa, [field]: Infinity })),
+    ).rejects.toThrow("whole number");
+  });
+
+  it.each([
+    "wholesaleBoxPricePaisa",
+    "wholesalePataPricePaisa",
+    "retailBoxPricePaisa",
+    "retailPataPricePaisa",
   ] as const)("rejects a NaN %s", async (field) => {
     await expect(
       unwrap(createMedicine({ ...napa, [field]: NaN })),
