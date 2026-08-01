@@ -35,10 +35,11 @@ export type BuyerMedicineOption = {
   company: string;
   category: string;
   // Which unit words to show. Not sensitive: it is neither the stock count
-  // nor the retail price.
+  // nor a khuchra (retail) price.
   form: MedicineForm;
   patasPerBox: number;
-  boxPricePaisa: number;
+  wholesaleBoxPricePaisa: number;
+  wholesalePataPricePaisa: number;
   // The struck-through list price, or 0 for none. Never the internal cost.
   mrpBoxPricePaisa: number;
   // A three-way availability signal, never the exact stock count.
@@ -77,7 +78,7 @@ export async function searchMedicinesForBuyer(
   // exact count stays on the server; the buyer sees "in / low / out" only.
   const docs = await MedicineModel.find(findFilter)
     .select(
-      "name company category form patasPerBox boxPricePaisa mrpBoxPricePaisa stockPatas lowStockThreshold",
+      "name company category form patasPerBox wholesaleBoxPricePaisa wholesalePataPricePaisa mrpBoxPricePaisa stockPatas lowStockThreshold",
     )
     .sort({ name: 1 })
     .limit(500)
@@ -89,7 +90,8 @@ export async function searchMedicinesForBuyer(
         category?: string;
         form?: string;
         patasPerBox: number;
-        boxPricePaisa: number;
+        wholesaleBoxPricePaisa: number;
+        wholesalePataPricePaisa: number;
         mrpBoxPricePaisa: number;
         stockPatas: number;
         lowStockThreshold: number;
@@ -103,7 +105,8 @@ export async function searchMedicinesForBuyer(
     category: m.category ?? "",
     form: toMedicineForm(m.form),
     patasPerBox: m.patasPerBox,
-    boxPricePaisa: m.boxPricePaisa,
+    wholesaleBoxPricePaisa: m.wholesaleBoxPricePaisa,
+    wholesalePataPricePaisa: m.wholesalePataPricePaisa,
     mrpBoxPricePaisa: m.mrpBoxPricePaisa ?? 0,
     availability: stockStatus(m.stockPatas, m.lowStockThreshold),
   }));
@@ -171,8 +174,9 @@ export async function submitOrder(
         form: medicine.form,
         boxes: item.boxes,
         patas: item.patas,
-        // Snapshot the box price the buyer is ordering at.
-        boxPricePaisa: medicine.boxPricePaisa,
+        // Snapshot both wholesale rates the buyer is ordering at.
+        wholesaleBoxPricePaisa: medicine.wholesaleBoxPricePaisa,
+        wholesalePataPricePaisa: medicine.wholesalePataPricePaisa,
       });
     }
 
@@ -324,7 +328,8 @@ export async function submitShortlist(
         form: "custom",
         boxes: item.boxes,
         patas: item.patas,
-        boxPricePaisa: 0,
+        wholesaleBoxPricePaisa: 0,
+        wholesalePataPricePaisa: 0,
       });
     }
 

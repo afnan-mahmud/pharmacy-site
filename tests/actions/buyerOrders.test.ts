@@ -56,8 +56,11 @@ async function makeMedicine(overrides = {}) {
     genericName: "Paracetamol",
     company: "Beximco",
     patasPerBox: 10,
-    boxPricePaisa: 12000,
-    pataPricePaisa: 1400,
+    purchasePricePaisa: 9000,
+    wholesaleBoxPricePaisa: 12000,
+    wholesalePataPricePaisa: 1300,
+    retailBoxPricePaisa: 13000,
+    retailPataPricePaisa: 1400,
     stockPatas: 500,
     lowStockThreshold: 20,
     active: true,
@@ -79,7 +82,7 @@ describe("submitOrder", () => {
     });
 
     const order = await unwrap(submitOrder([
-      { medicineId: String(syrup._id), boxes: 2 },
+      { medicineId: String(syrup._id), boxes: 2, patas: 0 },
     ]));
 
     expect(order.items[0].form).toBe("syrup");
@@ -95,31 +98,46 @@ describe("submitOrder", () => {
     );
 
     const order = await unwrap(submitOrder([
-      { medicineId: String(medicine._id), boxes: 1 },
+      { medicineId: String(medicine._id), boxes: 1, patas: 0 },
     ]));
 
     expect(order.items[0].form).toBe("tablet");
   });
 
-  it("creates a pending order snapshotting the box price", async () => {
+  it("creates a pending order snapshotting both wholesale rates", async () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine();
 
     const order = await unwrap(submitOrder([
-      { medicineId: String(medicine._id), boxes: 3 },
+      { medicineId: String(medicine._id), boxes: 3, patas: 0 },
     ]));
 
     expect(order.status).toBe("pending");
     expect(order.items[0].medicineName).toBe("Napa 500mg");
-    expect(order.items[0].boxPricePaisa).toBe(12000);
+    expect(order.items[0].wholesaleBoxPricePaisa).toBe(12000);
+    expect(order.items[0].wholesalePataPricePaisa).toBe(1300);
     expect(order.items[0].boxes).toBe(3);
     expect(order.buyerName).toBe("Karim Uddin");
+  });
+
+  it("bills a loose-patas order line from the wholesale pata rate, not the box rate", async () => {
+    await makeSessionBuyer();
+    const medicine = await makeMedicine();
+
+    const order = await unwrap(submitOrder([
+      { medicineId: String(medicine._id), boxes: 1, patas: 4 },
+    ]));
+
+    expect(order.items[0].boxes).toBe(1);
+    expect(order.items[0].patas).toBe(4);
+    expect(order.items[0].wholesaleBoxPricePaisa).toBe(12000);
+    expect(order.items[0].wholesalePataPricePaisa).toBe(1300);
   });
 
   it("does not change stock (approval does that, not ordering)", async () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine();
-    await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 3 }]));
+    await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 3, patas: 0 }]));
     const after = await MedicineModel.findById(medicine._id);
     expect(after!.stockPatas).toBe(500);
   });
@@ -129,15 +147,23 @@ describe("submitOrder", () => {
     await expect(unwrap(submitOrder([]))).rejects.toThrow("Cart khali");
   });
 
-  it("rejects a zero or fractional box count", async () => {
+  it("rejects a line where both boxes and patas are zero", async () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine();
     await expect(
-      unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 0 }])),
-    ).rejects.toThrow("Poriman 1 er kom hote parbe na");
+      unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 0, patas: 0 }])),
+    ).rejects.toThrow("Ontoto ekta box ba pata order korte hobe");
+  });
+
+  it("rejects a fractional box or patas count", async () => {
+    await makeSessionBuyer();
+    const medicine = await makeMedicine();
     await expect(
-      unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1.5 }])),
-    ).rejects.toThrow("Poriman 1 er kom hote parbe na");
+      unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1.5, patas: 0 }])),
+    ).rejects.toThrow("Box er poriman thik nai");
+    await expect(
+      unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 0, patas: 1.5 }])),
+    ).rejects.toThrow("Pata er poriman thik nai");
   });
 
   it("rejects the same medicine twice in one order", async () => {
@@ -145,8 +171,8 @@ describe("submitOrder", () => {
     const medicine = await makeMedicine();
     await expect(
       unwrap(submitOrder([
-        { medicineId: String(medicine._id), boxes: 1 },
-        { medicineId: String(medicine._id), boxes: 2 },
+        { medicineId: String(medicine._id), boxes: 1, patas: 0 },
+        { medicineId: String(medicine._id), boxes: 2, patas: 0 },
       ])),
     ).rejects.toThrow("ekbar er beshi");
   });
@@ -154,10 +180,10 @@ describe("submitOrder", () => {
   it("rejects an unknown or malformed medicine", async () => {
     await makeSessionBuyer();
     await expect(
-      unwrap(submitOrder([{ medicineId: "not-an-id", boxes: 1 }])),
+      unwrap(submitOrder([{ medicineId: "not-an-id", boxes: 1, patas: 0 }])),
     ).rejects.toThrow("Medicine pawa jay ni");
     await expect(
-      unwrap(submitOrder([{ medicineId: "507f1f77bcf86cd799439011", boxes: 1 }])),
+      unwrap(submitOrder([{ medicineId: "507f1f77bcf86cd799439011", boxes: 1, patas: 0 }])),
     ).rejects.toThrow("Medicine pawa jay ni");
   });
 
@@ -165,7 +191,7 @@ describe("submitOrder", () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine({ active: false });
     await expect(
-      unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1 }])),
+      unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1, patas: 0 }])),
     ).rejects.toThrow("Medicine pawa jay ni");
   });
 
@@ -173,7 +199,7 @@ describe("submitOrder", () => {
     await makeSessionBuyer({ active: false });
     const medicine = await makeMedicine();
     await expect(
-      unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1 }])),
+      unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1, patas: 0 }])),
     ).rejects.toThrow("Apnar account bondho ache");
   });
 
@@ -192,15 +218,15 @@ describe("listMyOrders", () => {
   it("returns only the session buyer's orders, newest first", async () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine();
-    await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1 }]));
-    await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 2 }]));
+    await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1, patas: 0 }]));
+    await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 2, patas: 0 }]));
 
     // Another buyer's order must not appear.
     const other = new mongoose.Types.ObjectId();
     await OrderModel.create({
       buyerId: other,
       buyerName: "Onno keu",
-      items: [{ medicineId: medicine._id, medicineName: "Napa", boxes: 5, boxPricePaisa: 12000 }],
+      items: [{ medicineId: medicine._id, medicineName: "Napa", boxes: 5, wholesaleBoxPricePaisa: 12000, wholesalePataPricePaisa: 1300 }],
     });
 
     const orders = await listMyOrders();
@@ -214,7 +240,7 @@ describe("getMyOrder — ownership", () => {
   it("returns the buyer's own order", async () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine();
-    const created = await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1 }]));
+    const created = await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1, patas: 0 }]));
     const fetched = await getMyOrder(created._id);
     expect(fetched!._id).toBe(created._id);
   });
@@ -226,7 +252,7 @@ describe("getMyOrder — ownership", () => {
     const foreign = await OrderModel.create({
       buyerId: other,
       buyerName: "Onno keu",
-      items: [{ medicineId: medicine._id, medicineName: "Napa", boxes: 5, boxPricePaisa: 12000 }],
+      items: [{ medicineId: medicine._id, medicineName: "Napa", boxes: 5, wholesaleBoxPricePaisa: 12000, wholesalePataPricePaisa: 1300 }],
     });
     expect(await getMyOrder(String(foreign._id))).toBeNull();
   });
@@ -241,7 +267,7 @@ describe("cancelMyOrder — ownership and status", () => {
   it("cancels the buyer's own pending order", async () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine();
-    const order = await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1 }]));
+    const order = await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1, patas: 0 }]));
     await unwrap(cancelMyOrder(order._id));
     const after = await OrderModel.findById(order._id);
     expect(after!.status).toBe("cancelled");
@@ -254,7 +280,7 @@ describe("cancelMyOrder — ownership and status", () => {
     const foreign = await OrderModel.create({
       buyerId: other,
       buyerName: "Onno keu",
-      items: [{ medicineId: medicine._id, medicineName: "Napa", boxes: 5, boxPricePaisa: 12000 }],
+      items: [{ medicineId: medicine._id, medicineName: "Napa", boxes: 5, wholesaleBoxPricePaisa: 12000, wholesalePataPricePaisa: 1300 }],
     });
     await expect(unwrap(cancelMyOrder(String(foreign._id)))).rejects.toThrow(
       "Order pawa jay ni",
@@ -266,7 +292,7 @@ describe("cancelMyOrder — ownership and status", () => {
   it("refuses to cancel an order that is no longer pending", async () => {
     await makeSessionBuyer();
     const medicine = await makeMedicine();
-    const order = await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1 }]));
+    const order = await unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1, patas: 0 }]));
     await OrderModel.updateOne({ _id: order._id }, { $set: { status: "approved" } });
     await expect(unwrap(cancelMyOrder(order._id))).rejects.toThrow(
       "Ei order ar cancel kora jabe na",
@@ -341,20 +367,7 @@ describe("myDueBalance and myLedger — buyer-scoped reads", () => {
 });
 
 describe("searchMedicinesForBuyer", () => {
-  it("returns the medicine form, and still no stock count or retail price", async () => {
-    await makeSessionBuyer();
-    await makeMedicine({ name: "Napa Syrup", form: "syrup", patasPerBox: 12 });
-
-    const [found] = await searchMedicinesForBuyer("Napa Syrup");
-
-    expect(found.form).toBe("syrup");
-    // The domain rule this endpoint exists to enforce: a buyer never sees
-    // the raw stock count or the retail price. A form name is neither.
-    expect(found).not.toHaveProperty("stockPatas");
-    expect(found).not.toHaveProperty("pataPricePaisa");
-  });
-
-  it("returns the buyer-safe fields — availability, never the raw stock or pata price", async () => {
+  it("returns the buyer-safe fields — availability, never the raw stock or khuchra price", async () => {
     await makeSessionBuyer();
     await makeMedicine({ name: "Napa 500mg", mrpBoxPricePaisa: 15000 });
 
@@ -364,26 +377,34 @@ describe("searchMedicinesForBuyer", () => {
       id: expect.any(String),
       name: "Napa 500mg",
       company: "Beximco",
+      category: "",
       form: "tablet",
-      boxPricePaisa: 12000,
+      patasPerBox: 10,
+      wholesaleBoxPricePaisa: 12000,
+      wholesalePataPricePaisa: 1300,
       mrpBoxPricePaisa: 15000,
       // 500 patas, threshold 20 -> comfortably in stock, as a signal only.
       availability: "in",
     });
-    // Structural guarantee: neither the exact stock count nor the pata/retail
-    // price leaks onto the object at all, only the three-way availability.
+    // Structural guarantee: the exact stock count and both khuchra (retail)
+    // rates never leak onto this object — only the two wholesale rates a
+    // wholesale buyer is meant to see, plus the three-way availability.
     const keys = Object.keys(results[0]).sort();
     expect(keys).not.toContain("stockPatas");
-    expect(keys).not.toContain("pataPricePaisa");
+    expect(keys).not.toContain("retailBoxPricePaisa");
+    expect(keys).not.toContain("retailPataPricePaisa");
     expect(keys).not.toContain("lowStockThreshold");
     expect(keys).toEqual([
       "availability",
-      "boxPricePaisa",
+      "category",
       "company",
       "form",
       "id",
       "mrpBoxPricePaisa",
       "name",
+      "patasPerBox",
+      "wholesaleBoxPricePaisa",
+      "wholesalePataPricePaisa",
     ]);
   });
 
