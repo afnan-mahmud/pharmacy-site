@@ -55,23 +55,54 @@ async function migrateMedicines(db: mongoose.mongo.Db) {
 
 async function migrateOrders(db: mongoose.mongo.Db) {
   const collection = db.collection("orders");
-  const cursor = collection.find({ "items.boxPricePaisa": { $exists: true } });
 
-  let count = 0;
-  for await (const doc of cursor) {
-    const items = (doc.items as Record<string, unknown>[]).map((item) => {
-      if (!("boxPricePaisa" in item)) return item;
-      const { boxPricePaisa, ...rest } = item;
-      return {
-        ...rest,
-        wholesaleBoxPricePaisa: boxPricePaisa,
-        wholesalePataPricePaisa: (item.wholesalePataPricePaisa as number | undefined) ?? 0,
-      };
-    });
-    await collection.updateOne({ _id: doc._id }, { $set: { items } });
-    count++;
-  }
-  console.log(`orders: migrated ${count} document(s).`);
+  // Aggregation-pipeline update (server-side, per-document atomic — MongoDB
+  // 4.2+): the transform of `items[]` runs entirely inside the update, so
+  // there is no read-into-JS / write-back-whole-array window in which a
+  // concurrent write to this document could be silently clobbered. Only
+  // array elements that still carry `boxPricePaisa` are touched; the rest
+  // pass through via $$item unchanged.
+  const result = await collection.updateMany(
+    { "items.boxPricePaisa": { $exists: true } },
+    [
+      {
+        $set: {
+          items: {
+            $map: {
+              input: "$items",
+              as: "item",
+              in: {
+                $cond: [
+                  { $eq: [{ $type: "$$item.boxPricePaisa" }, "missing"] },
+                  "$$item",
+                  {
+                    $mergeObjects: [
+                      {
+                        $arrayToObject: {
+                          $filter: {
+                            input: { $objectToArray: "$$item" },
+                            as: "kv",
+                            cond: { $ne: ["$$kv.k", "boxPricePaisa"] },
+                          },
+                        },
+                      },
+                      {
+                        wholesaleBoxPricePaisa: "$$item.boxPricePaisa",
+                        wholesalePataPricePaisa: {
+                          $ifNull: ["$$item.wholesalePataPricePaisa", 0],
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    ],
+  );
+  console.log(`orders: migrated ${result.modifiedCount} document(s).`);
 }
 
 async function main() {
