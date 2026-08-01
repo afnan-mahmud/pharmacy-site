@@ -49,6 +49,7 @@ export function PendingOrders({
       const approvalItems = order.items.map(item => ({
         medicineId: item.medicineId || undefined,
         boxes: item.boxes,
+        patas: item.patas,
       }));
 
       const res = await approveOrder(order._id, approvalItems);
@@ -97,7 +98,8 @@ export function PendingOrders({
       {orders.map((order) => {
         // Calculate the total based on the requested boxes and snapshot price
         const totalPaisa = order.items.reduce(
-          (sum, item) => sum + item.boxPricePaisa * item.boxes,
+          (sum, item) =>
+            sum + item.boxes * item.wholesaleBoxPricePaisa + item.patas * item.wholesalePataPricePaisa,
           0
         );
 
@@ -130,9 +132,12 @@ export function PendingOrders({
                         </td>
                         <td className="py-2 px-3 text-right font-medium text-ink whitespace-nowrap">
                           {item.boxes} {unitLabelsFor(item.form).outer}
+                          {item.patas > 0 && ` ${item.patas} ${unitLabelsFor(item.form).inner}`}
                         </td>
                         <td className="py-2 px-3 text-right text-muted whitespace-nowrap">
-                          {item.medicineId ? formatTaka(item.boxes * item.boxPricePaisa) : "Pending"}
+                          {item.medicineId
+                            ? formatTaka(item.boxes * item.wholesaleBoxPricePaisa + item.patas * item.wholesalePataPricePaisa)
+                            : "Pending"}
                         </td>
                       </tr>
                     ))}
