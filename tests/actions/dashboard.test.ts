@@ -83,8 +83,11 @@ async function makeMedicine(overrides: Record<string, unknown> = {}) {
     genericName: "Paracetamol",
     company: "Beximco",
     patasPerBox: 10,
-    boxPricePaisa: 12000,
-    pataPricePaisa: 1400,
+    purchasePricePaisa: 9000,
+    wholesaleBoxPricePaisa: 12000,
+    wholesalePataPricePaisa: 1300,
+    retailBoxPricePaisa: 13000,
+    retailPataPricePaisa: 1400,
     stockPatas: 500,
     lowStockThreshold: 20,
     active: true,
@@ -96,7 +99,7 @@ async function makePendingOrder() {
   return OrderModel.create({
     buyerId: new mongoose.Types.ObjectId(),
     buyerName: "Karim",
-    items: [{ medicineId: MEDICINE_ID, medicineName: "Napa", boxes: 1, boxPricePaisa: 12000 }],
+    items: [{ medicineId: MEDICINE_ID, medicineName: "Napa", boxes: 1, wholesaleBoxPricePaisa: 12000, wholesalePataPricePaisa: 1300 }],
     status: "pending",
   });
 }
