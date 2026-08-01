@@ -18,6 +18,7 @@ type EditingItem = {
   boxes: number;
   patas: number;
   boxPricePaisa: number;
+  pataPricePaisa: number;
   form: string;
   isAdded: boolean;
 };
@@ -27,7 +28,7 @@ export function OrderEditor({
   currentPrices,
 }: {
   order: PendingOrderRow;
-  currentPrices: Record<string, number>;
+  currentPrices: Record<string, { boxPricePaisa: number; pataPricePaisa: number }>;
 }) {
   const router = useRouter();
 
@@ -36,14 +37,18 @@ export function OrderEditor({
     return order.items.map((i) => {
       const isCustom = !i.medicineId;
       const id = isCustom ? `custom_req_${customCounter++}` : String(i.medicineId);
+      const current = i.medicineId ? currentPrices[String(i.medicineId)] : undefined;
       return {
         id,
         medicineId: i.medicineId ? String(i.medicineId) : undefined,
         customName: isCustom ? i.medicineName : undefined,
         medicineName: i.medicineName,
         boxes: i.boxes,
-        patas: 0,
-        boxPricePaisa: (i.medicineId && currentPrices[String(i.medicineId)]) ?? i.boxPricePaisa,
+        // Was hardcoded to 0 here, silently dropping whatever the buyer
+        // actually ordered — now carries the order's own patas through.
+        patas: i.patas,
+        boxPricePaisa: current?.boxPricePaisa ?? i.wholesaleBoxPricePaisa,
+        pataPricePaisa: current?.pataPricePaisa ?? i.wholesalePataPricePaisa,
         form: i.form,
         isAdded: false,
       };
@@ -69,6 +74,7 @@ export function OrderEditor({
 
   const addMedicine = (medicine: PickedMedicine) => {
     if (items.some((i) => i.medicineId === medicine.id)) return;
+    const current = currentPrices[medicine.id];
     setItems((prev) => [
       ...prev,
       {
@@ -77,7 +83,8 @@ export function OrderEditor({
         medicineName: medicine.name,
         boxes: 1,
         patas: 0,
-        boxPricePaisa: currentPrices[medicine.id] ?? medicine.boxPricePaisa,
+        boxPricePaisa: current?.boxPricePaisa ?? medicine.wholesaleBoxPricePaisa,
+        pataPricePaisa: current?.pataPricePaisa ?? medicine.wholesalePataPricePaisa,
         form: medicine.form,
         isAdded: true,
       },
@@ -95,6 +102,7 @@ export function OrderEditor({
       alert("Thikmoto dam din");
       return;
     }
+    const pricePaisa = Math.round(takaToPaisa(parsedPrice));
     setItems((prev) => [
       ...prev,
       {
@@ -103,7 +111,8 @@ export function OrderEditor({
         medicineName: customName.trim(),
         boxes: customBoxes,
         patas: 0,
-        boxPricePaisa: Math.round(takaToPaisa(parsedPrice)),
+        boxPricePaisa: pricePaisa,
+        pataPricePaisa: pricePaisa,
         form: "other",
         isAdded: true,
       },
@@ -170,8 +179,7 @@ export function OrderEditor({
   };
 
   const subtotalPaisa = items.reduce((sum, item) => {
-    // Treat patas as 0 here since it's unhandled by UI
-    return sum + item.boxPricePaisa * item.boxes;
+    return sum + item.boxPricePaisa * item.boxes + item.pataPricePaisa * item.patas;
   }, 0);
 
   const discountPercent = parseFloat(discountPercentStr) || 0;
@@ -222,21 +230,28 @@ export function OrderEditor({
                <div className="mt-3 flex flex-wrap gap-4 items-center justify-between border-t border-line/50 pt-3">
                  
                  {/* Price Section */}
-                 <div className="flex-1 min-w-[120px]">
+                 <div className="flex-1 min-w-[140px]">
                    <label className="block text-xs font-semibold text-muted mb-1">Rate</label>
                    {isCustom ? (
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium">৳</span>
-                        <input 
-                          type="number" 
+                        <input
+                          type="number"
                           placeholder="Price"
                           value={item.boxPricePaisa > 0 ? (item.boxPricePaisa / 100).toString() : ""}
-                          onChange={(e) => updateItem(item.id, { boxPricePaisa: Math.round(takaToPaisa(parseFloat(e.target.value) || 0)) })}
+                          onChange={(e) => {
+                            const pricePaisa = Math.round(takaToPaisa(parseFloat(e.target.value) || 0));
+                            updateItem(item.id, { boxPricePaisa: pricePaisa, pataPricePaisa: pricePaisa });
+                          }}
                           className="w-full max-w-[100px] rounded-lg border border-line px-2 py-1.5 text-sm focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
                         />
                       </div>
                    ) : (
-                     <div className="text-sm font-semibold">{formatTaka(item.boxPricePaisa)} <span className="text-xs text-muted font-normal">/{labels.outer}</span></div>
+                     <div className="text-sm font-semibold">
+                       {formatTaka(item.boxPricePaisa)}<span className="text-xs text-muted font-normal">/{labels.outer}</span>
+                       {" · "}
+                       {formatTaka(item.pataPricePaisa)}<span className="text-xs text-muted font-normal">/{labels.inner}</span>
+                     </div>
                    )}
                  </div>
 
@@ -264,11 +279,25 @@ export function OrderEditor({
                       </button>
                     </div>
                     <span className="text-xs font-medium text-muted w-10">{labels.outer}</span>
+                    {!isCustom && (
+                      <>
+                        <input
+                          type="number"
+                          min={0}
+                          value={item.patas}
+                          onChange={(e) => updateItem(item.id, { patas: parseQuantityInput(e.target.value, 0) })}
+                          className="w-12 rounded-full border border-line bg-canvas text-center text-sm font-bold outline-none"
+                        />
+                        <span className="text-xs font-medium text-muted w-10">{labels.inner}</span>
+                      </>
+                    )}
                  </div>
                </div>
 
                <div className="mt-3 flex justify-between items-center bg-canvas -mx-4 -mb-4 px-4 py-2 border-t border-line/50">
-                  <div className="text-xs font-semibold text-brand-strong">Total: {formatTaka(item.boxPricePaisa * item.boxes)}</div>
+                  <div className="text-xs font-semibold text-brand-strong">
+                    Total: {formatTaka(item.boxPricePaisa * item.boxes + item.pataPricePaisa * item.patas)}
+                  </div>
                   {item.isAdded && (
                     <button onClick={() => setItems(prev => prev.filter(i => i.id !== item.id))} className="text-xs text-danger font-medium hover:underline">
                       Remove

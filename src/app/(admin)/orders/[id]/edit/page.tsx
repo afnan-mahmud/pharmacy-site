@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getOrderForAdmin, currentBoxPrices } from "@/actions/adminOrders";
+import { getOrderForAdmin, currentWholesalePrices } from "@/actions/adminOrders";
 import { OrderEditor } from "@/components/OrderEditor";
 
 export default async function EditOrderPage({
@@ -23,7 +23,7 @@ export default async function EditOrderPage({
     ),
   ];
   
-  const priceMap = await currentBoxPrices(uniqueMedicineIds);
+  const priceMap = await currentWholesalePrices(uniqueMedicineIds);
 
   return <OrderEditor order={order} currentPrices={priceMap} />;
 }
