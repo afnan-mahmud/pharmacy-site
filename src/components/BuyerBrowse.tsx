@@ -9,7 +9,6 @@ import {
   type BuyerMedicineOption,
 } from "@/actions/buyerOrders";
 import { formatTaka } from "@/lib/money";
-import { wholesaleLineTotal } from "@/lib/saleTotals";
 import { unitLabelsFor } from "@/lib/unitLabels";
 import { stockStatusLabel, type StockStatus } from "@/lib/stockStatus";
 
@@ -72,7 +71,10 @@ export function BuyerBrowse() {
   }
 
   const total = cart.reduce(
-    (sum, l) => sum + wholesaleLineTotal(l.boxes * l.medicine.patasPerBox + l.patas, l.medicine.boxPricePaisa, l.medicine.patasPerBox),
+    (sum, l) =>
+      sum +
+      l.boxes * l.medicine.wholesaleBoxPricePaisa +
+      l.patas * l.medicine.wholesalePataPricePaisa,
     0,
   );
   const inCart = new Set(cart.map((l) => l.medicine.id));
@@ -276,7 +278,7 @@ function ProductTableRow({
           {formatTaka(medicine.mrpBoxPricePaisa)}
         </span>
         <span className="text-[13px] font-extrabold text-ink mt-0.5">
-          {formatTaka(medicine.boxPricePaisa)}
+          {formatTaka(medicine.wholesaleBoxPricePaisa)}
         </span>
       </div>
 
