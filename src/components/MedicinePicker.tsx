@@ -12,8 +12,10 @@ export type PickedMedicine = {
   genericName: string;
   form: MedicineForm;
   patasPerBox: number;
-  boxPricePaisa: number;
-  pataPricePaisa: number;
+  wholesaleBoxPricePaisa: number;
+  wholesalePataPricePaisa: number;
+  retailBoxPricePaisa: number;
+  retailPataPricePaisa: number;
   stockPatas: number;
 };
 
@@ -49,8 +51,10 @@ export function MedicinePicker({
             genericName: m.genericName,
             form: toMedicineForm(m.form),
             patasPerBox: m.patasPerBox,
-            boxPricePaisa: m.boxPricePaisa,
-            pataPricePaisa: m.pataPricePaisa,
+            wholesaleBoxPricePaisa: m.wholesaleBoxPricePaisa,
+            wholesalePataPricePaisa: m.wholesalePataPricePaisa,
+            retailBoxPricePaisa: m.retailBoxPricePaisa,
+            retailPataPricePaisa: m.retailPataPricePaisa,
             stockPatas: m.stockPatas,
           })),
         );
