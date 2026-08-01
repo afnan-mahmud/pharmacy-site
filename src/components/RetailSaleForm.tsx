@@ -10,6 +10,7 @@ import { parseQuantityInput } from "@/lib/quantityInput";
 
 type CartLine = {
   medicine: PickedMedicine;
+  boxes: number;
   patas: number;
 };
 
@@ -26,7 +27,10 @@ export function RetailSaleForm() {
   const [done, setDone] = useState<string | null>(null);
 
   const totalPaisa = cart.reduce(
-    (sum, line) => sum + line.medicine.pataPricePaisa * line.patas,
+    (sum, line) =>
+      sum +
+      line.boxes * line.medicine.retailBoxPricePaisa +
+      line.patas * line.medicine.retailPataPricePaisa,
     0,
   );
 
@@ -64,7 +68,14 @@ export function RetailSaleForm() {
     // Don't allow a duplicate line — see the "one medicine once" rule.
     if (cart.some((l) => l.medicine.id === medicine.id)) return;
     setDone(null);
-    setCart((prev) => [...prev, { medicine, patas: 1 }]);
+    setCart((prev) => [...prev, { medicine, boxes: 0, patas: 1 }]);
+  }
+
+  function updateBoxes(idx: number, raw: string) {
+    const boxes = parseQuantityInput(raw, 0);
+    setCart((prev) =>
+      prev.map((line, i) => (i === idx ? { ...line, boxes } : line)),
+    );
   }
 
   // Allowed to be 0: if a product is out of stock but requested, it can be zeroed.
@@ -94,7 +105,7 @@ export function RetailSaleForm() {
 
     try {
       const result = await recordRetailSale({
-        items: cart.map((l) => ({ medicineId: l.medicine.id, patas: l.patas })),
+        items: cart.map((l) => ({ medicineId: l.medicine.id, boxes: l.boxes, patas: l.patas })),
         customerName,
         customerPhone,
       });
@@ -197,25 +208,38 @@ export function RetailSaleForm() {
                     <div className="text-xs font-medium text-muted mt-0.5">{line.medicine.genericName}</div>
                   </td>
                   <td className={tdCls}>
-                    {formatTaka(line.medicine.pataPricePaisa)}/
-                    {unitLabelsFor(line.medicine.form).inner}
+                    <div className="text-xs">
+                      <div>{formatTaka(line.medicine.retailBoxPricePaisa)}/{unitLabelsFor(line.medicine.form).outer}</div>
+                      <div>{formatTaka(line.medicine.retailPataPricePaisa)}/{unitLabelsFor(line.medicine.form).inner}</div>
+                    </div>
                   </td>
                   <td className={tdCls}>
-                    <div className="flex items-center">
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min={0}
+                        value={line.boxes}
+                        onChange={(e) => updateBoxes(idx, e.target.value)}
+                        className="w-16 rounded-xl border border-line px-2 py-1.5 text-sm focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition"
+                      />
+                      <span className="text-xs font-medium text-muted">{unitLabelsFor(line.medicine.form).outer}</span>
                       <input
                         type="number"
                         min={0}
                         value={line.patas}
                         onChange={(e) => updatePatas(idx, e.target.value)}
-                        className="w-20 rounded-xl border border-line px-2 py-1.5 text-sm focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition"
+                        className="w-16 rounded-xl border border-line px-2 py-1.5 text-sm focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none transition"
                       />
-                      <span className="ml-2 text-xs font-medium text-muted">
-                        {unitLabelsFor(line.medicine.form).inner} <br/>(stock: {line.medicine.stockPatas})
+                      <span className="text-xs font-medium text-muted">
+                        {unitLabelsFor(line.medicine.form).inner} (stock: {line.medicine.stockPatas})
                       </span>
                     </div>
                   </td>
                   <td className={`${tdCls} text-right font-bold text-ink`}>
-                    {formatTaka(line.medicine.pataPricePaisa * line.patas)}
+                    {formatTaka(
+                      line.boxes * line.medicine.retailBoxPricePaisa +
+                        line.patas * line.medicine.retailPataPricePaisa,
+                    )}
                   </td>
                   <td className={tdCls}>
                     <button
