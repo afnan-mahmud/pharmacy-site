@@ -5,7 +5,8 @@ import { revalidatePath } from "next/cache";
 import { connectDb } from "@/lib/db";
 import { requireAdminAction } from "@/lib/session";
 import { applyStockDelta } from "@/lib/stockTransaction";
-import { computeTotals, lineTotal } from "@/lib/saleTotals";
+import { boxesToPatas } from "@/lib/units";
+import { computeTotals } from "@/lib/saleTotals";
 import { toPlain, type Serialized } from "@/lib/serialize";
 import { writeWholesaleSale } from "@/lib/writeWholesaleSale";
 import { MedicineModel } from "@/models/Medicine";
@@ -14,7 +15,7 @@ import { BuyerModel } from "@/models/Buyer";
 import { actionResult, type ActionResult } from "@/lib/actionResult";
 
 export type RetailSaleInput = {
-  items: { medicineId: string; patas: number }[];
+  items: { medicineId: string; boxes: number; patas: number }[];
   /** Required. A counter sale must say who it was to. */
   customerName: string;
   /** Optional — the customer may decline to give one. */
@@ -57,10 +58,20 @@ function validateRetail(input: RetailSaleInput): void {
       throw new Error("Medicine pawa jay ni");
     }
     if (
+      typeof item.boxes !== "number" ||
+      !Number.isInteger(item.boxes) ||
+      item.boxes < 0
+    ) {
+      throw new Error("Poriman 0 er kom hote parbe na");
+    }
+    if (
       typeof item.patas !== "number" ||
       !Number.isInteger(item.patas) ||
       item.patas < 0
     ) {
+      throw new Error("Poriman 0 er kom hote parbe na");
+    }
+    if (item.boxes === 0 && item.patas === 0) {
       throw new Error("Poriman 0 er kom hote parbe na");
     }
     // Two lines for one medicine would each pass their own stock check and
@@ -101,21 +112,38 @@ export async function recordRetailSale(
           // now only fail if the medicine vanished between the findById
           // above and here, which is already effectively unreachable inside
           // one transaction; the check stays as a defensive fallback.
-          const ok = await applyStockDelta(medicine._id, -item.patas, session);
-          if (!ok) throw new Error("Medicine pawa jay ni");
+          const totalPatas =
+            boxesToPatas(item.boxes, medicine.patasPerBox) + item.patas;
+          if (totalPatas > 0) {
+            const ok = await applyStockDelta(
+              medicine._id,
+              -totalPatas,
+              session,
+            );
+            if (!ok) throw new Error("Medicine pawa jay ni");
+          }
+
+          const lineTotalPaisa =
+            item.boxes * medicine.retailBoxPricePaisa +
+            item.patas * medicine.retailPataPricePaisa;
 
           lines.push({
             medicineId: medicine._id,
             medicineName: medicine.name,
             form: medicine.form,
-            unit: "pata" as const,
-            quantity: item.patas,
-            ratePaisa: medicine.pataPricePaisa,
-            lineTotalPaisa: lineTotal({
-              ratePaisa: medicine.pataPricePaisa,
-              quantity: item.patas,
-            }),
-            patasDeducted: item.patas,
+            // A retail line that includes any boxes is priced (and printed)
+            // like a wholesale box line; a pure-patas line keeps its
+            // historical "pata" unit — same convention writeWholesaleSale
+            // already uses.
+            unit: item.boxes > 0 ? ("box" as const) : ("pata" as const),
+            quantity: item.boxes > 0 ? item.boxes : item.patas,
+            leftoverPatas: item.boxes > 0 ? item.patas : 0,
+            ratePaisa:
+              item.boxes > 0
+                ? medicine.retailBoxPricePaisa
+                : medicine.retailPataPricePaisa,
+            lineTotalPaisa,
+            patasDeducted: totalPatas,
           });
         }
 
@@ -123,8 +151,13 @@ export async function recordRetailSale(
         // Retail is cash at the counter: no discount, always paid in full.
         // A walk-in customer leaving with credit is not a flow this system
         // supports (see the spec's "Pricing" section).
+        //
+        // A mixed box+pata line's lineTotalPaisa is no longer ratePaisa *
+        // quantity (same situation writeWholesaleSale already handles), so
+        // computeTotals is fed each line's own already-computed total as a
+        // quantity-1 "rate" rather than re-deriving it.
         const { subtotalPaisa, totalPaisa, duePaisa } = computeTotals(
-          lines.map((l) => ({ ratePaisa: l.ratePaisa, quantity: l.quantity })),
+          lines.map((l) => ({ ratePaisa: l.lineTotalPaisa, quantity: 1 })),
           0,
           subtotal,
         );
