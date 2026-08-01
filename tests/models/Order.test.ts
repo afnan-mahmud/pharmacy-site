@@ -18,7 +18,9 @@ function baseOrder(overrides: Record<string, unknown> = {}) {
         medicineId: MEDICINE_ID,
         medicineName: "Napa 500mg",
         boxes: 3,
-        boxPricePaisa: 12000,
+        patas: 0,
+        wholesaleBoxPricePaisa: 12000,
+        wholesalePataPricePaisa: 1300,
       },
     ],
     ...overrides,
@@ -34,10 +36,11 @@ describe("Order model", () => {
     expect(order.resolvedAt).toBeNull();
   });
 
-  it("snapshots the line's medicine name and price", async () => {
+  it("snapshots the line's medicine name and both wholesale rates", async () => {
     const order = await OrderModel.create(baseOrder());
     expect(order.items[0].medicineName).toBe("Napa 500mg");
-    expect(order.items[0].boxPricePaisa).toBe(12000);
+    expect(order.items[0].wholesaleBoxPricePaisa).toBe(12000);
+    expect(order.items[0].wholesalePataPricePaisa).toBe(1300);
     expect(order.items[0].boxes).toBe(3);
   });
 
@@ -50,7 +53,13 @@ describe("Order model", () => {
       OrderModel.create(
         baseOrder({
           items: [
-            { medicineId: MEDICINE_ID, medicineName: "Napa", boxes: 0, boxPricePaisa: 12000 },
+            {
+              medicineId: MEDICINE_ID,
+              medicineName: "Napa",
+              boxes: 0,
+              wholesaleBoxPricePaisa: 12000,
+              wholesalePataPricePaisa: 1300,
+            },
           ],
         }),
       ),
