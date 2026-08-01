@@ -13,7 +13,9 @@ export default async function MyOrdersPage() {
       medicineName: i.medicineName,
       form: i.form,
       boxes: i.boxes,
-      boxPricePaisa: i.boxPricePaisa,
+      patas: i.patas,
+      wholesaleBoxPricePaisa: i.wholesaleBoxPricePaisa,
+      wholesalePataPricePaisa: i.wholesalePataPricePaisa,
     })),
   }));
 

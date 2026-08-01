@@ -24,7 +24,14 @@ export type OrderRow = {
   createdAt: string;
   status: string;
   rejectReason: string;
-  items: { medicineName: string; form: string; boxes: number; boxPricePaisa: number }[];
+  items: {
+    medicineName: string;
+    form: string;
+    boxes: number;
+    patas: number;
+    wholesaleBoxPricePaisa: number;
+    wholesalePataPricePaisa: number;
+  }[];
 };
 
 export function BuyerOrderList({ orders }: { orders: OrderRow[] }) {
@@ -67,7 +74,8 @@ export function BuyerOrderList({ orders }: { orders: OrderRow[] }) {
 
       {orders.map((order) => {
         const total = order.items.reduce(
-          (sum, i) => sum + i.boxPricePaisa * i.boxes,
+          (sum, i) =>
+            sum + i.boxes * i.wholesaleBoxPricePaisa + i.patas * i.wholesalePataPricePaisa,
           0,
         );
         const s = STATUS[order.status] ?? STATUS.pending;
@@ -86,19 +94,25 @@ export function BuyerOrderList({ orders }: { orders: OrderRow[] }) {
             </div>
 
             <ul className="mt-3 space-y-1 text-sm text-ink">
-              {order.items.map((item, i) => (
-                <li key={i} className="flex justify-between gap-3">
-                  <span className="truncate">
-                    {item.medicineName}{" "}
-                    <span className="text-muted">
-                      × {item.boxes} {unitLabelsFor(item.form).outer}
+              {order.items.map((item, i) => {
+                const lineTotal =
+                  item.boxes * item.wholesaleBoxPricePaisa + item.patas * item.wholesalePataPricePaisa;
+                const qtyLabel = [
+                  item.boxes > 0 ? `${item.boxes} ${unitLabelsFor(item.form).outer}` : null,
+                  item.patas > 0 ? `${item.patas} ${unitLabelsFor(item.form).inner}` : null,
+                ].filter(Boolean).join(" ");
+                return (
+                  <li key={i} className="flex justify-between gap-3">
+                    <span className="truncate">
+                      {item.medicineName}{" "}
+                      <span className="text-muted">× {qtyLabel}</span>
                     </span>
-                  </span>
-                  <span className="shrink-0 font-medium">
-                    {formatTaka(item.boxPricePaisa * item.boxes)}
-                  </span>
-                </li>
-              ))}
+                    <span className="shrink-0 font-medium">
+                      {formatTaka(lineTotal)}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
 
             <div className="mt-3 flex items-center justify-between border-t border-line pt-3">
