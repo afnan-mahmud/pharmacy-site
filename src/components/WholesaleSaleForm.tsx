@@ -7,7 +7,7 @@ import { recordWholesaleSale } from "@/actions/sales";
 import { listMedicines } from "@/actions/medicines";
 import { type PickedMedicine } from "./MedicinePicker";
 import { formatTaka, takaToPaisa } from "@/lib/money";
-import { computeTotals, wholesaleLineTotal } from "@/lib/saleTotals";
+import { computeTotals } from "@/lib/saleTotals";
 import { toMedicineForm } from "@/lib/unitLabels";
 import { unitLabelsFor } from "@/lib/unitLabels";
 import { parseQuantityInput } from "@/lib/quantityInput";
@@ -73,8 +73,10 @@ export function WholesaleSaleForm({ buyers, allowCustomItems = false }: { buyers
       genericName: "Custom Item",
       form: "other",
       patasPerBox: 1,
-      boxPricePaisa: pricePaisa,
-      pataPricePaisa: pricePaisa,
+      wholesaleBoxPricePaisa: pricePaisa,
+      wholesalePataPricePaisa: pricePaisa,
+      retailBoxPricePaisa: pricePaisa,
+      retailPataPricePaisa: pricePaisa,
       stockPatas: 0,
     };
     
@@ -101,8 +103,10 @@ export function WholesaleSaleForm({ buyers, allowCustomItems = false }: { buyers
             genericName: m.genericName,
             form: toMedicineForm(m.form),
             patasPerBox: m.patasPerBox,
-            boxPricePaisa: m.boxPricePaisa,
-            pataPricePaisa: m.pataPricePaisa,
+            wholesaleBoxPricePaisa: m.wholesaleBoxPricePaisa,
+            wholesalePataPricePaisa: m.wholesalePataPricePaisa,
+            retailBoxPricePaisa: m.retailBoxPricePaisa,
+            retailPataPricePaisa: m.retailPataPricePaisa,
             stockPatas: m.stockPatas,
           }))
         );
@@ -119,8 +123,10 @@ export function WholesaleSaleForm({ buyers, allowCustomItems = false }: { buyers
   }, [query]);
 
   function lineTotalFor(line: CartLine): number {
-    const totalPatas = line.boxes * line.medicine.patasPerBox + line.patas;
-    return wholesaleLineTotal(totalPatas, line.medicine.boxPricePaisa, line.medicine.patasPerBox);
+    return (
+      line.boxes * line.medicine.wholesaleBoxPricePaisa +
+      line.patas * line.medicine.wholesalePataPricePaisa
+    );
   }
 
   const subtotalPaisa = cart.reduce((sum, line) => sum + lineTotalFor(line), 0);
@@ -227,7 +233,7 @@ export function WholesaleSaleForm({ buyers, allowCustomItems = false }: { buyers
         if (l.medicine.id.startsWith("custom_")) {
           return {
             customName: l.medicine.name,
-            customPricePaisa: l.medicine.boxPricePaisa,
+            customPricePaisa: l.medicine.wholesaleBoxPricePaisa,
             boxes: l.boxes,
             patas: l.patas,
           };
@@ -364,7 +370,7 @@ export function WholesaleSaleForm({ buyers, allowCustomItems = false }: { buyers
                           {m.genericName}
                         </div>
                         <div className="mt-1 flex flex-col gap-0.5 text-[10px] font-medium text-muted">
-                          <span className="text-ink">Rate: {formatTaka(m.boxPricePaisa)}</span>
+                          <span className="text-ink">Rate: {formatTaka(m.wholesaleBoxPricePaisa)}</span>
                           <span className={m.stockPatas < 0 ? "text-danger font-bold" : ""}>
                             Stock: {Math.floor(m.stockPatas / m.patasPerBox)} box
                           </span>
@@ -528,7 +534,7 @@ export function WholesaleSaleForm({ buyers, allowCustomItems = false }: { buyers
                         {unitLabelsFor(line.medicine.form).outer}
                       </div>
                     </td>
-                    <td className={tdCls}>{formatTaka(line.medicine.boxPricePaisa)}</td>
+                    <td className={tdCls}>{formatTaka(line.medicine.wholesaleBoxPricePaisa)}</td>
                     <td className={tdCls}>
                       <div className="flex items-center gap-1.5">
                         <input
