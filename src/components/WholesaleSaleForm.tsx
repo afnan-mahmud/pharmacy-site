@@ -141,7 +141,7 @@ export function WholesaleSaleForm({ buyers, allowCustomItems = false }: { buyers
   try {
     const totals = computeTotals(
       cart.map((line) => ({ ratePaisa: lineTotalFor(line), quantity: 1 })),
-      discountPercent,
+      { kind: "percent", percent: discountPercent },
       paidPaisa,
     );
     discountPaisa = totals.discountPaisa;

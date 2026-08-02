@@ -1,9 +1,7 @@
 import mongoose, { type ClientSession } from "mongoose";
-import { boxesToPatas } from "@/lib/units";
-import { applyStockDelta } from "@/lib/stockTransaction";
+import { buildSaleLines, type SaleItemInput } from "@/lib/saleLines";
 import { computeTotals } from "@/lib/saleTotals";
 import { nextInvoiceSeq, formatInvoiceNo } from "@/lib/invoiceNumber";
-import { MedicineModel } from "@/models/Medicine";
 import { SettingsModel } from "@/models/Settings";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
 
@@ -15,13 +13,7 @@ export type WriteWholesaleSaleParams = {
     shopName: string;
     phone: string;
   };
-  items: { 
-    medicineId?: string; // Optional for custom items
-    customName?: string;
-    customPricePaisa?: number;
-    boxes: number; 
-    patas?: number 
-  }[];
+  items: SaleItemInput[];
   /** A percentage of the subtotal, 0-100. May be fractional. */
   discountPercent: number;
   paidPaisa: number;
@@ -36,9 +28,10 @@ export type WriteWholesaleSaleParams = {
  *
  * MUST be called from inside an already-open transaction (`session`). Every
  * read and write here uses that session, and stock goes through
- * applyStockDelta. A sale always succeeds once every line's medicine is
- * found — there is no "not enough stock" refusal, so stock may go negative.
- * Reads are inside the caller's withTransaction so a retry re-evaluates them.
+ * buildSaleLines -> applyStockDelta. A sale always succeeds once every
+ * line's medicine is found — there is no "not enough stock" refusal, so
+ * stock may go negative. Reads are inside the caller's withTransaction so a
+ * retry re-evaluates them.
  */
 export async function writeWholesaleSale(
   params: WriteWholesaleSaleParams,
@@ -55,57 +48,7 @@ export async function writeWholesaleSale(
     throw new Error("Onto ekta line e poriman dite hobe");
   }
 
-  const lines = [];
-
-  for (const item of params.items) {
-    if (item.medicineId) {
-      const medicine = await MedicineModel.findById(item.medicineId).session(
-        session,
-      );
-      if (!medicine) throw new Error("Medicine pawa jay ni");
-
-      const leftoverPatas = item.patas ?? 0;
-      const totalPatas = boxesToPatas(item.boxes, medicine.patasPerBox) + leftoverPatas;
-
-      // A zero line takes nothing off the shelf. Skipped rather than passed
-      // through applyStockDelta as a delta of 0, which would issue an `$inc: 0`
-      // that changes nothing; its other half — "does this medicine still
-      // exist" — is already covered by the findById above.
-      if (totalPatas > 0) {
-        const ok = await applyStockDelta(medicine._id, -totalPatas, session);
-        if (!ok) throw new Error("Medicine pawa jay ni");
-      }
-
-      lines.push({
-        medicineId: medicine._id,
-        medicineName: medicine.name,
-        form: medicine.form,
-        unit: "box" as const,
-        quantity: item.boxes,
-        leftoverPatas,
-        ratePaisa: medicine.wholesaleBoxPricePaisa,
-        lineTotalPaisa:
-          item.boxes * medicine.wholesaleBoxPricePaisa +
-          leftoverPatas * medicine.wholesalePataPricePaisa,
-        patasDeducted: totalPatas,
-      });
-    } else {
-      if (!item.customName || item.customPricePaisa === undefined) {
-        throw new Error("Custom item er nam o price dite hobe");
-      }
-      lines.push({
-        medicineId: null,
-        medicineName: item.customName,
-        form: "custom",
-        unit: "box" as const,
-        quantity: item.boxes,
-        leftoverPatas: 0,
-        ratePaisa: item.customPricePaisa,
-        lineTotalPaisa: item.boxes * item.customPricePaisa,
-        patasDeducted: 0,
-      });
-    }
-  }
+  const lines = await buildSaleLines(params.items, session, "wholesale");
 
   // computeTotals normally re-derives the subtotal itself, via
   // ratePaisa * quantity per line — an assumption that breaks for a mixed
@@ -115,7 +58,7 @@ export async function writeWholesaleSale(
   // exactly what was priced above, for every line, mixed or not.
   const { subtotalPaisa, discountPaisa, totalPaisa, duePaisa } = computeTotals(
     lines.map((l) => ({ ratePaisa: l.lineTotalPaisa, quantity: 1 })),
-    params.discountPercent,
+    { kind: "percent", percent: params.discountPercent },
     params.paidPaisa,
   );
 
