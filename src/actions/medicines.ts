@@ -188,8 +188,16 @@ export async function updateMedicine(
   });
 }
 
+/**
+ * `activeOnly` defaults to false because the medicines admin table has to
+ * list deactivated rows — that table is the only place they can be switched
+ * back on, so filtering them out by default would strand them. Callers that
+ * are choosing something to *sell* (the sale pickers) pass true: a
+ * deactivated medicine must never reach a cart.
+ */
 export async function listMedicines(
   query?: string,
+  activeOnly = false,
 ): Promise<Serialized<MedicineDoc>[]> {
   await requireAdminAction();
   await connectDb();
@@ -200,10 +208,16 @@ export async function listMedicines(
   // payload on this network-reachable trust boundary and is rejected
   // rather than allowed to reach .trim() as a raw TypeError.
   const term = toOptionalString(query, "query").trim();
+  if (typeof activeOnly !== "boolean") {
+    throw new Error("activeOnly must be a boolean");
+  }
 
   const filter: Record<string, unknown> = {};
   if (term) {
     filter.name = { $regex: escapeRegex(term), $options: "i" };
+  }
+  if (activeOnly) {
+    filter.active = true;
   }
 
   const docs = await MedicineModel.find(filter)

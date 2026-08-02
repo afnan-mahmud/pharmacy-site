@@ -93,7 +93,10 @@ export function SaleItemPicker({
     let cancelled = false;
     const timer = setTimeout(async () => {
       try {
-        const found = await listMedicines(query);
+        // activeOnly: a deactivated medicine is one the shop has stopped
+        // stocking — it stays in the admin list so it can be switched back
+        // on, but it must never be sellable from here.
+        const found = await listMedicines(query, true);
         if (cancelled) return;
         setResults(
           found.map((m) => ({

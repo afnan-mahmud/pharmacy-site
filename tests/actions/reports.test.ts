@@ -76,7 +76,7 @@ describe("salesReport", () => {
     const report = await salesReport("2026-07-01", "2026-07-31");
     expect(report.rows).toEqual([]);
     expect(report.grandTotalPaisa).toBe(0);
-    expect(report.retail).toEqual({ count: 0, totalPaisa: 0 });
+    expect(report.retail).toEqual({ count: 0, totalPaisa: 0, duePaisa: 0 });
     expect(report.wholesale).toEqual({ count: 0, totalPaisa: 0, duePaisa: 0 });
   });
 
@@ -130,7 +130,7 @@ describe("salesReport", () => {
     });
 
     const report = await salesReport("2026-07-17", "2026-07-17");
-    expect(report.retail).toEqual({ count: 1, totalPaisa: 2800 });
+    expect(report.retail).toEqual({ count: 1, totalPaisa: 2800, duePaisa: 0 });
     expect(report.wholesale).toEqual({
       count: 1,
       totalPaisa: 36000,
@@ -149,7 +149,7 @@ describe("salesReport", () => {
     });
 
     const report = await salesReport("2026-07-17", "2026-07-17");
-    expect(report.retail).toEqual({ count: 1, totalPaisa: 2800 });
+    expect(report.retail).toEqual({ count: 1, totalPaisa: 2800, duePaisa: 0 });
     expect(report.grandTotalPaisa).toBe(2800);
   });
 

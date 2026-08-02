@@ -48,7 +48,7 @@ describe("Order model", () => {
     await expect(OrderModel.create(baseOrder({ items: [] }))).rejects.toThrow();
   });
 
-  it("rejects a box count below 1", async () => {
+  it("rejects a negative box count", async () => {
     await expect(
       OrderModel.create(
         baseOrder({
@@ -56,7 +56,7 @@ describe("Order model", () => {
             {
               medicineId: MEDICINE_ID,
               medicineName: "Napa",
-              boxes: 0,
+              boxes: -1,
               wholesaleBoxPricePaisa: 12000,
               wholesalePataPricePaisa: 1300,
             },

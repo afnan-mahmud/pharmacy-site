@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import mongoose from "mongoose";
 import { setupTestDb } from "../helpers/db";
-import { SaleModel } from "@/models/Sale";
+import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { RetailPaymentModel } from "@/models/RetailPayment";
 import { computeRetailDue, loadRetailLedger } from "@/lib/retailDueComputation";
 
@@ -9,7 +9,7 @@ setupTestDb();
 
 const CREATED_BY = new mongoose.Types.ObjectId();
 
-function retailSale(overrides: Record<string, unknown> = {}) {
+function retailSale(overrides: Partial<SaleDoc> = {}) {
   return {
     type: "retail" as const,
     buyerId: null,
@@ -34,7 +34,7 @@ function retailSale(overrides: Record<string, unknown> = {}) {
     totalPaisa: 13000,
     paidPaisa: 0,
     duePaisa: 13000,
-    status: "active",
+    status: "active" as const,
     createdBy: CREATED_BY,
     ...overrides,
   };

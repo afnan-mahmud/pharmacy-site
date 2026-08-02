@@ -14,7 +14,7 @@ import {
   updateMedicine,
   listMedicines,
   searchMedicines,
-  deactivateMedicine,
+  toggleMedicineActive,
 } from "@/actions/medicines";
 
 const cookieStore = createMockCookieStore();
@@ -199,17 +199,35 @@ describe("createMedicine", () => {
 });
 
 describe("listMedicines", () => {
-  it("returns active medicines sorted by name", async () => {
+  it("returns medicines sorted by name", async () => {
     await unwrap(createMedicine({ ...napa, name: "Zimax" }));
     await unwrap(createMedicine({ ...napa, name: "Ace" }));
     const list = await listMedicines();
     expect(list.map((m) => m.name)).toEqual(["Ace", "Zimax"]);
   });
 
-  it("excludes deactivated medicines", async () => {
+  // The medicines admin table is the only screen a deactivated medicine can
+  // be switched back on from, so the default listing must keep showing them.
+  it("keeps deactivated medicines in the default listing", async () => {
     const medicine = await unwrap(createMedicine(napa));
-    await unwrap(deactivateMedicine(String(medicine._id)));
-    expect(await listMedicines()).toHaveLength(0);
+    await unwrap(toggleMedicineActive(String(medicine._id), false));
+    const list = await listMedicines();
+    expect(list.map((m) => m.name)).toEqual([napa.name]);
+    expect(list[0].active).toBe(false);
+  });
+
+  it("excludes deactivated medicines when activeOnly is set", async () => {
+    const medicine = await unwrap(createMedicine(napa));
+    await unwrap(createMedicine({ ...napa, name: "Zimax" }));
+    await unwrap(toggleMedicineActive(String(medicine._id), false));
+    const list = await listMedicines(undefined, true);
+    expect(list.map((m) => m.name)).toEqual(["Zimax"]);
+  });
+
+  it("rejects a non-boolean activeOnly", async () => {
+    await expect(
+      listMedicines(undefined, "yes" as unknown as boolean),
+    ).rejects.toThrow("activeOnly must be a boolean");
   });
 
   it("filters by a name query", async () => {
@@ -316,9 +334,9 @@ describe("updateMedicine", () => {
   });
 });
 
-describe("deactivateMedicine", () => {
+describe("toggleMedicineActive", () => {
   it("throws Medicine not found for a malformed id", async () => {
-    await expect(unwrap(deactivateMedicine("not-an-objectid"))).rejects.toThrow(
+    await expect(unwrap(toggleMedicineActive("not-an-objectid", false))).rejects.toThrow(
       "Medicine not found",
     );
   });
@@ -376,18 +394,18 @@ describe("authorization", () => {
     await expect(searchMedicines("napa")).rejects.toThrow(ADMIN_ONLY_ERROR);
   });
 
-  it("deactivateMedicine rejects an unauthenticated caller", async () => {
+  it("toggleMedicineActive rejects an unauthenticated caller", async () => {
     const medicine = await unwrap(createMedicine(napa));
     clearSessionCookie(cookieStore);
-    await expect(unwrap(deactivateMedicine(String(medicine._id)))).rejects.toThrow(
+    await expect(unwrap(toggleMedicineActive(String(medicine._id), false))).rejects.toThrow(
       ADMIN_ONLY_ERROR,
     );
   });
 
-  it("deactivateMedicine rejects a buyer-role session", async () => {
+  it("toggleMedicineActive rejects a buyer-role session", async () => {
     const medicine = await unwrap(createMedicine(napa));
     setSessionCookie(cookieStore, await buyerToken());
-    await expect(unwrap(deactivateMedicine(String(medicine._id)))).rejects.toThrow(
+    await expect(unwrap(toggleMedicineActive(String(medicine._id), false))).rejects.toThrow(
       ADMIN_ONLY_ERROR,
     );
   });

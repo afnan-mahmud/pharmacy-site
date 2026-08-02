@@ -13,7 +13,7 @@ import { recordWholesaleSale, cancelSale } from "@/actions/sales";
 import { createBuyer } from "@/actions/buyers";
 import { MedicineModel } from "@/models/Medicine";
 import { PaymentModel } from "@/models/Payment";
-import { SaleModel } from "@/models/Sale";
+import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { RetailCustomerModel } from "@/models/RetailCustomer";
 import { RetailPaymentModel } from "@/models/RetailPayment";
 import {
@@ -70,9 +70,9 @@ async function makeRetailCustomer(phone: string, name = "Karim") {
 }
 
 const CREATED_BY = new mongoose.Types.ObjectId();
-function retailSale(overrides: Record<string, unknown> = {}) {
+function retailSale(overrides: Partial<SaleDoc> = {}) {
   return {
-    type: "retail",
+    type: "retail" as const,
     buyerId: null,
     buyerName: "Karim",
     buyerPhone: "01711111111",
@@ -95,7 +95,7 @@ function retailSale(overrides: Record<string, unknown> = {}) {
     totalPaisa: 13000,
     paidPaisa: 0,
     duePaisa: 13000,
-    status: "active",
+    status: "active" as const,
     createdBy: CREATED_BY,
     ...overrides,
   };
