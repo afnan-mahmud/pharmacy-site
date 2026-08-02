@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { recordRetailSale, searchRetailCustomers, type RetailSaleInput } from "@/actions/sales";
 import { retailDueBalance } from "@/actions/due";
-import { formatTaka, paisaToTaka, takaToPaisa } from "@/lib/money";
+import { formatTaka, paisaToTaka } from "@/lib/money";
+import { parseTakaInput, parsePercentInput } from "@/lib/takaInput";
 import { computeTotals, type DiscountInput } from "@/lib/saleTotals";
 import { unitLabelsFor } from "@/lib/unitLabels";
 import { parseQuantityInput } from "@/lib/quantityInput";
@@ -16,31 +17,6 @@ type CustomerSuggestion = {
   name: string;
   phone: string;
 };
-
-/**
- * `<input type="number">` does not stop anyone typing "-5" or an "e" — the
- * string reaches the component either way. takaToPaisa throws on those, and a
- * throw during render is a blank white page, so every taka box is parsed
- * through here instead: null means "show a message", never "crash".
- */
-function parseTakaInput(raw: string): number | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return 0;
-  try {
-    return takaToPaisa(trimmed);
-  } catch {
-    return null;
-  }
-}
-
-/** Same guard for the percent box, which is a plain number, not money. */
-function parsePercentInput(raw: string): number | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return 0;
-  const value = Number(trimmed);
-  if (!Number.isFinite(value) || value < 0) return null;
-  return value;
-}
 
 export function RetailSaleForm({
   allowCustomItems = false,

@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { recordWholesaleSale } from "@/actions/sales";
-import { formatTaka, takaToPaisa } from "@/lib/money";
+import { formatTaka } from "@/lib/money";
+import { parseTakaInput } from "@/lib/takaInput";
 import { computeTotals } from "@/lib/saleTotals";
 import { unitLabelsFor } from "@/lib/unitLabels";
 import { parseQuantityInput } from "@/lib/quantityInput";
@@ -46,23 +47,29 @@ export function WholesaleSaleForm({
     (line) => line.boxes > 0 || line.patas > 0 || line.medicine.id.startsWith("custom_"),
   );
   const discountPercent = Number(discount || 0);
-  const paidPaisa = Math.round(takaToPaisa(paid || 0));
+  // Parsed through the guard, not takaToPaisa directly: this runs during
+  // render, and a typed "-5" used to throw here and blank the screen.
+  const paidPaisa = parseTakaInput(paid);
 
   let totalPaisa = subtotalPaisa;
   let duePaisa = 0;
   let discountPaisa = 0;
   let totalsError = "";
-  try {
-    const totals = computeTotals(
-      cart.map((line) => ({ ratePaisa: lineTotalFor(line), quantity: 1 })),
-      { kind: "percent", percent: discountPercent },
-      paidPaisa,
-    );
-    discountPaisa = totals.discountPaisa;
-    totalPaisa = totals.totalPaisa;
-    duePaisa = totals.duePaisa;
-  } catch (err) {
-    totalsError = err instanceof Error ? err.message : "Kichu ekta bhul holo";
+  if (paidPaisa === null) {
+    totalsError = "Joma thik nai";
+  } else {
+    try {
+      const totals = computeTotals(
+        cart.map((line) => ({ ratePaisa: lineTotalFor(line), quantity: 1 })),
+        { kind: "percent", percent: discountPercent },
+        paidPaisa,
+      );
+      discountPaisa = totals.discountPaisa;
+      totalPaisa = totals.totalPaisa;
+      duePaisa = totals.duePaisa;
+    } catch (err) {
+      totalsError = err instanceof Error ? err.message : "Kichu ekta bhul holo";
+    }
   }
 
   function updateBoxes(idx: number, raw: string) {
@@ -97,6 +104,13 @@ export function WholesaleSaleForm({
       setError("Onto ekta line e poriman dite hobe");
       return;
     }
+    // The submit button is disabled while these are unusable; this is the
+    // belt-and-braces check so a bad joma can never reach the server as a
+    // silently-coerced 0.
+    if (totalsError || paidPaisa === null) {
+      setError(totalsError || "Hisab thik nai");
+      return;
+    }
     setError("");
     setBusy(true);
 
@@ -116,8 +130,8 @@ export function WholesaleSaleForm({
       const result = await recordWholesaleSale({
         buyerId,
         items: payloadItems,
-        discountPercent: Number(discount || 0),
-        paidPaisa: Math.round(takaToPaisa(paid || 0)),
+        discountPercent,
+        paidPaisa,
       });
       if (!result.ok) {
         setError(result.error);
