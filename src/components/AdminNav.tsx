@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/medicines", label: "Medicine" },
   { href: "/buyers", label: "Buyer" },
   { href: "/due", label: "Baki Khata" },
+  { href: "/retail-due", label: "Khuchra Baki" },
   { href: "/reports", label: "Report" },
   { href: "/settings", label: "Settings" },
 ];
