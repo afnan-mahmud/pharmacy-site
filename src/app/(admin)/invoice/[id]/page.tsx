@@ -15,8 +15,6 @@ export default async function InvoicePage({
   const [sale, settings] = await Promise.all([getSale(id), readSettings()]);
   if (!sale) notFound();
 
-  // Only wholesale sales have invoice numbers and are printable.
-  if (sale.type !== "wholesale") notFound();
 
   return (
     <div className="space-y-4">
