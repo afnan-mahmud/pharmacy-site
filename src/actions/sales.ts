@@ -5,22 +5,14 @@ import { revalidatePath } from "next/cache";
 import { connectDb } from "@/lib/db";
 import { requireAdminAction } from "@/lib/session";
 import { applyStockDelta } from "@/lib/stockTransaction";
-import { boxesToPatas } from "@/lib/units";
-import { computeTotals } from "@/lib/saleTotals";
-import { toPlain, type Serialized } from "@/lib/serialize";
 import { writeWholesaleSale } from "@/lib/writeWholesaleSale";
-import { MedicineModel } from "@/models/Medicine";
+import { writeRetailSale } from "@/lib/writeRetailSale";
+import type { DiscountInput } from "@/lib/saleTotals";
+import { toPlain, type Serialized } from "@/lib/serialize";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { BuyerModel } from "@/models/Buyer";
+import { RetailCustomerModel } from "@/models/RetailCustomer";
 import { actionResult, type ActionResult } from "@/lib/actionResult";
-
-export type RetailSaleInput = {
-  items: { medicineId: string; boxes: number; patas: number }[];
-  /** Required. A counter sale must say who it was to. */
-  customerName: string;
-  /** Optional — the customer may decline to give one. */
-  customerPhone?: string;
-};
 
 /**
  * Mirrors the convention in src/actions/medicines.ts: an optional string may
@@ -35,53 +27,95 @@ function toOptionalString(value: unknown, label: string): string {
   return value;
 }
 
+/** Escapes regex metacharacters so a typed "." or "*" is matched literally. */
+function escapeRegex(input: string): string {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+type SaleItemShape = {
+  medicineId?: string;
+  customName?: string;
+  customPricePaisa?: number;
+  boxes: number;
+  patas: number;
+};
+
 /**
- * Network-reachable trust boundary — same convention as
- * src/actions/medicines.ts: every field is validated here before it reaches
- * Mongoose, so a malformed payload fails with a clean domain error rather
- * than a raw CastError.
+ * Per-item shape checks shared by both sale types: a medicine line or a
+ * custom line, non-negative integer boxes/patas, no medicine listed twice.
+ * Whether an all-zero line is allowed on its own is a cart-level rule (see
+ * writeWholesaleSale and writeRetailSale's "at least one billable line"
+ * guard), not a per-item one, so it is not checked here.
  */
-function validateRetail(input: RetailSaleInput): void {
-  if (!Array.isArray(input.items) || input.items.length === 0) {
+function validateSaleItems(items: unknown): asserts items is SaleItemShape[] {
+  if (!Array.isArray(items) || items.length === 0) {
     throw new Error("Cart khali");
   }
 
-  if (typeof input.customerName !== "string" || !input.customerName.trim()) {
-    throw new Error("Customer nam likhte hobe");
-  }
-  // Validated for its side effect; the value is re-derived at the write.
-  toOptionalString(input.customerPhone, "customerPhone");
-
   const seen = new Set<string>();
-  for (const item of input.items) {
-    if (!mongoose.Types.ObjectId.isValid(item.medicineId)) {
-      throw new Error("Medicine pawa jay ni");
+  for (const item of items as SaleItemShape[]) {
+    if (item.medicineId) {
+      if (!mongoose.Types.ObjectId.isValid(item.medicineId)) {
+        throw new Error("Medicine pawa jay ni");
+      }
+      if (seen.has(item.medicineId)) {
+        throw new Error("Ekoi medicine dui bar add kora jabe na");
+      }
+      seen.add(item.medicineId);
+    } else {
+      if (typeof item.customName !== "string" || !item.customName.trim()) {
+        throw new Error("Custom item er nam dite hobe");
+      }
+      if (typeof item.customPricePaisa !== "number" || item.customPricePaisa < 0) {
+        throw new Error("Custom item er price thik nai");
+      }
     }
-    if (
-      typeof item.boxes !== "number" ||
-      !Number.isInteger(item.boxes) ||
-      item.boxes < 0
-    ) {
-      throw new Error("Poriman 0 er kom hote parbe na");
+
+    if (typeof item.boxes !== "number" || !Number.isInteger(item.boxes) || item.boxes < 0) {
+      throw new Error("Box er poriman thik nai");
     }
-    if (
-      typeof item.patas !== "number" ||
-      !Number.isInteger(item.patas) ||
-      item.patas < 0
-    ) {
-      throw new Error("Poriman 0 er kom hote parbe na");
+    if (typeof item.patas !== "number" || !Number.isInteger(item.patas) || item.patas < 0) {
+      throw new Error("Pata er poriman thik nai");
     }
-    if (item.boxes === 0 && item.patas === 0) {
-      throw new Error("Poriman 0 er kom hote parbe na");
-    }
-    // Two lines for one medicine would each pass their own stock check and
-    // could together oversell it.
-    if (seen.has(item.medicineId)) {
-      throw new Error("Ekta medicine ekbar er beshi cart e dewa jabe na");
-    }
-    seen.add(item.medicineId);
   }
 }
+
+function validateDiscountShape(discount: unknown): asserts discount is DiscountInput {
+  if (
+    !discount ||
+    typeof discount !== "object" ||
+    ((discount as DiscountInput).kind !== "percent" &&
+      (discount as DiscountInput).kind !== "amount")
+  ) {
+    throw new Error("Discount thik nai");
+  }
+}
+
+function validatePaidPaisa(paidPaisa: unknown): asserts paidPaisa is number {
+  if (
+    typeof paidPaisa !== "number" ||
+    !Number.isInteger(paidPaisa) ||
+    paidPaisa < 0
+  ) {
+    throw new Error("paidPaisa must be a whole number");
+  }
+}
+
+export type RetailSaleInput = {
+  items: {
+    medicineId?: string;
+    customName?: string;
+    customPricePaisa?: number;
+    boxes: number;
+    patas: number;
+  }[];
+  /** Required. A counter sale must say who it was to. */
+  customerName: string;
+  /** Optional — required only when the sale ends up with a due. */
+  customerPhone?: string;
+  discount: DiscountInput;
+  paidPaisa: number;
+};
 
 export async function recordRetailSale(
   input: RetailSaleInput,
@@ -89,102 +123,29 @@ export async function recordRetailSale(
   return actionResult(async () => {
     const adminSession = await requireAdminAction();
     await connectDb();
-    validateRetail(input);
+
+    if (typeof input.customerName !== "string" || !input.customerName.trim()) {
+      throw new Error("Customer nam likhte hobe");
+    }
+    const customerPhone = toOptionalString(input.customerPhone, "customerPhone");
+    validateSaleItems(input.items);
+    validateDiscountShape(input.discount);
+    validatePaidPaisa(input.paidPaisa);
 
     const session = await mongoose.startSession();
     let saleId: mongoose.Types.ObjectId | null = null;
 
     try {
       await session.withTransaction(async () => {
-        const lines = [];
-
-        for (const item of input.items) {
-          // Read inside the transaction: withTransaction retries this callback
-          // from the top on a TransientTransactionError, and a read taken
-          // outside would not be re-evaluated by that retry.
-          const medicine = await MedicineModel.findById(
-            item.medicineId,
-          ).session(session);
-          if (!medicine) throw new Error("Medicine pawa jay ni");
-
-          // A sale always succeeds once the medicine is found — there is no
-          // "not enough stock" refusal, so stock may go negative. This can
-          // now only fail if the medicine vanished between the findById
-          // above and here, which is already effectively unreachable inside
-          // one transaction; the check stays as a defensive fallback.
-          const totalPatas =
-            boxesToPatas(item.boxes, medicine.patasPerBox) + item.patas;
-          if (totalPatas > 0) {
-            const ok = await applyStockDelta(
-              medicine._id,
-              -totalPatas,
-              session,
-            );
-            if (!ok) throw new Error("Medicine pawa jay ni");
-          }
-
-          const lineTotalPaisa =
-            item.boxes * medicine.retailBoxPricePaisa +
-            item.patas * medicine.retailPataPricePaisa;
-
-          lines.push({
-            medicineId: medicine._id,
-            medicineName: medicine.name,
-            form: medicine.form,
-            // A retail line that includes any boxes is priced (and printed)
-            // like a wholesale box line; a pure-patas line keeps its
-            // historical "pata" unit — same convention writeWholesaleSale
-            // already uses.
-            unit: item.boxes > 0 ? ("box" as const) : ("pata" as const),
-            quantity: item.boxes > 0 ? item.boxes : item.patas,
-            leftoverPatas: item.boxes > 0 ? item.patas : 0,
-            ratePaisa:
-              item.boxes > 0
-                ? medicine.retailBoxPricePaisa
-                : medicine.retailPataPricePaisa,
-            lineTotalPaisa,
-            patasDeducted: totalPatas,
-          });
-        }
-
-        const subtotal = lines.reduce((sum, l) => sum + l.lineTotalPaisa, 0);
-        // Retail is cash at the counter: no discount, always paid in full.
-        // A walk-in customer leaving with credit is not a flow this system
-        // supports (see the spec's "Pricing" section).
-        //
-        // A mixed box+pata line's lineTotalPaisa is no longer ratePaisa *
-        // quantity (same situation writeWholesaleSale already handles), so
-        // computeTotals is fed each line's own already-computed total as a
-        // quantity-1 "rate" rather than re-deriving it.
-        const { subtotalPaisa, totalPaisa, duePaisa } = computeTotals(
-          lines.map((l) => ({ ratePaisa: l.lineTotalPaisa, quantity: 1 })),
-          0,
-          subtotal,
-        );
-
-        const [sale] = await SaleModel.create(
-          [
-            {
-              type: "retail",
-              buyerId: null,
-              buyerName: input.customerName.trim(),
-              buyerPhone: toOptionalString(
-                input.customerPhone,
-                "customerPhone",
-              ).trim(),
-              invoiceNo: null,
-              items: lines,
-              subtotalPaisa,
-              discountPaisa: 0,
-              totalPaisa,
-              paidPaisa: totalPaisa,
-              duePaisa,
-              status: "active",
-              createdBy: new mongoose.Types.ObjectId(adminSession.userId),
-            },
-          ],
-          { session },
-        );
+        const sale = await writeRetailSale({
+          session,
+          customerName: input.customerName.trim(),
+          customerPhone,
+          items: input.items,
+          discount: input.discount,
+          paidPaisa: input.paidPaisa,
+          createdBy: adminSession.userId,
+        });
         saleId = sale._id;
       });
     } finally {
@@ -193,6 +154,7 @@ export async function recordRetailSale(
 
     revalidatePath("/medicines");
     revalidatePath("/sell");
+    revalidatePath("/retail-due");
 
     const sale = await SaleModel.findById(saleId).lean<SaleDoc>();
     return toPlain(sale!);
@@ -214,60 +176,18 @@ export type WholesaleSaleInput = {
 };
 
 /**
- * See validateRetail for the purpose of this manual shape-check.
+ * See validateSaleItems for the per-item shape checks shared with retail.
  */
 function validateWholesale(input: WholesaleSaleInput): void {
   if (!mongoose.Types.ObjectId.isValid(input.buyerId)) {
     throw new Error("Buyer thik nai");
   }
+  validateSaleItems(input.items);
 
-  if (!Array.isArray(input.items) || input.items.length === 0) {
-    throw new Error("Cart khali");
-  }
-
-  const seen = new Set<string>();
-  for (const item of input.items) {
-    if (item.medicineId) {
-      if (!mongoose.Types.ObjectId.isValid(item.medicineId)) {
-        throw new Error("Medicine pawa jay ni");
-      }
-      if (seen.has(item.medicineId)) {
-        throw new Error("Ekoi medicine dui bar add kora jabe na");
-      }
-      seen.add(item.medicineId);
-    } else {
-      if (typeof item.customName !== "string" || !item.customName.trim()) {
-        throw new Error("Custom item er nam dite hobe");
-      }
-      if (
-        typeof item.customPricePaisa !== "number" ||
-        item.customPricePaisa < 0
-      ) {
-        throw new Error("Custom item er price thik nai");
-      }
-    }
-
-    if (
-      typeof item.boxes !== "number" ||
-      !Number.isInteger(item.boxes) ||
-      item.boxes < 0
-    ) {
-      throw new Error("Box er poriman thik nai");
-    }
-    if (
-      typeof item.patas !== "number" ||
-      !Number.isInteger(item.patas) ||
-      item.patas < 0
-    ) {
-      throw new Error("Pata er poriman thik nai");
-    }
-  }
-
-  // computeTotals re-checks these against the actual subtotal; these guards
-  // catch the malformed cases before any database work happens.
-  // computeTotals is the authority on the range; this catches the malformed
-  // cases before any database work happens. Fractional is legal here — 2.5%
-  // is a real discount — so unlike the money fields there is no integer check.
+  // computeTotals re-checks this against the actual subtotal; this catches
+  // the malformed case before any database work happens. Fractional is
+  // legal here — 2.5% is a real discount — so unlike the money fields there
+  // is no integer check.
   if (
     typeof input.discountPercent !== "number" ||
     !Number.isFinite(input.discountPercent) ||
@@ -276,13 +196,7 @@ function validateWholesale(input: WholesaleSaleInput): void {
   ) {
     throw new Error("Discount 0 theke 100 er moddhe hote hobe");
   }
-  if (
-    typeof input.paidPaisa !== "number" ||
-    !Number.isInteger(input.paidPaisa) ||
-    input.paidPaisa < 0
-  ) {
-    throw new Error("paidPaisa must be a whole number");
-  }
+  validatePaidPaisa(input.paidPaisa);
 }
 
 export async function recordWholesaleSale(
@@ -412,42 +326,36 @@ export async function cancelSale(
 
     revalidatePath("/medicines");
     revalidatePath("/due");
+    revalidatePath("/retail-due");
   });
 }
 
 /**
- * The name last used at the counter for a phone number, so the owner does not
- * retype a regular customer's name on every visit.
- *
- * Only retail sales are searched. A wholesale buyer is a managed record with
- * its own screen, and letting a shop's name autofill the walk-in counter would
- * put the wrong name on a cash sale.
- *
- * Returns null rather than throwing when nothing matches: this is a
- * convenience, and its failure mode has to be "type the name yourself", never
- * "you cannot sell".
+ * Matches for the retail counter's phone-number autocomplete, replacing the
+ * old single-match lookupRetailCustomer now that RetailCustomer persists a
+ * durable per-phone record instead of re-deriving the latest name from Sale
+ * history on every call. Returns at most 8 matches, most recently updated
+ * first. A query shorter than 2 digits returns nothing, so a stray keystroke
+ * doesn't fire a broad, useless match.
  */
-export async function lookupRetailCustomer(
-  phone: string,
-): Promise<{ name: string } | null> {
+export async function searchRetailCustomers(
+  query: string,
+): Promise<{ name: string; phone: string }[]> {
   await requireAdminAction();
+  if (typeof query !== "string") throw new Error("query must be a string");
 
-  if (typeof phone !== "string") return null;
-  const trimmed = phone.trim();
-  // Guard before touching the database: "" is the value every sale without a
-  // phone carries, so an empty query would match a great many rows.
-  if (!trimmed) return null;
+  const term = query.trim();
+  if (term.length < 2) return [];
 
   await connectDb();
 
-  const sale = await SaleModel.findOne({
-    type: "retail",
-    buyerPhone: trimmed,
-    buyerName: { $gt: "" },
+  const customers = await RetailCustomerModel.find({
+    phone: { $regex: `^${escapeRegex(term)}` },
   })
-    .sort({ createdAt: -1 })
-    .select("buyerName")
-    .lean<{ buyerName: string }>();
+    .sort({ updatedAt: -1 })
+    .limit(8)
+    .select("name phone")
+    .lean<{ name: string; phone: string }[]>();
 
-  return sale ? { name: sale.buyerName } : null;
+  return customers.map((c) => ({ name: c.name, phone: c.phone }));
 }
