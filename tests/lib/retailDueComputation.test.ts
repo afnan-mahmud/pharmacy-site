@@ -11,7 +11,7 @@ const CREATED_BY = new mongoose.Types.ObjectId();
 
 function retailSale(overrides: Record<string, unknown> = {}) {
   return {
-    type: "retail",
+    type: "retail" as const,
     buyerId: null,
     buyerName: "Karim",
     buyerPhone: "01711111111",

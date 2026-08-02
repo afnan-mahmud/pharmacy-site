@@ -96,7 +96,9 @@ export function ReportView({
           <div className="mt-1 font-display text-2xl font-extrabold text-ink">
             {formatTaka(report.retail.totalPaisa)}
           </div>
-          <div className="mt-1 text-xs text-muted">{report.retail.count} ta</div>
+          <div className="mt-1 text-xs text-muted">
+            {report.retail.count} ta · baki {formatTaka(report.retail.duePaisa)}
+          </div>
         </div>
         <div className="rounded-3xl border border-line bg-surface p-5 shadow-md">
           <div className="text-sm font-medium text-muted">Wholesale bikri</div>

@@ -28,7 +28,7 @@ export type SalesReport = {
   fromDate: string;
   toDate: string;
   rows: SalesReportRow[];
-  retail: SalesReportTotals;
+  retail: SalesReportTotals & { duePaisa: number };
   wholesale: SalesReportTotals & { duePaisa: number };
   grandTotalPaisa: number;
   cancelledCount: number;
@@ -87,9 +87,10 @@ export async function salesReport(
   const sum = (list: SalesReportRow[], field: "totalPaisa" | "duePaisa") =>
     list.reduce((total, row) => total + row[field], 0);
 
-  const retail: SalesReportTotals = {
+  const retail: SalesReportTotals & { duePaisa: number } = {
     count: retailRows.length,
     totalPaisa: sum(retailRows, "totalPaisa"),
+    duePaisa: sum(retailRows, "duePaisa"),
   };
   const wholesale = {
     count: wholesaleRows.length,
