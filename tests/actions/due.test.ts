@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import mongoose from "mongoose";
 import { setupTestDb } from "../helpers/db";
 import { unwrap } from "../helpers/action";
 import {
@@ -12,7 +13,19 @@ import { recordWholesaleSale, cancelSale } from "@/actions/sales";
 import { createBuyer } from "@/actions/buyers";
 import { MedicineModel } from "@/models/Medicine";
 import { PaymentModel } from "@/models/Payment";
-import { listBuyerDues, buyerDueBalance, buyerLedger, recordPayment } from "@/actions/due";
+import { SaleModel } from "@/models/Sale";
+import { RetailCustomerModel } from "@/models/RetailCustomer";
+import { RetailPaymentModel } from "@/models/RetailPayment";
+import {
+  listBuyerDues,
+  buyerDueBalance,
+  buyerLedger,
+  recordPayment,
+  listRetailDues,
+  retailDueBalance,
+  retailLedger,
+  recordRetailPayment,
+} from "@/actions/due";
 
 const cookieStore = createMockCookieStore();
 vi.mock("next/headers", () => ({
@@ -50,6 +63,42 @@ async function makeBuyer(name = "Karim Uddin") {
     },
     "secret123",
   ));
+}
+
+async function makeRetailCustomer(phone: string, name = "Karim") {
+  return RetailCustomerModel.create({ phone, name });
+}
+
+const CREATED_BY = new mongoose.Types.ObjectId();
+function retailSale(overrides: Record<string, unknown> = {}) {
+  return {
+    type: "retail",
+    buyerId: null,
+    buyerName: "Karim",
+    buyerPhone: "01711111111",
+    invoiceNo: `ABC-${Math.floor(Math.random() * 1000000)}`,
+    items: [
+      {
+        medicineId: new mongoose.Types.ObjectId(),
+        medicineName: "Napa 500mg",
+        unit: "box",
+        quantity: 1,
+        ratePaisa: 13000,
+        lineTotalPaisa: 13000,
+        patasDeducted: 10,
+        leftoverPatas: 0,
+      },
+    ],
+    subtotalPaisa: 13000,
+    discountPercent: 0,
+    discountPaisa: 0,
+    totalPaisa: 13000,
+    paidPaisa: 0,
+    duePaisa: 13000,
+    status: "active",
+    createdBy: CREATED_BY,
+    ...overrides,
+  };
 }
 
 beforeEach(async () => {
@@ -192,21 +241,6 @@ describe("buyerDueBalance", () => {
   });
 
   it("does not forgive a buyer's other debts when a paid-for sale is cancelled", async () => {
-    // The exact scenario from the review: sale A (1200) and sale B (600),
-    // both taken unpaid, then a single buyer-level payment of 1200 (which
-    // does not belong to either sale specifically — Payment has no
-    // saleId). Before any cancellation the buyer legitimately owes
-    // 1800 - 1200 = 600.
-    //
-    // Cancelling A removes A's 1200 from the *active* due total, but the
-    // 1200 Payment record is buyer-level and is never removed — per the
-    // owner's decided rule, that money now stays as the buyer's credit
-    // rather than vanishing. So once A is void, the buyer's remaining
-    // active obligation is just B's 600, against which 1200 has already
-    // been paid: a net credit of 600 (negative = pharmacy owes the buyer),
-    // not the 0 the old Math.max(0, ...) clamp reported, and not a false
-    // "still owes 600" either — the buyer overpaid relative to what's left
-    // owing once A is voided.
     const medicine = await makeMedicine();
     const buyer = await makeBuyer();
 
@@ -364,5 +398,128 @@ describe("buyerLedger", () => {
     const ledger = await buyerLedger(buyer._id);
     expect(ledger.sales).toHaveLength(1);
     expect(ledger.payments).toHaveLength(1);
+  });
+});
+
+describe("listRetailDues", () => {
+  it("sums due across a phone's sales and subtracts payments", async () => {
+    await makeRetailCustomer("01711111111", "Karim");
+    await SaleModel.create(retailSale({ duePaisa: 13000 }));
+    await SaleModel.create(retailSale({ duePaisa: 2000, totalPaisa: 2000 }));
+    await RetailPaymentModel.create({
+      phone: "01711111111",
+      amountPaisa: 5000,
+      note: "",
+      createdBy: CREATED_BY,
+    });
+
+    const dues = await listRetailDues();
+    expect(dues).toHaveLength(1);
+    expect(dues[0]).toMatchObject({ phone: "01711111111", customerName: "Karim", duePaisa: 10000 });
+  });
+
+  it("excludes cancelled sales", async () => {
+    await SaleModel.create(retailSale({ status: "cancelled" }));
+    expect(await listRetailDues()).toHaveLength(0);
+  });
+
+  it("orders by due amount descending", async () => {
+    await makeRetailCustomer("01711111111", "Karim");
+    await makeRetailCustomer("01722222222", "Rahim");
+    await SaleModel.create(retailSale({ buyerPhone: "01711111111", duePaisa: 2000, totalPaisa: 2000 }));
+    await SaleModel.create(retailSale({ buyerPhone: "01722222222", duePaisa: 12000 }));
+
+    const dues = await listRetailDues();
+    expect(dues[0].phone).toBe("01722222222");
+    expect(dues[1].phone).toBe("01711111111");
+  });
+
+  it("rejects an unauthenticated caller", async () => {
+    clearSessionCookie(cookieStore);
+    await expect(listRetailDues()).rejects.toThrow();
+  });
+});
+
+describe("retailDueBalance", () => {
+  it("returns the signed due for a phone", async () => {
+    await SaleModel.create(retailSale({ duePaisa: 13000 }));
+    expect(await retailDueBalance("01711111111")).toBe(13000);
+  });
+
+  it("returns 0 for a phone never seen", async () => {
+    expect(await retailDueBalance("01999999999")).toBe(0);
+  });
+});
+
+describe("retailLedger", () => {
+  it("returns sales and payments for one phone", async () => {
+    await SaleModel.create(retailSale());
+    await RetailPaymentModel.create({
+      phone: "01711111111",
+      amountPaisa: 1000,
+      note: "",
+      createdBy: CREATED_BY,
+    });
+
+    const ledger = await retailLedger("01711111111");
+    expect(ledger.sales).toHaveLength(1);
+    expect(ledger.payments).toHaveLength(1);
+  });
+});
+
+describe("recordRetailPayment", () => {
+  it("records a valid payment and reduces the due", async () => {
+    await makeRetailCustomer("01711111111");
+    await SaleModel.create(retailSale({ duePaisa: 12000 }));
+
+    await unwrap(recordRetailPayment("01711111111", 50, "Cash"));
+
+    expect(await retailDueBalance("01711111111")).toBe(7000);
+  });
+
+  it("rejects a payment against a phone with no RetailCustomer", async () => {
+    await SaleModel.create(retailSale({ duePaisa: 12000 }));
+    await expect(
+      unwrap(recordRetailPayment("01711111111", 50, "Cash")),
+    ).rejects.toThrow("kono customer pawa jay ni");
+  });
+
+  it("rejects paying more than the due balance", async () => {
+    await makeRetailCustomer("01711111111");
+    await SaleModel.create(retailSale({ duePaisa: 2000, totalPaisa: 2000 }));
+    await expect(
+      unwrap(recordRetailPayment("01711111111", 25, "test")),
+    ).rejects.toThrow("hote parbe na");
+  });
+
+  it("rejects any payment when the customer has no baki, with a clear message for credit", async () => {
+    await makeRetailCustomer("01711111111");
+    await SaleModel.create(retailSale({ duePaisa: 12000 }));
+    await unwrap(recordRetailPayment("01711111111", 120, "Cash")); // pays exactly
+
+    await expect(
+      unwrap(recordRetailPayment("01711111111", 10, "test")),
+    ).rejects.toThrow("kono baki nei");
+  });
+
+  it("rejects an unauthenticated caller", async () => {
+    clearSessionCookie(cookieStore);
+    await expect(unwrap(recordRetailPayment("01711111111", 50, ""))).rejects.toThrow();
+  });
+
+  it("does not let two concurrent payments for the whole due both commit", async () => {
+    await makeRetailCustomer("01711111111");
+    await SaleModel.create(retailSale({ duePaisa: 12000 }));
+
+    const results = await Promise.allSettled([
+      unwrap(recordRetailPayment("01711111111", 120, "concurrent A")),
+      unwrap(recordRetailPayment("01711111111", 120, "concurrent B")),
+    ]);
+
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect(await retailDueBalance("01711111111")).toBe(0);
   });
 });

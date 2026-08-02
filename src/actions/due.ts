@@ -6,9 +6,12 @@ import { requireAdminAction } from "@/lib/session";
 import { takaToPaisa } from "@/lib/money";
 import { toPlainList, type Serialized } from "@/lib/serialize";
 import { computeBuyerDue, loadBuyerLedger } from "@/lib/dueComputation";
+import { computeRetailDue, loadRetailLedger } from "@/lib/retailDueComputation";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { PaymentModel, type PaymentDoc } from "@/models/Payment";
 import { BuyerModel } from "@/models/Buyer";
+import { RetailCustomerModel } from "@/models/RetailCustomer";
+import { RetailPaymentModel, type RetailPaymentDoc } from "@/models/RetailPayment";
 import { actionResult, type ActionResult } from "@/lib/actionResult";
 
 export type DueRow = {
@@ -185,7 +188,7 @@ export async function recordPayment(
         const buyer = await BuyerModel.findOneAndUpdate(
           { _id: buyerId },
           { $inc: { __v: 1 } },
-          { session, new: true },
+          { session, returnDocument: "after" },
         );
         if (!buyer) throw new Error("Buyer pawa jay ni");
 
@@ -217,6 +220,148 @@ export async function recordPayment(
           [
             {
               buyerId: new mongoose.Types.ObjectId(buyerId),
+              amountPaisa,
+              note: note.trim(),
+              createdBy: new mongoose.Types.ObjectId(adminSession.userId),
+            },
+          ],
+          { session },
+        );
+      });
+    } finally {
+      await session.endSession();
+    }
+  });
+}
+
+export type RetailDueRow = {
+  phone: string;
+  customerName: string;
+  duePaisa: number;
+};
+
+/**
+ * Same shape as listBuyerDues but grouped by phone instead of buyerId, and
+ * only over retail sales. Only phones that have ever had an active retail
+ * sale appear — same "at least one sale on credit" gate listBuyerDues uses.
+ */
+export async function listRetailDues(): Promise<RetailDueRow[]> {
+  await requireAdminAction();
+  await connectDb();
+
+  const saleTotals = await SaleModel.aggregate<{
+    _id: string;
+    totalDuePaisa: number;
+  }>([
+    { $match: { type: "retail", status: "active", buyerPhone: { $gt: "" } } },
+    { $group: { _id: "$buyerPhone", totalDuePaisa: { $sum: "$duePaisa" } } },
+  ]);
+
+  const paymentTotals = await RetailPaymentModel.aggregate<{
+    _id: string;
+    totalPaid: number;
+  }>([{ $group: { _id: "$phone", totalPaid: { $sum: "$amountPaisa" } } }]);
+
+  const paymentByPhone = new Map<string, number>();
+  for (const p of paymentTotals) {
+    paymentByPhone.set(p._id, p.totalPaid);
+  }
+
+  const phones = saleTotals.map((s) => s._id);
+  const customers = await RetailCustomerModel.find({ phone: { $in: phones } })
+    .select("phone name")
+    .lean<{ phone: string; name: string }[]>();
+  const nameByPhone = new Map(customers.map((c) => [c.phone, c.name]));
+
+  const rows: RetailDueRow[] = saleTotals.map((s) => ({
+    phone: s._id,
+    customerName: nameByPhone.get(s._id) ?? "",
+    duePaisa: s.totalDuePaisa - (paymentByPhone.get(s._id) ?? 0),
+  }));
+
+  return rows.sort((a, b) => b.duePaisa - a.duePaisa);
+}
+
+export async function retailDueBalance(phone: string): Promise<number> {
+  await requireAdminAction();
+  await connectDb();
+  if (typeof phone !== "string") return 0;
+  return computeRetailDue(phone);
+}
+
+export type RetailLedgerResult = {
+  sales: Serialized<SaleDoc>[];
+  payments: Serialized<RetailPaymentDoc>[];
+};
+
+export async function retailLedger(phone: string): Promise<RetailLedgerResult> {
+  await requireAdminAction();
+  await connectDb();
+  if (typeof phone !== "string") return { sales: [], payments: [] };
+
+  const { sales, payments } = await loadRetailLedger(phone);
+  return { sales: toPlainList(sales), payments: toPlainList(payments) };
+}
+
+/**
+ * Records a payment against a retail customer's phone-keyed due, mirroring
+ * recordPayment. Bumps RetailCustomer.__v as the write-conflict anchor —
+ * see recordPayment's comment for why a plain read-then-insert would race
+ * under a double-click; the mechanism here is identical, just phone-keyed.
+ * The customer must already exist (no upsert): a payment against a phone
+ * nobody has ever sold to has nothing to pay against.
+ */
+export async function recordRetailPayment(
+  phone: string,
+  amountTaka: number,
+  note: string,
+): Promise<ActionResult<void>> {
+  return actionResult(async () => {
+    const adminSession = await requireAdminAction();
+    await connectDb();
+
+    if (typeof phone !== "string" || !phone.trim()) {
+      throw new Error("Phone number thik nai");
+    }
+    const trimmedPhone = phone.trim();
+
+    const amountPaisa = Math.round(takaToPaisa(amountTaka));
+    if (!Number.isInteger(amountPaisa) || amountPaisa < 1) {
+      throw new Error("Taka 1 er kom hote parbe na");
+    }
+    if (typeof note !== "string") throw new Error("note must be a string");
+
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const customer = await RetailCustomerModel.findOneAndUpdate(
+          { phone: trimmedPhone },
+          { $inc: { __v: 1 } },
+          { session, returnDocument: "after" },
+        );
+        if (!customer) {
+          throw new Error("Ei phone number-e kono customer pawa jay ni");
+        }
+
+        const due = await computeRetailDue(trimmedPhone, session);
+
+        if (due <= 0) {
+          throw new Error(
+            due < 0
+              ? `Ei customer-er kono baki nei — uni borong ${new Intl.NumberFormat("en-BD").format(-due / 100)} ৳ joma ache, notun kore joma neoya lagbe na`
+              : "Ei customer-er kono baki nei, joma neoya lagbe na",
+          );
+        }
+        if (amountPaisa > due) {
+          throw new Error(
+            `Joma ${new Intl.NumberFormat("en-BD").format(amountPaisa / 100)} ৳ baki ${new Intl.NumberFormat("en-BD").format(due / 100)} ৳ er cheye beshi hote parbe na`,
+          );
+        }
+
+        await RetailPaymentModel.create(
+          [
+            {
+              phone: trimmedPhone,
               amountPaisa,
               note: note.trim(),
               createdBy: new mongoose.Types.ObjectId(adminSession.userId),
