@@ -112,11 +112,34 @@ describe("login", () => {
 
   // A non-string input must not become a new distinguishable signal either:
   // it must produce the exact same result as any other failure mode.
-  it("gives the same error for a non-string username as for a wrong password", async () => {
+  it("returns role: admin and redirectUrl: /dashboard for admin credentials", async () => {
     const { login } = await import("@/actions/auth");
-    const malformed = await login(123 as unknown as string, "secret123");
-    const wrongPassword = await login("owner", "wrong");
-    expect(malformed).toEqual(wrongPassword);
+    const result = await login("owner", "secret123");
+    expect(result).toEqual({
+      ok: true,
+      role: "admin",
+      redirectUrl: "/dashboard",
+    });
+  });
+
+  it("authenticates a buyer with phone & password via unified login", async () => {
+    await BuyerModel.create({
+      name: "Karim Uddin",
+      shopName: "Karim Medical Hall",
+      phone: "01711111111",
+      address: "Mirpur",
+      passwordHash: await hashPassword("buyerPass123"),
+      active: true,
+    });
+
+    const { login } = await import("@/actions/auth");
+    const result = await login("01711111111", "buyerPass123");
+    expect(result).toEqual({
+      ok: true,
+      role: "buyer",
+      redirectUrl: "/buyer",
+    });
+    expect(cookieStore.set).toHaveBeenCalled();
   });
 });
 

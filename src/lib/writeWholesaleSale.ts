@@ -1,6 +1,6 @@
 import mongoose, { type ClientSession } from "mongoose";
 import { buildSaleLines, type SaleItemInput } from "@/lib/saleLines";
-import { computeTotals } from "@/lib/saleTotals";
+import { computeTotals, type DiscountInput } from "@/lib/saleTotals";
 import { nextInvoiceSeq, formatInvoiceNo } from "@/lib/invoiceNumber";
 import { computeBuyerDue } from "@/lib/dueComputation";
 import { SettingsModel } from "@/models/Settings";
@@ -15,8 +15,9 @@ export type WriteWholesaleSaleParams = {
     phone: string;
   };
   items: SaleItemInput[];
-  /** A percentage of the subtotal, 0-100. May be fractional. */
-  discountPercent: number;
+  discount?: DiscountInput;
+  /** A percentage of the subtotal, 0-100. Kept for backward compatibility. */
+  discountPercent?: number;
   paidPaisa: number;
   createdBy: string;
   orderId?: string | null;
@@ -51,17 +52,24 @@ export async function writeWholesaleSale(
 
   const lines = await buildSaleLines(params.items, session, "wholesale");
 
+  const discountInput: DiscountInput =
+    params.discount ?? {
+      kind: "percent",
+      percent: params.discountPercent ?? 0,
+    };
+
   // computeTotals normally re-derives the subtotal itself, via
   // ratePaisa * quantity per line — an assumption that breaks for a mixed
   // box+pata line, where lineTotalPaisa is not ratePaisa * quantity. Passing
   // quantity: 1 and ratePaisa: the line's own already-computed total sidesteps
   // that: lineTotal(ratePaisa, 1) is just ratePaisa, so the sum reproduces
   // exactly what was priced above, for every line, mixed or not.
-  const { subtotalPaisa, discountPaisa, totalPaisa, duePaisa } = computeTotals(
-    lines.map((l) => ({ ratePaisa: l.lineTotalPaisa, quantity: 1 })),
-    { kind: "percent", percent: params.discountPercent },
-    params.paidPaisa,
-  );
+  const { subtotalPaisa, discountPercent, discountPaisa, totalPaisa, duePaisa } =
+    computeTotals(
+      lines.map((l) => ({ ratePaisa: l.lineTotalPaisa, quantity: 1 })),
+      discountInput,
+      params.paidPaisa,
+    );
 
   const settings = await SettingsModel.findOne({ key: "singleton" }).session(
     session,
@@ -83,7 +91,7 @@ export async function writeWholesaleSale(
         orderId: params.orderId ?? null,
         items: lines,
         subtotalPaisa,
-        discountPercent: params.discountPercent,
+        discountPercent,
         discountPaisa,
         totalPaisa,
         paidPaisa: params.paidPaisa,

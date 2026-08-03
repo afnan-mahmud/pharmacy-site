@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { approveOrder, rejectOrder } from "@/actions/adminOrders";
 import { buyerDueBalance } from "@/actions/due";
 import { formatTaka, takaToPaisa } from "@/lib/money";
+import { parseTakaInput, parsePercentInput } from "@/lib/takaInput";
+import { computeTotals, type DiscountInput } from "@/lib/saleTotals";
 import { formatDhakaDateTime } from "@/lib/dhakaDate";
 import { parseQuantityInput } from "@/lib/quantityInput";
 import { unitLabelsFor } from "@/lib/unitLabels";
@@ -77,8 +79,11 @@ export function OrderEditor({
   const [customName, setCustomName] = useState("");
   const [customPrice, setCustomPrice] = useState("");
   const [customBoxes, setCustomBoxes] = useState(1);
-
-  const [discountPercentStr, setDiscountPercentStr] = useState("");
+  const [discountSource, setDiscountSource] = useState<"percent" | "amount">(
+    "percent",
+  );
+  const [percentDiscount, setPercentDiscount] = useState("");
+  const [amountDiscount, setAmountDiscount] = useState("");
   const [paidStr, setPaidStr] = useState("");
   const [priorDuePaisa, setPriorDuePaisa] = useState<number | null>(null);
 
@@ -175,10 +180,34 @@ export function OrderEditor({
         boxes: i.boxes,
         patas: i.patas,
       }));
-      const discountPercent = parseFloat(discountPercentStr) || 0;
-      const paidPaisa = Math.round(takaToPaisa(parseFloat(paidStr) || 0));
 
-      const result = await approveOrder(order._id, inputItems, discountPercent, paidPaisa);
+      let discountArg: DiscountInput = { kind: "percent", percent: 0 };
+      if (discountSource === "percent") {
+        const percent = parsePercentInput(percentDiscount);
+        if (percent === null) {
+          setError("Discount thik nai");
+          setBusy(false);
+          return;
+        }
+        discountArg = { kind: "percent", percent };
+      } else {
+        const amountPaisa = parseTakaInput(amountDiscount);
+        if (amountPaisa === null) {
+          setError("Discount thik nai");
+          setBusy(false);
+          return;
+        }
+        discountArg = { kind: "amount", amountPaisa };
+      }
+
+      const paidPaisa = parseTakaInput(paidStr);
+      if (paidPaisa === null) {
+        setError("Joma thik nai");
+        setBusy(false);
+        return;
+      }
+
+      const result = await approveOrder(order._id, inputItems, discountArg, paidPaisa);
       if (!result.ok) {
         setError(result.error);
         setBusy(false);
@@ -212,10 +241,38 @@ export function OrderEditor({
 
   const subtotalPaisa = items.reduce((sum, item) => sum + itemTotal(item), 0);
 
-  const discountPercent = parseFloat(discountPercentStr) || 0;
-  const discountPaisa = Math.round(subtotalPaisa * (discountPercent / 100));
-  const netTotalPaisa = subtotalPaisa - discountPaisa;
-  const paidPaisa = Math.round(takaToPaisa(parseFloat(paidStr) || 0));
+  let discountArg: DiscountInput | null = null;
+  if (discountSource === "percent") {
+    const percent = parsePercentInput(percentDiscount);
+    discountArg = percent === null ? null : { kind: "percent", percent };
+  } else {
+    const amountPaisa = parseTakaInput(amountDiscount);
+    discountArg = amountPaisa === null ? null : { kind: "amount", amountPaisa };
+  }
+
+  const paidPaisa = parseTakaInput(paidStr) ?? 0;
+
+  let netTotalPaisa = subtotalPaisa;
+  let discountPaisa = 0;
+  let discountPercent = 0;
+  let totalsError = "";
+
+  if (discountArg === null) {
+    totalsError = "Discount thik nai";
+  } else {
+    try {
+      const totals = computeTotals(
+        items.map((item) => ({ ratePaisa: itemTotal(item), quantity: 1 })),
+        discountArg,
+        paidPaisa,
+      );
+      discountPaisa = totals.discountPaisa;
+      discountPercent = totals.discountPercent;
+      netTotalPaisa = totals.totalPaisa;
+    } catch (err) {
+      totalsError = err instanceof Error ? err.message : "Kichu ekta bhul holo";
+    }
+  }
 
   const hasPriorDue = priorDuePaisa !== null && priorDuePaisa !== 0;
   const effectivePriorDue = priorDuePaisa ?? 0;
@@ -409,21 +466,45 @@ export function OrderEditor({
       </div>
 
       <div className="px-2 mt-6 mb-8 flex flex-col gap-3">
-        <div className="flex gap-4">
-           <div className="flex-1">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+           <div>
               <label className="text-xs text-muted font-medium mb-1 block">Discount (%)</label>
               <input 
                 type="number" 
-                value={discountPercentStr}
-                onChange={e => setDiscountPercentStr(e.target.value)}
+                step="0.01"
+                min={0}
+                value={percentDiscount}
+                onChange={e => {
+                  setDiscountSource("percent");
+                  setPercentDiscount(e.target.value);
+                  setAmountDiscount("");
+                }}
                 className="w-full rounded-xl border border-line px-3 py-2 text-sm focus:border-brand focus:outline-none"
                 placeholder="0"
               />
            </div>
-           <div className="flex-1">
+           <div>
+              <label className="text-xs text-muted font-medium mb-1 block">Discount (৳)</label>
+              <input 
+                type="number" 
+                step="0.01"
+                min={0}
+                value={amountDiscount}
+                onChange={e => {
+                  setDiscountSource("amount");
+                  setAmountDiscount(e.target.value);
+                  setPercentDiscount("");
+                }}
+                className="w-full rounded-xl border border-line px-3 py-2 text-sm focus:border-brand focus:outline-none"
+                placeholder="0"
+              />
+           </div>
+           <div>
               <label className="text-xs text-muted font-medium mb-1 block">Joma (৳)</label>
               <input 
                 type="number" 
+                step="0.01"
+                min={0}
                 value={paidStr}
                 onChange={e => setPaidStr(e.target.value)}
                 className="w-full rounded-xl border border-line px-3 py-2 text-sm focus:border-brand focus:outline-none"
@@ -439,7 +520,12 @@ export function OrderEditor({
            </div>
            {discountPaisa > 0 && (
              <div className="flex justify-between text-muted">
-               <span>Discount ({discountPercent}%)</span>
+               <span>
+                 Discount
+                 {discountSource === "percent" && discountPercent > 0
+                   ? ` (${discountPercent}%)`
+                   : ""}
+               </span>
                <span>− {formatTaka(discountPaisa)}</span>
              </div>
            )}

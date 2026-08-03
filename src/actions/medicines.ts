@@ -221,7 +221,7 @@ export async function listMedicines(
   }
 
   const docs = await MedicineModel.find(filter)
-    .sort({ name: 1 })
+    .sort({ createdAt: -1 })
     .lean<MedicineDoc[]>();
   return toPlainList(docs);
 }

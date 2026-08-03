@@ -173,8 +173,10 @@ export type WholesaleSaleInput = {
     boxes: number;
     patas: number;
   }[];
-  /** A percentage of the subtotal, 0-100. May be fractional. */
-  discountPercent: number;
+  /** Optional structured discount (percent or amount). */
+  discount?: DiscountInput;
+  /** A percentage of the subtotal, 0-100. May be fractional (kept for backward compatibility). */
+  discountPercent?: number;
   paidPaisa: number;
 };
 
@@ -187,17 +189,18 @@ function validateWholesale(input: WholesaleSaleInput): void {
   }
   validateSaleItems(input.items);
 
-  // computeTotals re-checks this against the actual subtotal; this catches
-  // the malformed case before any database work happens. Fractional is
-  // legal here — 2.5% is a real discount — so unlike the money fields there
-  // is no integer check.
-  if (
-    typeof input.discountPercent !== "number" ||
-    !Number.isFinite(input.discountPercent) ||
-    input.discountPercent < 0 ||
-    input.discountPercent > 100
-  ) {
-    throw new Error("Discount 0 theke 100 er moddhe hote hobe");
+  if (input.discount) {
+    validateDiscountShape(input.discount);
+  } else if (typeof input.discountPercent === "number") {
+    if (
+      !Number.isFinite(input.discountPercent) ||
+      input.discountPercent < 0 ||
+      input.discountPercent > 100
+    ) {
+      throw new Error("Discount 0 theke 100 er moddhe hote hobe");
+    }
+  } else {
+    throw new Error("Discount thik nai");
   }
   validatePaidPaisa(input.paidPaisa);
 }
@@ -212,6 +215,12 @@ export async function recordWholesaleSale(
 
     const session = await mongoose.startSession();
     let saleId: mongoose.Types.ObjectId | null = null;
+
+    const discountInput: DiscountInput =
+      input.discount ?? {
+        kind: "percent",
+        percent: input.discountPercent ?? 0,
+      };
 
     try {
       await session.withTransaction(async () => {
@@ -228,7 +237,7 @@ export async function recordWholesaleSale(
             phone: buyer.phone,
           },
           items: input.items,
-          discountPercent: input.discountPercent,
+          discount: discountInput,
           paidPaisa: input.paidPaisa,
           createdBy: adminSession.userId,
           orderId: null,

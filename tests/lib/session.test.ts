@@ -189,14 +189,14 @@ describe("requireBuyerAction", () => {
 });
 
 // requireBuyer mirrors requireAdmin: it's a page guard, so a non-buyer is
-// redirected to the buyer login rather than thrown at.
+// redirected to the login page rather than thrown at.
 describe("requireBuyer", () => {
-  it("redirects an admin to the buyer login", async () => {
+  it("redirects an admin to the login page", async () => {
     setSessionCookie(cookieStore, await adminToken());
     const { requireBuyer } = await import("@/lib/session");
 
     await expect(requireBuyer()).rejects.toThrow(RedirectError);
-    expect(redirectMock).toHaveBeenCalledWith("/buyer/login");
+    expect(redirectMock).toHaveBeenCalledWith("/login");
   });
 
   it("returns the session for a buyer", async () => {

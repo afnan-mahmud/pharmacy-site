@@ -36,13 +36,14 @@ export function RetailSaleForm({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
-  // Discount: two boxes side by side, one in % and one in ৳. Only the box the
-  // owner last typed into is authoritative — the other one displays the value
-  // derived from it, so the two can never disagree about the same discount.
+  // Discount: two boxes side by side, one in % and one in ৳.
+  // Entering a percentage calculates discount by %, entering raw amount calculates by ৳.
+  // Neither field auto-fills the other.
   const [discountSource, setDiscountSource] = useState<"percent" | "amount">(
     "percent",
   );
-  const [discountInput, setDiscountInput] = useState("");
+  const [percentDiscount, setPercentDiscount] = useState("");
+  const [amountDiscount, setAmountDiscount] = useState("");
   const [paid, setPaid] = useState("");
 
   const [error, setError] = useState("");
@@ -145,10 +146,10 @@ export function RetailSaleForm({
 
   let discountArg: DiscountInput | null = null;
   if (discountSource === "percent") {
-    const percent = parsePercentInput(discountInput);
+    const percent = parsePercentInput(percentDiscount);
     discountArg = percent === null ? null : { kind: "percent", percent };
   } else {
-    const amountPaisa = parseTakaInput(discountInput);
+    const amountPaisa = parseTakaInput(amountDiscount);
     discountArg = amountPaisa === null ? null : { kind: "amount", amountPaisa };
   }
 
@@ -181,24 +182,6 @@ export function RetailSaleForm({
   const effectivePriorDue = priorDuePaisa ?? 0;
   const totalPayablePaisa = totalPaisa + effectivePriorDue;
   const finalDuePaisa = totalPayablePaisa - (paidPaisa ?? 0);
-
-  // Whichever discount box the owner is not typing in mirrors the other one.
-  // Both go blank while the discount is empty or unusable, so a stale derived
-  // figure never sits next to an error message.
-  const discountEmpty = !discountInput.trim();
-  const showDerived = !discountEmpty && !totalsError;
-  const percentBoxValue =
-    discountSource === "percent"
-      ? discountInput
-      : showDerived
-        ? String(discountPercent)
-        : "";
-  const amountBoxValue =
-    discountSource === "amount"
-      ? discountInput
-      : showDerived
-        ? paisaToTaka(discountPaisa).toFixed(2)
-        : "";
 
   function updateBoxes(idx: number, raw: string) {
     const boxes = parseQuantityInput(raw, 0);
@@ -278,7 +261,8 @@ export function RetailSaleForm({
       const sale = result.data;
       setCart([]);
       setDiscountSource("percent");
-      setDiscountInput("");
+      setPercentDiscount("");
+      setAmountDiscount("");
       setPaid("");
       setCustomerPhone("");
       setCustomerName("");
@@ -562,10 +546,11 @@ export function RetailSaleForm({
                     min={0}
                     className={field}
                     placeholder="0"
-                    value={percentBoxValue}
+                    value={percentDiscount}
                     onChange={(e) => {
                       setDiscountSource("percent");
-                      setDiscountInput(e.target.value);
+                      setPercentDiscount(e.target.value);
+                      setAmountDiscount("");
                     }}
                   />
                   <p className="text-center text-[11px] font-medium text-muted">
@@ -581,10 +566,11 @@ export function RetailSaleForm({
                     min={0}
                     className={field}
                     placeholder="0"
-                    value={amountBoxValue}
+                    value={amountDiscount}
                     onChange={(e) => {
                       setDiscountSource("amount");
-                      setDiscountInput(e.target.value);
+                      setAmountDiscount(e.target.value);
+                      setPercentDiscount("");
                     }}
                   />
                   <p className="text-center text-[11px] font-medium text-muted">
@@ -615,7 +601,12 @@ export function RetailSaleForm({
               </div>
               {discountPaisa > 0 && (
                 <div className="flex justify-between text-muted">
-                  <span>Discount ({discountPercent}%)</span>
+                  <span>
+                    Discount
+                    {discountSource === "percent" && discountPercent > 0
+                      ? ` (${discountPercent}%)`
+                      : ""}
+                  </span>
                   <span>− {formatTaka(discountPaisa)}</span>
                 </div>
               )}

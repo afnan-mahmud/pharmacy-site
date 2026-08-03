@@ -6,18 +6,15 @@ import Link from "next/link";
 import { recordWholesaleSale } from "@/actions/sales";
 import { buyerDueBalance } from "@/actions/due";
 import { formatTaka } from "@/lib/money";
-import { parseTakaInput } from "@/lib/takaInput";
-import { computeTotals } from "@/lib/saleTotals";
+import { parseTakaInput, parsePercentInput } from "@/lib/takaInput";
+import { computeTotals, type DiscountInput } from "@/lib/saleTotals";
 import { unitLabelsFor } from "@/lib/unitLabels";
 import { parseQuantityInput } from "@/lib/quantityInput";
 import { SaleItemPicker, type CartLine } from "./SaleItemPicker";
 import { describeDue } from "@/lib/dueDisplay";
 
-type BuyerOption = {
-  id: string;
-  name: string;
-  shopName: string;
-};
+import { BuyerPicker, type BuyerOption } from "./BuyerPicker";
+import { AddBuyerModal } from "./AddBuyerModal";
 
 export function WholesaleSaleForm({
   buyers,
@@ -29,14 +26,27 @@ export function WholesaleSaleForm({
   const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1);
   const [buyerId, setBuyerId] = useState("");
+  const [addingBuyerQuery, setAddingBuyerQuery] = useState<string | null>(null);
   const [priorDuePaisa, setPriorDuePaisa] = useState<number | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
-  const [discount, setDiscount] = useState("");
+  const [discountSource, setDiscountSource] = useState<"percent" | "amount">(
+    "percent",
+  );
+  const [percentDiscount, setPercentDiscount] = useState("");
+  const [amountDiscount, setAmountDiscount] = useState("");
   const [paid, setPaid] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [lastInvoice, setLastInvoice] = useState<string | null>(null);
   const [lastSaleId, setLastSaleId] = useState<string | null>(null);
+  useEffect(() => {
+    (window as any).showAddBuyerModal = (query: string) => {
+      setAddingBuyerQuery(query);
+    };
+    return () => {
+      delete (window as any).showAddBuyerModal;
+    };
+  }, []);
 
   useEffect(() => {
     if (!buyerId) {
@@ -67,25 +77,37 @@ export function WholesaleSaleForm({
   const hasBillableLine = cart.some(
     (line) => line.boxes > 0 || line.patas > 0 || line.medicine.id.startsWith("custom_"),
   );
-  const discountPercent = Number(discount || 0);
   // Parsed through the guard, not takaToPaisa directly: this runs during
   // render, and a typed "-5" used to throw here and blank the screen.
   const paidPaisa = parseTakaInput(paid);
 
+  let discountArg: DiscountInput | null = null;
+  if (discountSource === "percent") {
+    const percent = parsePercentInput(percentDiscount);
+    discountArg = percent === null ? null : { kind: "percent", percent };
+  } else {
+    const amountPaisa = parseTakaInput(amountDiscount);
+    discountArg = amountPaisa === null ? null : { kind: "amount", amountPaisa };
+  }
+
   let totalPaisa = subtotalPaisa;
   let duePaisa = 0;
   let discountPaisa = 0;
+  let discountPercent = 0;
   let totalsError = "";
-  if (paidPaisa === null) {
+  if (discountArg === null) {
+    totalsError = "Discount thik nai";
+  } else if (paidPaisa === null) {
     totalsError = "Joma thik nai";
   } else {
     try {
       const totals = computeTotals(
         cart.map((line) => ({ ratePaisa: lineTotalFor(line), quantity: 1 })),
-        { kind: "percent", percent: discountPercent },
+        discountArg,
         paidPaisa,
       );
       discountPaisa = totals.discountPaisa;
+      discountPercent = totals.discountPercent;
       totalPaisa = totals.totalPaisa;
       duePaisa = totals.duePaisa;
     } catch (err) {
@@ -156,7 +178,7 @@ export function WholesaleSaleForm({
       const result = await recordWholesaleSale({
         buyerId,
         items: payloadItems,
-        discountPercent,
+        discount: discountArg!,
         paidPaisa,
       });
       if (!result.ok) {
@@ -166,7 +188,9 @@ export function WholesaleSaleForm({
       }
       const sale = result.data;
       setCart([]);
-      setDiscount("");
+      setDiscountSource("percent");
+      setPercentDiscount("");
+      setAmountDiscount("");
       setPaid("");
       setBuyerId("");
       setPriorDuePaisa(null);
@@ -277,21 +301,12 @@ export function WholesaleSaleForm({
                   </span>
                 )}
               </div>
-              <select
-                id="buyerSelect"
-                className={field}
+              <BuyerPicker
+                buyers={buyers}
                 value={buyerId}
-                onChange={(e) => setBuyerId(e.target.value)}
-                required
-              >
-                <option value="">— buyer select koro —</option>
-                {buyers.map((b) => (
-                  <option key={b.id} value={b.id}>
-                    {b.name}
-                    {b.shopName ? ` — ${b.shopName}` : ""}
-                  </option>
-                ))}
-              </select>
+                onChange={setBuyerId}
+                disabled={busy}
+              />
             </div>
           </div>
 
@@ -363,10 +378,49 @@ export function WholesaleSaleForm({
 
           <div className="grid gap-4 rounded-3xl border border-line bg-surface p-5 shadow-md sm:grid-cols-3">
             <div className="space-y-1.5">
-              <label htmlFor="discount" className="text-sm font-medium text-ink">Discount (%)</label>
-              <input id="discount" type="number" step="0.01" className={field}
-                placeholder="0" value={discount}
-                onChange={(e) => setDiscount(e.target.value)} />
+              <label className="text-sm font-medium text-ink">Discount</label>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <input
+                    id="discountPercent"
+                    aria-label="Discount percent"
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    className={field}
+                    placeholder="0"
+                    value={percentDiscount}
+                    onChange={(e) => {
+                      setDiscountSource("percent");
+                      setPercentDiscount(e.target.value);
+                      setAmountDiscount("");
+                    }}
+                  />
+                  <p className="text-center text-[11px] font-medium text-muted">
+                    % e
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <input
+                    id="discountAmount"
+                    aria-label="Discount taka"
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    className={field}
+                    placeholder="0"
+                    value={amountDiscount}
+                    onChange={(e) => {
+                      setDiscountSource("amount");
+                      setAmountDiscount(e.target.value);
+                      setPercentDiscount("");
+                    }}
+                  />
+                  <p className="text-center text-[11px] font-medium text-muted">
+                    ৳ e
+                  </p>
+                </div>
+              </div>
             </div>
             <div className="space-y-1.5">
               <label htmlFor="paid" className="text-sm font-medium text-ink">Joma (৳)</label>
@@ -381,7 +435,12 @@ export function WholesaleSaleForm({
               </div>
               {discountPaisa > 0 && (
                 <div className="flex justify-between text-muted">
-                  <span>Discount ({discountPercent}%)</span>
+                  <span>
+                    Discount
+                    {discountSource === "percent" && discountPercent > 0
+                      ? ` (${discountPercent}%)`
+                      : ""}
+                  </span>
                   <span>− {formatTaka(discountPaisa)}</span>
                 </div>
               )}
@@ -462,6 +521,17 @@ export function WholesaleSaleForm({
             {busy ? "Wait..." : "Order Confirm Koro"}
           </button>
         </form>
+      )}
+
+      {addingBuyerQuery !== null && (
+        <AddBuyerModal
+          initialQuery={addingBuyerQuery}
+          onClose={() => setAddingBuyerQuery(null)}
+          onCreated={(newBuyerId) => {
+            setAddingBuyerQuery(null);
+            setBuyerId(newBuyerId);
+          }}
+        />
       )}
     </div>
   );

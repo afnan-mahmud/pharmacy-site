@@ -9,6 +9,7 @@ export default async function WholesalePage() {
     id: b._id,
     name: b.name,
     shopName: b.shopName,
+    phone: b.phone,
   }));
 
   return <WholesaleSaleForm buyers={buyerOptions} allowCustomItems />;

@@ -175,13 +175,8 @@ describe("computeTotals — amount discount", () => {
     expect(totalPaisa).toBe(39659);
   });
 
-  it("derives a display percent from the amount", () => {
-    expect(computeTotals(lines, amount(4300), 0).discountPercent).toBe(10);
-  });
-
-  it("rounds the derived percent to 2 decimals", () => {
-    // 1000 / 43000 * 100 = 2.325581...
-    expect(computeTotals(lines, amount(1000), 0).discountPercent).toBe(2.33);
+  it("keeps discountPercent at 0 for raw amount discount", () => {
+    expect(computeTotals(lines, amount(4300), 0).discountPercent).toBe(0);
   });
 
   it("rejects an amount above the subtotal", () => {

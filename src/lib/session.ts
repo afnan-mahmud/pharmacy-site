@@ -51,10 +51,10 @@ export async function requireAdminAction(): Promise<SessionPayload> {
 
 export const BUYER_ONLY_ERROR = "Buyer login chara ei kaj kora jabe na";
 
-/** Page guard for buyer routes — redirects a non-buyer to the buyer login. */
+/** Page guard for buyer routes — redirects a non-buyer to the login page. */
 export async function requireBuyer(): Promise<SessionPayload> {
   const session = await getSession();
-  if (!session || session.role !== "buyer") redirect("/buyer/login");
+  if (!session || session.role !== "buyer") redirect("/login");
   return session;
 }
 

@@ -70,6 +70,8 @@ const EXEMPT: Record<string, string[]> = {
     // by their own tests in tests/actions/auth.test.ts.
     "buyerLogin",
     "buyerLogout",
+    // registerBuyer establishes a buyer account without an existing session.
+    "registerBuyer",
   ],
   "/src/actions/settings.ts": [
     // Added by Fix 2: an unguarded, upsert-free read of pharmacy identity

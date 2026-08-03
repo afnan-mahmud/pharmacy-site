@@ -73,11 +73,7 @@ function amountDiscount(
   if (amountPaisa > subtotalPaisa) {
     throw new Error("Discount subtotal er beshi hote parbe na");
   }
-  const discountPercent =
-    subtotalPaisa > 0
-      ? Math.round((amountPaisa / subtotalPaisa) * 100 * 100) / 100
-      : 0;
-  return { discountPercent, discountPaisa: amountPaisa };
+  return { discountPercent: 0, discountPaisa: amountPaisa };
 }
 
 /**

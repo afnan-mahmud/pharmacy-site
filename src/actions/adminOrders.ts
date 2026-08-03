@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { connectDb } from "@/lib/db";
 import { requireAdminAction } from "@/lib/session";
 import { writeWholesaleSale } from "@/lib/writeWholesaleSale";
+import { type DiscountInput } from "@/lib/saleTotals";
 import { toPlain, toPlainList, type Serialized } from "@/lib/serialize";
 import { OrderModel, type OrderDoc } from "@/models/Order";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
@@ -139,7 +140,7 @@ function validateApproval(items: ApprovalItemInput[]): void {
 export async function approveOrder(
   orderId: string,
   items: ApprovalItemInput[],
-  discountPercent: number = 0,
+  discount: DiscountInput | number = 0,
   paidPaisa: number = 0,
 ): Promise<ActionResult<Serialized<SaleDoc>>> {
   return actionResult(async () => {
@@ -149,6 +150,11 @@ export async function approveOrder(
     if (!mongoose.Types.ObjectId.isValid(orderId)) {
       throw new Error("Order pawa jay ni");
     }
+
+    const discountInput: DiscountInput =
+      typeof discount === "number"
+        ? { kind: "percent", percent: discount }
+        : discount;
 
     const session = await mongoose.startSession();
     let saleId: mongoose.Types.ObjectId | null = null;
@@ -186,7 +192,7 @@ export async function approveOrder(
             phone: buyerDoc?.phone ?? "",
           },
           items: items.map(i => ({ ...i, patas: i.patas ?? 0 })),
-          discountPercent,
+          discount: discountInput,
           paidPaisa,
           createdBy: adminSession.userId,
           orderId: String(order._id),
