@@ -83,6 +83,11 @@ export function MedicineForm({
   // "other" has no outer pack — it's counted in pieces only, so the box
   // fields collapse into the piece price (1 box === 1 piece).
   const isOther = form === "other";
+  // "other" always has 1 inner-unit per outer-pack (1 piece === 1 piece).
+  // The state `patasPerBox` may still hold the previous form's default (e.g.
+  // 10 for tablets) because the input is hidden, so we normalise here — the
+  // same rule handleSubmit applies on save (line 111).
+  const effectivePPB = isOther ? 1 : Number(patasPerBox) || 1;
 
   useEffect(() => {
     if (!initial?.id) return;
@@ -261,7 +266,7 @@ export function MedicineForm({
         <h3 className="text-sm font-semibold text-ink">Stock add koro</h3>
         {initial?.id && (
           <p className="text-xs text-muted">
-            Ekhon ache: {formatStock(initial.stockPatas ?? 0, Number(patasPerBox) || 1, form)}
+            Ekhon ache: {formatStock(initial.stockPatas ?? 0, effectivePPB, form)}
           </p>
         )}
         <div className="grid gap-3 sm:grid-cols-2">
@@ -273,7 +278,7 @@ export function MedicineForm({
               value={stockBoxes} onChange={(e) => setStockBoxes(e.target.value)} />
             {stockBoxes && Number.isInteger(Number(stockBoxes)) && Number(stockBoxes) > 0 && (
               <p className="text-xs text-muted">
-                = {boxesToPatas(Number(stockBoxes), Number(patasPerBox) || 1)} {labels.inner}
+                = {boxesToPatas(Number(stockBoxes), effectivePPB)} {labels.inner}
               </p>
             )}
           </div>

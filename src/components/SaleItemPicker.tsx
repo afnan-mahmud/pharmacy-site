@@ -254,14 +254,25 @@ export function SaleItemPicker({
                     onChange={(e) => setCustomPrice(e.target.value)}
                     className="w-full rounded-xl border border-line px-4 py-3 text-sm focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none transition"
                   />
-                  <input
-                    type="number"
-                    placeholder="Qty"
-                    min={1}
-                    value={customBoxes}
-                    onChange={(e) => setCustomBoxes(Number(e.target.value) || 1)}
-                    className="w-24 rounded-xl border border-line px-4 py-3 text-sm focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none transition"
-                  />
+                  <div className="flex items-center gap-0 rounded-xl border border-line overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setCustomBoxes(Math.max(0, customBoxes - 1))}
+                      className="grid h-[44px] w-10 place-items-center text-lg font-bold text-brand hover:bg-brand/10 transition"
+                    >−</button>
+                    <input
+                      type="number"
+                      min={0}
+                      value={customBoxes}
+                      onChange={(e) => setCustomBoxes(Math.max(0, Number(e.target.value) || 0))}
+                      className="w-10 border-0 bg-transparent p-0 text-center text-sm font-bold text-ink focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setCustomBoxes(customBoxes + 1)}
+                      className="grid h-[44px] w-10 place-items-center text-lg font-bold text-brand hover:bg-brand/10 transition"
+                    >+</button>
+                  </div>
                 </div>
                 <div className="mt-2 flex gap-3">
                   <button onClick={addCustomItem} className="flex-1 rounded-xl bg-brand py-3 text-sm font-bold text-white shadow-lg shadow-brand/30 hover:bg-brand-strong transition">
