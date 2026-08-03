@@ -77,6 +77,7 @@ export default async function InvoicePage({
         totalPaisa={sale.totalPaisa}
         paidPaisa={sale.paidPaisa}
         duePaisa={sale.duePaisa}
+        previousDuePaisa={sale.previousDuePaisa}
         cancelled={sale.status === "cancelled"}
       />
     </div>

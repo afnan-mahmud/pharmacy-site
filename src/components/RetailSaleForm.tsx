@@ -177,6 +177,11 @@ export function RetailSaleForm({
     }
   }
 
+  const hasPriorDue = priorDuePaisa !== null && priorDuePaisa !== 0;
+  const effectivePriorDue = priorDuePaisa ?? 0;
+  const totalPayablePaisa = totalPaisa + effectivePriorDue;
+  const finalDuePaisa = totalPayablePaisa - (paidPaisa ?? 0);
+
   // Whichever discount box the owner is not typing in mirrors the other one.
   // Both go blank while the discount is empty or unusable, so a stale derived
   // figure never sits next to an error message.
@@ -603,13 +608,13 @@ export function RetailSaleForm({
                 onChange={(e) => setPaid(e.target.value)}
               />
             </div>
-            <div className="space-y-3 rounded-2xl bg-brand/5 p-4 border border-brand/10">
-              <div className="flex justify-between text-sm text-muted">
+            <div className="space-y-2.5 rounded-2xl bg-brand/5 p-4 border border-brand/10 text-sm">
+              <div className="flex justify-between text-muted">
                 <span>Subtotal</span>
                 <span>{formatTaka(subtotalPaisa)}</span>
               </div>
               {discountPaisa > 0 && (
-                <div className="flex justify-between text-sm text-muted">
+                <div className="flex justify-between text-muted">
                   <span>Discount ({discountPercent}%)</span>
                   <span>− {formatTaka(discountPaisa)}</span>
                 </div>
@@ -620,26 +625,56 @@ export function RetailSaleForm({
                 </p>
               ) : (
                 <>
-                  <div className="flex justify-between text-sm font-display font-bold text-ink">
-                    <span>Mot</span>
+                  <div className="flex justify-between font-bold text-ink">
+                    <span>Bortoman Bill</span>
                     <span>{formatTaka(totalPaisa)}</span>
                   </div>
-                  {duePaisa > 0 ? (
-                    <div className="flex justify-between text-sm font-semibold text-danger">
-                      <span>Baki</span>
-                      <span>{formatTaka(duePaisa)}</span>
-                    </div>
-                  ) : duePaisa < 0 ? (
-                    <div className="flex justify-between text-sm font-semibold text-teal-700">
-                      <span>Customer pabe</span>
-                      <span>{formatTaka(Math.abs(duePaisa))}</span>
-                    </div>
-                  ) : (
-                    <div className="flex justify-between text-sm font-semibold text-muted">
-                      <span>Baki</span>
-                      <span>৳0.00 (Baki nei)</span>
+
+                  {hasPriorDue && (
+                    <>
+                      {priorDuePaisa! > 0 ? (
+                        <div className="flex justify-between text-danger font-medium">
+                          <span>Purber Baki</span>
+                          <span>+ {formatTaka(priorDuePaisa!)}</span>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between text-teal-700 font-medium">
+                          <span>Purber Joma (Advance)</span>
+                          <span>− {formatTaka(Math.abs(priorDuePaisa!))}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-bold text-ink border-t border-brand/10 pt-1.5">
+                        <span>Total Due</span>
+                        <span className="text-brand-strong">{formatTaka(totalPayablePaisa)}</span>
+                      </div>
+                    </>
+                  )}
+
+                  {paidPaisa !== null && paidPaisa > 0 && (
+                    <div className="flex justify-between text-emerald-700 font-medium">
+                      <span>Joma (Payment)</span>
+                      <span>− {formatTaka(paidPaisa)}</span>
                     </div>
                   )}
+
+                  <div className="flex justify-between font-bold text-base border-t border-line/60 pt-2 mt-1">
+                    {finalDuePaisa > 0 ? (
+                      <>
+                        <span className="text-danger font-display">Mot Baki</span>
+                        <span className="text-danger">{formatTaka(finalDuePaisa)}</span>
+                      </>
+                    ) : finalDuePaisa < 0 ? (
+                      <>
+                        <span className="text-teal-700 font-display">Customer pabe</span>
+                        <span className="text-teal-700">{formatTaka(Math.abs(finalDuePaisa))}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-muted font-display">Baki</span>
+                        <span className="text-muted">৳0.00 (Shodh)</span>
+                      </>
+                    )}
+                  </div>
                 </>
               )}
             </div>

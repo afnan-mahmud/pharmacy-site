@@ -84,4 +84,28 @@ describe("filterBuyers", () => {
   it("preserves the input order", () => {
     expect(filterBuyers(buyers, "1")).toEqual([karim, rahim, shathi]);
   });
+
+  // The admin khuchra-buyer list reuses this filter, and a retail customer
+  // has only a name and a phone.
+  describe("with no shop name", () => {
+    const jamal = { name: "Jamal Hossain", phone: "01744444444" };
+    const nasir = { name: "Nasir Ahmed", phone: "01755555555" };
+    const retail = [jamal, nasir];
+
+    it("matches on the name", () => {
+      expect(filterBuyers(retail, "jamal")).toEqual([jamal]);
+    });
+
+    it("matches on the phone", () => {
+      expect(filterBuyers(retail, "0175")).toEqual([nasir]);
+    });
+
+    it("matches tokens across the name and the phone", () => {
+      expect(filterBuyers(retail, "jamal 0174")).toEqual([jamal]);
+    });
+
+    it("does not turn a missing shop name into a match", () => {
+      expect(filterBuyers(retail, "undefined")).toEqual([]);
+    });
+  });
 });

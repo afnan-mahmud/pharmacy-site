@@ -32,11 +32,11 @@ const saleLineSchema = new Schema(
     // Which unit words this line prints with, snapshotted for the same reason
     // medicineName and ratePaisa are: an invoice printed last month must not
     // re-word itself because the medicine's form was corrected today. The
-    // form rather than a rendered label, because the invoice needs "btl"
-    // while a screen needs "bottle" — both derive from this, neither derives
-    // from the other. No enum: a snapshot must not fail validation over a
-    // value the medicine model no longer offers. See src/lib/unitLabels.ts.
+    // Form snapshot
     form: { type: String, default: "tablet" },
+    // Total buying/purchase cost for this line item snapshotted at sale time,
+    // in paisa. Derived from medicine.purchasePricePaisa and pack size.
+    costPaisa: { type: Number, default: 0, min: 0 },
   },
   { _id: false },
 );
@@ -77,6 +77,8 @@ const saleSchema = new Schema(
     // May be negative: when paidPaisa exceeds totalPaisa, the buyer has
     // credit that the pharmacy owes back. See src/lib/dueDisplay.ts.
     duePaisa: { type: Number, required: true },
+    // Snapshotted prior due balance before this sale occurred (positive = due, negative = credit/advance).
+    previousDuePaisa: { type: Number, default: 0 },
     // Sales are cancelled, never deleted: an invoice number that vanishes
     // from the books is an audit trail with a hole in it.
     status: { type: String, enum: ["active", "cancelled"], required: true, default: "active" },

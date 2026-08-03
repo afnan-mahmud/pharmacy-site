@@ -16,6 +16,9 @@ const retailCustomerSchema = new Schema(
   { timestamps: true },
 );
 
+// The admin khuchra-buyer list reads every customer sorted by name.
+retailCustomerSchema.index({ name: 1 });
+
 export type RetailCustomerDoc = InferSchemaType<typeof retailCustomerSchema> & {
   _id: mongoose.Types.ObjectId;
 };

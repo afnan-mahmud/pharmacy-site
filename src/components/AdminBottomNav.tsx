@@ -17,6 +17,7 @@ const MAIN = [
 const MORE = [
   { href: "/sell", label: "Khuchra Bikri" },
   { href: "/buyers", label: "Buyer" },
+  { href: "/retail-customers", label: "Khuchra Buyer" },
   { href: "/due", label: "Baki Khata" },
   { href: "/retail-due", label: "Khuchra Baki" },
   { href: "/reports", label: "Report" },

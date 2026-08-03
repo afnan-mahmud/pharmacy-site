@@ -155,6 +155,9 @@ export async function recordRetailSale(
     revalidatePath("/medicines");
     revalidatePath("/sell");
     revalidatePath("/retail-due");
+    // A retail sale with a phone upserts a RetailCustomer (see
+    // writeRetailSale), so the khuchra-buyer list can gain a row here.
+    revalidatePath("/retail-customers");
 
     const sale = await SaleModel.findById(saleId).lean<SaleDoc>();
     return toPlain(sale!);

@@ -6,9 +6,13 @@
  * buyer list is neither.
  */
 
+/**
+ * `shopName` is optional because a retail customer has none — the admin
+ * khuchra-buyer list reuses this filter with just a name and a phone.
+ */
 export type SearchableBuyer = {
   name: string;
-  shopName: string;
+  shopName?: string;
   phone: string;
 };
 
@@ -31,7 +35,7 @@ export function filterBuyers<T extends SearchableBuyer>(
 
   return buyers.filter((buyer) => {
     const haystack =
-      `${buyer.name} ${buyer.shopName} ${buyer.phone}`.toLowerCase();
+      `${buyer.name} ${buyer.shopName ?? ""} ${buyer.phone}`.toLowerCase();
     return tokens.every((token) => haystack.includes(token));
   });
 }

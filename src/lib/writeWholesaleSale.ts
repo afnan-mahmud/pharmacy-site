@@ -2,6 +2,7 @@ import mongoose, { type ClientSession } from "mongoose";
 import { buildSaleLines, type SaleItemInput } from "@/lib/saleLines";
 import { computeTotals } from "@/lib/saleTotals";
 import { nextInvoiceSeq, formatInvoiceNo } from "@/lib/invoiceNumber";
+import { computeBuyerDue } from "@/lib/dueComputation";
 import { SettingsModel } from "@/models/Settings";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
 
@@ -68,6 +69,8 @@ export async function writeWholesaleSale(
   const prefix = settings?.invoicePrefix ?? "ABC";
   const seq = await nextInvoiceSeq(session);
 
+  const previousDuePaisa = await computeBuyerDue(String(params.buyer.id), session);
+
   const [sale] = await SaleModel.create(
     [
       {
@@ -85,6 +88,7 @@ export async function writeWholesaleSale(
         totalPaisa,
         paidPaisa: params.paidPaisa,
         duePaisa,
+        previousDuePaisa,
         status: "active",
         createdBy: new mongoose.Types.ObjectId(params.createdBy),
       },

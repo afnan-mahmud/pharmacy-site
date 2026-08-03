@@ -12,6 +12,7 @@ const LINKS = [
   { href: "/orders", label: "Pending Order" },
   { href: "/medicines", label: "Medicine" },
   { href: "/buyers", label: "Buyer" },
+  { href: "/retail-customers", label: "Khuchra Buyer" },
   { href: "/due", label: "Baki Khata" },
   { href: "/retail-due", label: "Khuchra Baki" },
   { href: "/reports", label: "Report" },

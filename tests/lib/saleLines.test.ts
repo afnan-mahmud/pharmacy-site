@@ -49,6 +49,8 @@ describe("buildSaleLines", () => {
     expect(lines[0].ratePaisa).toBe(12000);
     expect(lines[0].lineTotalPaisa).toBe(2 * 12000 + 3 * 1300);
     expect(lines[0].patasDeducted).toBe(23);
+    // 2 boxes @ 9000 = 18000, 3 patas @ (9000/10) = 2700 => 20700 costPaisa
+    expect(lines[0].costPaisa).toBe(20700);
     expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(477);
   });
 
@@ -61,6 +63,7 @@ describe("buildSaleLines", () => {
     expect(lines[0].ratePaisa).toBe(13000);
     expect(lines[0].lineTotalPaisa).toBe(2 * 13000 + 3 * 1400);
     expect(lines[0].patasDeducted).toBe(23);
+    expect(lines[0].costPaisa).toBe(20700);
   });
 
   it("keeps a zero-quantity line on the sale and takes no stock", async () => {

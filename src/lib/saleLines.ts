@@ -21,6 +21,7 @@ export type SaleLineDraft = {
   ratePaisa: number;
   lineTotalPaisa: number;
   patasDeducted: number;
+  costPaisa: number;
 };
 
 /**
@@ -74,6 +75,14 @@ export async function buildSaleLines(
         if (!ok) throw new Error("Medicine pawa jay ni");
       }
 
+      const purchasePricePaisa = medicine.purchasePricePaisa ?? 0;
+      const patasPerBox = medicine.patasPerBox > 0 ? medicine.patasPerBox : 10;
+      const lineCostPaisa =
+        purchasePricePaisa > 0
+          ? item.boxes * purchasePricePaisa +
+            Math.round((leftoverPatas * purchasePricePaisa) / patasPerBox)
+          : 0;
+
       lines.push({
         medicineId: medicine._id,
         medicineName: medicine.name,
@@ -85,6 +94,7 @@ export async function buildSaleLines(
         lineTotalPaisa:
           item.boxes * boxPricePaisa + leftoverPatas * pataPricePaisa,
         patasDeducted: totalPatas,
+        costPaisa: lineCostPaisa,
       });
     } else {
       if (!item.customName || item.customPricePaisa === undefined) {
@@ -100,6 +110,7 @@ export async function buildSaleLines(
         ratePaisa: item.customPricePaisa,
         lineTotalPaisa: item.boxes * item.customPricePaisa,
         patasDeducted: 0,
+        costPaisa: 0,
       });
     }
   }

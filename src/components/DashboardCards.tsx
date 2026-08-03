@@ -68,6 +68,14 @@ export function DashboardCards({ summary }: { summary: DashboardSummary }) {
           valueColor="text-purple-600"
         />
         <GridCard
+          href="/retail-customers"
+          title="Khuchra Buyer"
+          value="🧍"
+          subtitle="Khuchra customer list"
+          bgTint="bg-teal-50"
+          valueColor="text-teal-600"
+        />
+        <GridCard
           href="/reports"
           title="Sob Bikrir Hisab"
           value="📈"

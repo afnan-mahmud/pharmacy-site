@@ -157,4 +157,27 @@ describe("writeWholesaleSale", () => {
     expect(sale!.items[0].leftoverPatas).toBe(0);
     expect(sale!.totalPaisa).toBe(24000);
   });
+
+  it("snapshots the buyer's previous due balance at sale creation time", async () => {
+    const medicine = await makeMedicine();
+    const b = buyer();
+
+    // First sale with partial payment creates due
+    const sale1 = await run({
+      buyer: b,
+      items: [{ medicineId: String(medicine._id), boxes: 2 }],
+      paidPaisa: 10000,
+    });
+    expect(sale1!.previousDuePaisa).toBe(0);
+    expect(sale1!.duePaisa).toBe(14000);
+
+    // Second sale should have previousDuePaisa snapshot of 14000
+    const sale2 = await run({
+      buyer: b,
+      items: [{ medicineId: String(medicine._id), boxes: 1 }],
+      paidPaisa: 12000,
+    });
+    expect(sale2!.previousDuePaisa).toBe(14000);
+    expect(sale2!.duePaisa).toBe(0);
+  });
 });

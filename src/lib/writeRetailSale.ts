@@ -2,6 +2,7 @@ import mongoose, { type ClientSession } from "mongoose";
 import { buildSaleLines, type SaleItemInput } from "@/lib/saleLines";
 import { computeTotals, type DiscountInput } from "@/lib/saleTotals";
 import { nextInvoiceSeq, formatInvoiceNo } from "@/lib/invoiceNumber";
+import { computeRetailDue } from "@/lib/retailDueComputation";
 import { SettingsModel } from "@/models/Settings";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { RetailCustomerModel } from "@/models/RetailCustomer";
@@ -69,6 +70,8 @@ export async function writeRetailSale(
     );
   }
 
+  const previousDuePaisa = trimmedPhone ? await computeRetailDue(trimmedPhone, session) : 0;
+
   const [sale] = await SaleModel.create(
     [
       {
@@ -84,6 +87,7 @@ export async function writeRetailSale(
         totalPaisa,
         paidPaisa: params.paidPaisa,
         duePaisa,
+        previousDuePaisa,
         status: "active",
         createdBy: new mongoose.Types.ObjectId(params.createdBy),
       },

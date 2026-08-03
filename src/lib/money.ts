@@ -34,8 +34,9 @@ export function formatTaka(paisa: number): string {
   // "-12.50" glued onto the symbol; the former reads as a negative amount
   // of money, which is what a negative balance (buyer credit — see
   // src/actions/due.ts) actually means.
-  const sign = paisa < 0 ? "-" : "";
-  const formatted = (Math.abs(paisa) / 100).toLocaleString("en-US", {
+  const safePaisa = typeof paisa === "number" && Number.isFinite(paisa) ? paisa : 0;
+  const sign = safePaisa < 0 ? "-" : "";
+  const formatted = (Math.abs(safePaisa) / 100).toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });

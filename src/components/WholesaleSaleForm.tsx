@@ -1,15 +1,17 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { recordWholesaleSale } from "@/actions/sales";
+import { buyerDueBalance } from "@/actions/due";
 import { formatTaka } from "@/lib/money";
 import { parseTakaInput } from "@/lib/takaInput";
 import { computeTotals } from "@/lib/saleTotals";
 import { unitLabelsFor } from "@/lib/unitLabels";
 import { parseQuantityInput } from "@/lib/quantityInput";
 import { SaleItemPicker, type CartLine } from "./SaleItemPicker";
+import { describeDue } from "@/lib/dueDisplay";
 
 type BuyerOption = {
   id: string;
@@ -27,6 +29,7 @@ export function WholesaleSaleForm({
   const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1);
   const [buyerId, setBuyerId] = useState("");
+  const [priorDuePaisa, setPriorDuePaisa] = useState<number | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [discount, setDiscount] = useState("");
   const [paid, setPaid] = useState("");
@@ -34,6 +37,24 @@ export function WholesaleSaleForm({
   const [busy, setBusy] = useState(false);
   const [lastInvoice, setLastInvoice] = useState<string | null>(null);
   const [lastSaleId, setLastSaleId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!buyerId) {
+      setPriorDuePaisa(null);
+      return;
+    }
+    let cancelled = false;
+    buyerDueBalance(buyerId)
+      .then((bal) => {
+        if (!cancelled) setPriorDuePaisa(bal);
+      })
+      .catch(() => {
+        if (!cancelled) setPriorDuePaisa(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [buyerId]);
 
   function lineTotalFor(line: CartLine): number {
     return (
@@ -71,6 +92,11 @@ export function WholesaleSaleForm({
       totalsError = err instanceof Error ? err.message : "Kichu ekta bhul holo";
     }
   }
+
+  const hasPriorDue = priorDuePaisa !== null && priorDuePaisa !== 0;
+  const effectivePriorDue = priorDuePaisa ?? 0;
+  const totalPayablePaisa = totalPaisa + effectivePriorDue;
+  const finalDuePaisa = totalPayablePaisa - (paidPaisa ?? 0);
 
   function updateBoxes(idx: number, raw: string) {
     const boxes = parseQuantityInput(raw, 0);
@@ -143,6 +169,7 @@ export function WholesaleSaleForm({
       setDiscount("");
       setPaid("");
       setBuyerId("");
+      setPriorDuePaisa(null);
       setLastInvoice(sale.invoiceNo as string | null);
       setLastSaleId(sale._id);
       setStep(1);
@@ -235,9 +262,21 @@ export function WholesaleSaleForm({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="rounded-3xl border border-line bg-surface p-5 shadow-md">
             <div className="space-y-2">
-              <label htmlFor="buyerSelect" className="text-sm font-medium text-ink">
-                Buyer
-              </label>
+              <div className="flex items-center justify-between">
+                <label htmlFor="buyerSelect" className="text-sm font-medium text-ink">
+                  Buyer <span className="font-bold text-danger">*</span>
+                </label>
+                {hasPriorDue && (
+                  <span
+                    className={`text-xs font-bold ${
+                      priorDuePaisa! > 0 ? "text-danger" : "text-brand-strong"
+                    }`}
+                  >
+                    {describeDue(priorDuePaisa!).label}:{" "}
+                    {describeDue(priorDuePaisa!).amountText}
+                  </span>
+                )}
+              </div>
               <select
                 id="buyerSelect"
                 className={field}
@@ -335,13 +374,13 @@ export function WholesaleSaleForm({
                 placeholder="0"
                 value={paid} onChange={(e) => setPaid(e.target.value)} />
             </div>
-            <div className="space-y-3 rounded-2xl bg-brand/5 p-4 border border-brand/10">
-              <div className="flex justify-between text-sm text-muted">
+            <div className="space-y-2.5 rounded-2xl bg-brand/5 p-4 border border-brand/10 text-sm">
+              <div className="flex justify-between text-muted">
                 <span>Subtotal</span>
                 <span>{formatTaka(subtotalPaisa)}</span>
               </div>
               {discountPaisa > 0 && (
-                <div className="flex justify-between text-sm text-muted">
+                <div className="flex justify-between text-muted">
                   <span>Discount ({discountPercent}%)</span>
                   <span>− {formatTaka(discountPaisa)}</span>
                 </div>
@@ -350,21 +389,56 @@ export function WholesaleSaleForm({
                 <p role="alert" className="text-sm text-danger">{totalsError}</p>
               ) : (
                 <>
-                  <div className="flex justify-between text-sm font-display font-bold text-ink">
-                    <span>Mot</span>
+                  <div className="flex justify-between font-bold text-ink">
+                    <span>Bortoman Bill</span>
                     <span>{formatTaka(totalPaisa)}</span>
                   </div>
-                  {duePaisa >= 0 ? (
-                    <div className="flex justify-between text-sm font-semibold text-danger">
-                      <span>Baki</span>
-                      <span>{formatTaka(duePaisa)}</span>
-                    </div>
-                  ) : (
-                    <div className="flex justify-between text-sm font-semibold text-teal-700">
-                      <span>Buyer pabe</span>
-                      <span>{formatTaka(Math.abs(duePaisa))}</span>
+
+                  {hasPriorDue && (
+                    <>
+                      {priorDuePaisa! > 0 ? (
+                        <div className="flex justify-between text-danger font-medium">
+                          <span>Purber Baki</span>
+                          <span>+ {formatTaka(priorDuePaisa!)}</span>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between text-teal-700 font-medium">
+                          <span>Purber Joma (Advance)</span>
+                          <span>− {formatTaka(Math.abs(priorDuePaisa!))}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between font-bold text-ink border-t border-brand/10 pt-1.5">
+                        <span>Total Due</span>
+                        <span className="text-brand-strong">{formatTaka(totalPayablePaisa)}</span>
+                      </div>
+                    </>
+                  )}
+
+                  {paidPaisa !== null && paidPaisa > 0 && (
+                    <div className="flex justify-between text-emerald-700 font-medium">
+                      <span>Joma (Payment)</span>
+                      <span>− {formatTaka(paidPaisa)}</span>
                     </div>
                   )}
+
+                  <div className="flex justify-between font-bold text-base border-t border-line/60 pt-2 mt-1">
+                    {finalDuePaisa > 0 ? (
+                      <>
+                        <span className="text-danger font-display">Mot Baki</span>
+                        <span className="text-danger">{formatTaka(finalDuePaisa)}</span>
+                      </>
+                    ) : finalDuePaisa < 0 ? (
+                      <>
+                        <span className="text-teal-700 font-display">Buyer pabe</span>
+                        <span className="text-teal-700">{formatTaka(Math.abs(finalDuePaisa))}</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-muted font-display">Baki</span>
+                        <span className="text-muted">৳0.00 (Shodh)</span>
+                      </>
+                    )}
+                  </div>
                 </>
               )}
             </div>

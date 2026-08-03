@@ -28,6 +28,7 @@ type InvoiceProps = {
   totalPaisa: number;
   paidPaisa: number;
   duePaisa: number;
+  previousDuePaisa?: number;
   cancelled: boolean;
 };
 
@@ -73,8 +74,14 @@ export function Invoice({
   totalPaisa,
   paidPaisa,
   duePaisa,
+  previousDuePaisa,
   cancelled,
 }: InvoiceProps) {
+  const hasPriorDue = previousDuePaisa !== undefined && previousDuePaisa !== 0;
+  const effectivePriorDue = previousDuePaisa ?? 0;
+  const totalPayablePaisa = totalPaisa + effectivePriorDue;
+  const finalDuePaisa = totalPayablePaisa - paidPaisa;
+
   return (
     <div
       className="invoice mx-auto max-w-sm bg-white px-4 py-4 font-mono text-xs text-black"
@@ -154,7 +161,7 @@ export function Invoice({
         </tbody>
       </table>
 
-      <div className="border-t border-dashed border-black pt-1">
+      <div className="border-t border-dashed border-black pt-1 space-y-0.5">
         {discountPaisa > 0 && (
           <>
             <div className="flex justify-between">
@@ -171,19 +178,55 @@ export function Invoice({
           </>
         )}
         <div className="flex justify-between font-bold">
-          <span>Total</span>
+          <span>{hasPriorDue ? "Current Bill" : "Total"}</span>
           <span>{formatTaka(totalPaisa)}</span>
         </div>
-        <div className="flex justify-between">
-          <span>Paid</span>
-          <span>{formatTaka(paidPaisa)}</span>
-        </div>
-        {duePaisa > 0 && (
-          <div className="flex justify-between font-bold">
-            <span>Due</span>
-            <span>{formatTaka(duePaisa)}</span>
+
+        {hasPriorDue && (
+          <>
+            {previousDuePaisa! > 0 ? (
+              <div className="flex justify-between">
+                <span>Previous Due</span>
+                <span>+ {formatTaka(previousDuePaisa!)}</span>
+              </div>
+            ) : (
+              <div className="flex justify-between">
+                <span>Previous Advance</span>
+                <span>− {formatTaka(Math.abs(previousDuePaisa!))}</span>
+              </div>
+            )}
+            <div className="flex justify-between font-bold border-t border-dotted border-black/40 pt-0.5">
+              <span>Total Due</span>
+              <span>{formatTaka(totalPayablePaisa)}</span>
+            </div>
+          </>
+        )}
+
+        {paidPaisa > 0 && (
+          <div className="flex justify-between">
+            <span>Paid (Joma)</span>
+            <span>− {formatTaka(paidPaisa)}</span>
           </div>
         )}
+
+        <div className="flex justify-between font-bold border-t border-dashed border-black pt-1 mt-1">
+          {finalDuePaisa > 0 ? (
+            <>
+              <span>Total Due (Baki)</span>
+              <span>{formatTaka(finalDuePaisa)}</span>
+            </>
+          ) : finalDuePaisa < 0 ? (
+            <>
+              <span>Advance (Pabe)</span>
+              <span>{formatTaka(Math.abs(finalDuePaisa))}</span>
+            </>
+          ) : (
+            <>
+              <span>Due (Baki)</span>
+              <span>৳0.00</span>
+            </>
+          )}
+        </div>
       </div>
 
       <div className="mt-4 text-center text-xs text-slate-500">

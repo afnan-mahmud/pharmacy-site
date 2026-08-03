@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { approveOrder, rejectOrder } from "@/actions/adminOrders";
+import { buyerDueBalance } from "@/actions/due";
 import { formatTaka, takaToPaisa } from "@/lib/money";
 import { formatDhakaDateTime } from "@/lib/dhakaDate";
 import { parseQuantityInput } from "@/lib/quantityInput";
 import { unitLabelsFor } from "@/lib/unitLabels";
+import { describeDue } from "@/lib/dueDisplay";
 import { MedicinePicker, type PickedMedicine } from "./MedicinePicker";
 import type { PendingOrderRow } from "./PendingOrders";
 
@@ -78,6 +80,22 @@ export function OrderEditor({
 
   const [discountPercentStr, setDiscountPercentStr] = useState("");
   const [paidStr, setPaidStr] = useState("");
+  const [priorDuePaisa, setPriorDuePaisa] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!order.buyerId) return;
+    let cancelled = false;
+    buyerDueBalance(String(order.buyerId))
+      .then((bal) => {
+        if (!cancelled) setPriorDuePaisa(bal);
+      })
+      .catch(() => {
+        if (!cancelled) setPriorDuePaisa(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [order.buyerId]);
 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -198,7 +216,11 @@ export function OrderEditor({
   const discountPaisa = Math.round(subtotalPaisa * (discountPercent / 100));
   const netTotalPaisa = subtotalPaisa - discountPaisa;
   const paidPaisa = Math.round(takaToPaisa(parseFloat(paidStr) || 0));
-  const duePaisa = netTotalPaisa - paidPaisa;
+
+  const hasPriorDue = priorDuePaisa !== null && priorDuePaisa !== 0;
+  const effectivePriorDue = priorDuePaisa ?? 0;
+  const totalPayablePaisa = netTotalPaisa + effectivePriorDue;
+  const finalDuePaisa = totalPayablePaisa - paidPaisa;
 
   const hasBillableLine = items.some((i) => i.boxes > 0 || i.patas > 0 || !i.medicineId);
 
@@ -211,9 +233,16 @@ export function OrderEditor({
           <h1 className="mb-2 font-display text-3xl font-extrabold leading-tight">
             Edit Order
           </h1>
-          <p className="text-sm text-white/90">
-            {order.buyerName} ({order.buyerShopName})
-          </p>
+          <div className="flex flex-wrap items-center gap-2 text-sm text-white/90">
+            <span>
+              {order.buyerName} ({order.buyerShopName})
+            </span>
+            {hasPriorDue && (
+              <span className="rounded-full bg-white/20 px-2.5 py-0.5 text-xs font-semibold backdrop-blur-sm">
+                {describeDue(priorDuePaisa!).label}: {describeDue(priorDuePaisa!).amountText}
+              </span>
+            )}
+          </div>
         </div>
       </section>
 
@@ -403,26 +432,66 @@ export function OrderEditor({
            </div>
         </div>
         
-        <div className="bg-surface rounded-xl p-4 border border-line shadow-sm text-sm">
-           <div className="flex justify-between mb-1.5 text-muted">
+        <div className="bg-surface rounded-2xl p-4 border border-line shadow-sm text-sm space-y-2.5">
+           <div className="flex justify-between text-muted">
              <span>Subtotal</span>
              <span>{formatTaka(subtotalPaisa)}</span>
            </div>
            {discountPaisa > 0 && (
-             <div className="flex justify-between mb-1.5 text-brand-strong">
-               <span>Discount</span>
-               <span>-{formatTaka(discountPaisa)}</span>
+             <div className="flex justify-between text-muted">
+               <span>Discount ({discountPercent}%)</span>
+               <span>− {formatTaka(discountPaisa)}</span>
              </div>
            )}
+           <div className="flex justify-between font-bold text-ink">
+             <span>Bortoman Bill</span>
+             <span>{formatTaka(netTotalPaisa)}</span>
+           </div>
+
+           {hasPriorDue && (
+             <>
+               {priorDuePaisa! > 0 ? (
+                 <div className="flex justify-between text-danger font-medium">
+                   <span>Purber Baki</span>
+                   <span>+ {formatTaka(priorDuePaisa!)}</span>
+                 </div>
+               ) : (
+                 <div className="flex justify-between text-teal-700 font-medium">
+                   <span>Purber Joma (Advance)</span>
+                   <span>− {formatTaka(Math.abs(priorDuePaisa!))}</span>
+                 </div>
+               )}
+               <div className="flex justify-between font-bold text-ink border-t border-brand/10 pt-1.5">
+                 <span>Total Due</span>
+                 <span className="text-brand-strong">{formatTaka(totalPayablePaisa)}</span>
+               </div>
+             </>
+           )}
+
            {paidPaisa > 0 && (
-             <div className="flex justify-between mb-1.5 text-emerald-600">
-               <span>Joma</span>
-               <span>-{formatTaka(paidPaisa)}</span>
+             <div className="flex justify-between text-emerald-700 font-medium">
+               <span>Joma (Payment)</span>
+               <span>− {formatTaka(paidPaisa)}</span>
              </div>
            )}
-           <div className="flex justify-between font-bold text-ink mt-3 pt-3 border-t border-line/50">
-             <span>Due</span>
-             <span className={duePaisa > 0 ? "text-danger" : ""}>{formatTaka(duePaisa)}</span>
+
+           <div className="flex justify-between font-bold text-base border-t border-line/60 pt-2 mt-1">
+             {finalDuePaisa > 0 ? (
+               <>
+                 <span className="text-danger font-display">Mot Baki</span>
+                 <span className="text-danger">{formatTaka(finalDuePaisa)}</span>
+               </>
+             ) : finalDuePaisa < 0 ? (
+               <>
+                 <span className="text-teal-700 font-display">Buyer pabe</span>
+                 <span className="text-teal-700">{formatTaka(Math.abs(finalDuePaisa))}</span>
+               </>
+             ) : (
+               <>
+                 <span className="text-muted font-display">Baki</span>
+                 <span className="text-muted">৳0.00 (Shodh)</span>
+               </>
+             )}
            </div>
         </div>
       </div>
