@@ -4,6 +4,7 @@ import {
   DEFAULT_MEDICINE_FORM,
   isMedicineForm,
   toMedicineForm,
+  isPieceOnlyForm,
   unitLabelsFor,
   capitalize,
 } from "@/lib/unitLabels";
@@ -19,12 +20,13 @@ describe("unitLabelsFor", () => {
     });
   });
 
-  it("gives syrups the carton/bottle wording", () => {
+  it("gives syrups the piece wording", () => {
     const labels = unitLabelsFor("syrup");
-    expect(labels.outer).toBe("carton");
-    expect(labels.inner).toBe("bottle");
-    expect(labels.outerShort).toBe("ctn");
-    expect(labels.innerShort).toBe("btl");
+    expect(labels.formLabel).toBe("Syrup");
+    expect(labels.outer).toBe("piece");
+    expect(labels.inner).toBe("piece");
+    expect(labels.outerShort).toBe("pc");
+    expect(labels.innerShort).toBe("pc");
   });
 
   it("names the inner unit per form", () => {
@@ -107,3 +109,15 @@ describe("capitalize", () => {
     expect(capitalize("")).toBe("");
   });
 });
+
+describe("isPieceOnlyForm", () => {
+  it("identifies piece-only forms", () => {
+    expect(isPieceOnlyForm("other")).toBe(true);
+    expect(isPieceOnlyForm("syrup")).toBe(true);
+    expect(isPieceOnlyForm("tablet")).toBe(false);
+    expect(isPieceOnlyForm("injection")).toBe(false);
+    expect(isPieceOnlyForm("cream")).toBe(false);
+    expect(isPieceOnlyForm("drops")).toBe(false);
+  });
+});
+

@@ -15,6 +15,7 @@ import {
   DEFAULT_MEDICINE_FORM,
   unitLabelsFor,
   toMedicineForm,
+  isPieceOnlyForm,
   capitalize,
   type MedicineForm as DosageForm,
 } from "@/lib/unitLabels";
@@ -80,14 +81,10 @@ export function MedicineForm({
   const [stockNote, setStockNote] = useState("");
   const [stockEntries, setStockEntries] = useState<Serialized<StockEntryDoc>[]>([]);
   const labels = unitLabelsFor(form);
-  // "other" has no outer pack — it's counted in pieces only, so the box
-  // fields collapse into the piece price (1 box === 1 piece).
-  const isOther = form === "other";
-  // "other" always has 1 inner-unit per outer-pack (1 piece === 1 piece).
-  // The state `patasPerBox` may still hold the previous form's default (e.g.
-  // 10 for tablets) because the input is hidden, so we normalise here — the
-  // same rule handleSubmit applies on save (line 111).
-  const effectivePPB = isOther ? 1 : Number(patasPerBox) || 1;
+  // Piece-only forms ("other", "syrup") have no outer box/carton pack split — they're counted in pieces only.
+  const isPieceOnly = isPieceOnlyForm(form);
+  // Piece-only medicines always have 1 inner-unit per outer-pack (1 piece === 1 piece).
+  const effectivePPB = isPieceOnly ? 1 : Number(patasPerBox) || 1;
 
   useEffect(() => {
     if (!initial?.id) return;
@@ -113,14 +110,11 @@ export function MedicineForm({
         genericName,
         company,
         form,
-        patasPerBox: isOther ? 1 : Number(patasPerBox),
+        patasPerBox: isPieceOnly ? 1 : Number(patasPerBox),
         purchasePricePaisa: takaToPaisa(purchasePrice || 0),
-        // "other" has no outer pack, so each channel's box rate collapses to
-        // its own pata rate (1 box === 1 piece) — same rule the pack-size field
-        // above already follows.
-        wholesaleBoxPricePaisa: isOther ? wholesalePataPricePaisa : takaToPaisa(wholesaleBoxPrice || 0),
+        wholesaleBoxPricePaisa: isPieceOnly ? wholesalePataPricePaisa : takaToPaisa(wholesaleBoxPrice || 0),
         wholesalePataPricePaisa,
-        retailBoxPricePaisa: isOther ? retailPataPricePaisa : takaToPaisa(retailBoxPrice || 0),
+        retailBoxPricePaisa: isPieceOnly ? retailPataPricePaisa : takaToPaisa(retailBoxPrice || 0),
         retailPataPricePaisa,
         mrpBoxPricePaisa: takaToPaisa(mrp || 0),
         lowStockThreshold: Number(threshold),
@@ -178,7 +172,7 @@ export function MedicineForm({
             ))}
           </select>
           <p className="text-xs text-muted">
-            {isOther
+            {isPieceOnly
               ? "Ei medicine piece hishebe cholbe — shob screen e oi naam e dekhabe."
               : `Ei medicine ${labels.outer} ar ${labels.inner} hishebe cholbe — shob screen e oi naam e dekhabe.`}
           </p>
@@ -198,7 +192,7 @@ export function MedicineForm({
           <input id="company" className={input} value={company}
             onChange={(e) => setCompany(e.target.value)} />
         </div>
-        {!isOther && (
+        {!isPieceOnly && (
           <div className="space-y-1.5">
             <label htmlFor="ppb" className={labelCls}>
               1 {labels.outer} e koto {labels.inner}
@@ -209,7 +203,7 @@ export function MedicineForm({
         )}
         <div className="space-y-1.5">
           <label htmlFor="purchasePrice" className={labelCls}>
-            Purchase rate (৳) — per {isOther ? labels.inner : labels.outer}
+            Purchase rate (৳) — per {isPieceOnly ? labels.inner : labels.outer}
           </label>
           <input id="purchasePrice" type="number" step="0.01" min={0} className={input}
             value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)}
@@ -218,20 +212,20 @@ export function MedicineForm({
         <div className="space-y-1.5 sm:col-span-2">
           <p className={labelCls}>Wholesale rate</p>
           <div className="grid gap-3 sm:grid-cols-2">
-            {!isOther && (
+            {!isPieceOnly && (
               <input id="wholesaleBoxPrice" type="number" step="0.01" min={0} className={input}
                 value={wholesaleBoxPrice} onChange={(e) => setWholesaleBoxPrice(e.target.value)}
                 placeholder={`${capitalize(labels.outer)} rate (৳)`} required />
             )}
             <input id="wholesalePataPrice" type="number" step="0.01" min={0} className={input}
               value={wholesalePataPrice} onChange={(e) => setWholesalePataPrice(e.target.value)}
-              placeholder={`${capitalize(isOther ? labels.inner : labels.inner)} rate (৳)`} required />
+              placeholder={`${capitalize(labels.inner)} rate (৳)`} required />
           </div>
         </div>
         <div className="space-y-1.5 sm:col-span-2">
           <p className={labelCls}>Khuchra rate</p>
           <div className="grid gap-3 sm:grid-cols-2">
-            {!isOther && (
+            {!isPieceOnly && (
               <input id="retailBoxPrice" type="number" step="0.01" min={0} className={input}
                 value={retailBoxPrice} onChange={(e) => setRetailBoxPrice(e.target.value)}
                 placeholder={`${capitalize(labels.outer)} rate (৳)`} required />
@@ -276,7 +270,7 @@ export function MedicineForm({
             </label>
             <input id="stockBoxes" type="number" min={0} className={input}
               value={stockBoxes} onChange={(e) => setStockBoxes(e.target.value)} />
-            {stockBoxes && Number.isInteger(Number(stockBoxes)) && Number(stockBoxes) > 0 && (
+            {stockBoxes && Number.isInteger(Number(stockBoxes)) && Number(stockBoxes) > 0 && !isPieceOnly && (
               <p className="text-xs text-muted">
                 = {boxesToPatas(Number(stockBoxes), effectivePPB)} {labels.inner}
               </p>

@@ -172,6 +172,15 @@ export async function approveOrder(
         // "cart empty" when both are true of the call.
         validateApproval(items);
 
+        const ordered = new Set(
+          order.items.map((line) => String(line.medicineId)),
+        );
+        for (const item of items) {
+          if (item.medicineId && !ordered.has(item.medicineId)) {
+            throw new Error("Order er baire er medicine dewa jabe na");
+          }
+        }
+
 
         // The order denormalises the buyer's name and shop but not the phone,
         // so it is read here rather than left blank — a wholesale sale created

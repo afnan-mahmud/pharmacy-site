@@ -325,14 +325,14 @@ export function OrderEditor({
                
                <h3 className="font-bold text-ink pr-16">{item.medicineName}</h3>
                
-               <div className="mt-3 flex flex-wrap gap-4 items-center justify-between border-t border-line/50 pt-3">
+               <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-t border-line/50 pt-3">
                  
                  {/* Price Section */}
-                 <div className="flex-1 min-w-[140px]">
+                 <div className="min-w-0">
                    <label className="block text-xs font-semibold text-muted mb-1">Rate</label>
                    {isCustom ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">৳</span>
+                        <span className="text-sm font-medium text-ink">৳</span>
                         <input
                           type="number"
                           placeholder="Price"
@@ -341,59 +341,81 @@ export function OrderEditor({
                             const pricePaisa = Math.round(takaToPaisa(parseFloat(e.target.value) || 0));
                             updateItem(item.id, { boxPricePaisa: pricePaisa, pataPricePaisa: pricePaisa });
                           }}
-                          className="w-full max-w-[100px] rounded-lg border border-line px-2 py-1.5 text-sm focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
+                          className="w-full max-w-[120px] rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm font-medium focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
                         />
                       </div>
-                   ) : null}
-                   {isCustom && item.patas > 0 && (
-                     <p className="mt-1 text-[11px] text-muted leading-snug">
-                       Buyer {item.patas} pata-o cheyechilo, kintu custom item shudhu {labels.outer} rate-e bill hobe.
-                     </p>
-                   )}
-                   {!isCustom && (
-                     <div className="text-sm font-semibold">
+                   ) : (
+                     <div className="text-sm font-semibold text-ink">
                        {formatTaka(item.boxPricePaisa)}<span className="text-xs text-muted font-normal">/{labels.outer}</span>
                        {" · "}
                        {formatTaka(item.pataPricePaisa)}<span className="text-xs text-muted font-normal">/{labels.inner}</span>
                      </div>
                    )}
+                   {isCustom && item.patas > 0 && (
+                     <p className="mt-1 text-[11px] text-muted leading-snug">
+                       Buyer {item.patas} pata-o cheyechilo, kintu custom item shudhu {labels.outer} rate-e bill hobe.
+                     </p>
+                   )}
                  </div>
 
                  {/* Quantity Section */}
-                 <div className="flex-1 min-w-[150px] flex items-center justify-end gap-3">
-                    <div className="flex items-center gap-1 bg-canvas rounded-full border border-line p-1">
-                      <button
-                        onClick={() => updateItem(item.id, { boxes: Math.max(0, item.boxes - 1) })}
-                        className="flex h-8 w-8 items-center justify-center rounded-full bg-surface text-ink shadow hover:bg-line/50 transition"
-                      >
-                        -
-                      </button>
-                      <input
-                        type="number"
-                        min={0}
-                        value={item.boxes}
-                        onChange={(e) => updateItem(item.id, { boxes: parseQuantityInput(e.target.value, 0) })}
-                        className="w-12 text-center text-sm font-bold bg-transparent outline-none appearance-none"
-                      />
-                      <button
-                        onClick={() => updateItem(item.id, { boxes: item.boxes + 1 })}
-                        className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-white shadow hover:bg-brand-strong transition"
-                      >
-                        +
-                      </button>
-                    </div>
-                    <span className="text-xs font-medium text-muted w-10">{labels.outer}</span>
-                    {!isCustom && (
-                      <>
+                 <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+                    {/* Box Stepper */}
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex items-center bg-canvas rounded-full border border-line p-0.5">
+                        <button
+                          type="button"
+                          onClick={() => updateItem(item.id, { boxes: Math.max(0, item.boxes - 1) })}
+                          className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-surface text-ink font-bold shadow-sm hover:bg-line/50 active:scale-95 transition"
+                        >
+                          −
+                        </button>
                         <input
                           type="number"
                           min={0}
-                          value={item.patas}
-                          onChange={(e) => updateItem(item.id, { patas: parseQuantityInput(e.target.value, 0) })}
-                          className="w-12 rounded-full border border-line bg-canvas text-center text-sm font-bold outline-none"
+                          value={item.boxes}
+                          onChange={(e) => updateItem(item.id, { boxes: parseQuantityInput(e.target.value, 0) })}
+                          className="w-9 sm:w-11 text-center text-xs sm:text-sm font-bold bg-transparent outline-none appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
-                        <span className="text-xs font-medium text-muted w-10">{labels.inner}</span>
-                      </>
+                        <button
+                          type="button"
+                          onClick={() => updateItem(item.id, { boxes: item.boxes + 1 })}
+                          className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-brand text-white font-bold shadow-sm hover:bg-brand-strong active:scale-95 transition"
+                        >
+                          +
+                        </button>
+                      </div>
+                      <span className="text-xs font-medium text-muted">{labels.outer}</span>
+                    </div>
+
+                    {/* Pata Stepper */}
+                    {!isCustom && (
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex items-center bg-canvas rounded-full border border-line p-0.5">
+                          <button
+                            type="button"
+                            onClick={() => updateItem(item.id, { patas: Math.max(0, item.patas - 1) })}
+                            className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-surface text-ink font-bold shadow-sm hover:bg-line/50 active:scale-95 transition"
+                          >
+                            −
+                          </button>
+                          <input
+                            type="number"
+                            min={0}
+                            value={item.patas}
+                            onChange={(e) => updateItem(item.id, { patas: parseQuantityInput(e.target.value, 0) })}
+                            className="w-9 sm:w-11 text-center text-xs sm:text-sm font-bold bg-transparent outline-none appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => updateItem(item.id, { patas: item.patas + 1 })}
+                            className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-brand text-white font-bold shadow-sm hover:bg-brand-strong active:scale-95 transition"
+                          >
+                            +
+                          </button>
+                        </div>
+                        <span className="text-xs font-medium text-muted">{labels.inner}</span>
+                      </div>
                     )}
                  </div>
                </div>
@@ -401,6 +423,9 @@ export function OrderEditor({
                <div className="mt-3 flex justify-between items-center bg-canvas -mx-4 -mb-4 px-4 py-2 border-t border-line/50">
                   <div className="text-xs font-semibold text-brand-strong">
                     Total: {formatTaka(itemTotal(item))}
+                    {item.boxes === 0 && item.patas === 0 && (
+                      <span className="ml-2 font-normal text-muted">(0 qty)</span>
+                    )}
                   </div>
                   {item.isAdded && (
                     <button onClick={() => setItems(prev => prev.filter(i => i.id !== item.id))} className="text-xs text-danger font-medium hover:underline">
@@ -433,28 +458,48 @@ export function OrderEditor({
                 placeholder="Item name"
                 value={customName}
                 onChange={(e) => setCustomName(e.target.value)}
-                className="w-full rounded-xl border border-line px-4 py-2 text-sm focus:border-brand focus:outline-none"
+                className="w-full rounded-xl border border-line bg-surface px-4 py-2.5 text-sm focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
               />
-              <div className="flex gap-2">
-                <input
-                  type="number"
-                  placeholder="Price"
-                  value={customPrice}
-                  onChange={(e) => setCustomPrice(e.target.value)}
-                  className="w-full rounded-xl border border-line px-4 py-2 text-sm focus:border-brand focus:outline-none"
-                />
-                <input
-                  type="number"
-                  placeholder="Qty"
-                  min={1}
-                  value={customBoxes}
-                  onChange={(e) => setCustomBoxes(Number(e.target.value) || 1)}
-                  className="w-24 rounded-xl border border-line px-4 py-2 text-sm focus:border-brand focus:outline-none"
-                />
+              <div className="flex flex-col sm:flex-row gap-3">
+                <div className="flex-1">
+                  <input
+                    type="number"
+                    placeholder="Price (৳)"
+                    value={customPrice}
+                    onChange={(e) => setCustomPrice(e.target.value)}
+                    className="w-full rounded-xl border border-line bg-surface px-4 py-2.5 text-sm focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
+                  />
+                </div>
+                <div className="flex items-center justify-between sm:justify-start gap-2">
+                  <span className="text-xs font-semibold text-muted sm:hidden">Quantity:</span>
+                  <div className="flex items-center rounded-xl border border-line bg-surface overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setCustomBoxes(Math.max(0, customBoxes - 1))}
+                      className="grid h-[42px] w-9 place-items-center text-base font-bold text-brand hover:bg-brand/10 active:scale-95 transition"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      min={0}
+                      value={customBoxes}
+                      onChange={(e) => setCustomBoxes(parseQuantityInput(e.target.value, 0))}
+                      className="w-12 border-0 bg-transparent p-0 text-center text-sm font-bold text-ink focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setCustomBoxes(customBoxes + 1)}
+                      className="grid h-[42px] w-9 place-items-center text-base font-bold text-brand hover:bg-brand/10 active:scale-95 transition"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
               </div>
               <div className="flex gap-2 mt-2">
-                <button onClick={addCustomItem} className="flex-1 rounded-xl bg-brand py-2 text-sm font-bold text-white hover:bg-brand-strong">Add</button>
-                <button onClick={() => setShowCustomForm(false)} className="rounded-xl border border-line bg-surface px-4 py-2 text-sm font-bold text-ink hover:bg-canvas">Cancel</button>
+                <button onClick={addCustomItem} className="flex-1 rounded-xl bg-brand py-2.5 text-sm font-bold text-white hover:bg-brand-strong active:scale-98 transition">Add</button>
+                <button onClick={() => setShowCustomForm(false)} className="rounded-xl border border-line bg-surface px-4 py-2.5 text-sm font-bold text-ink hover:bg-canvas transition">Cancel</button>
               </div>
             </div>
           </div>

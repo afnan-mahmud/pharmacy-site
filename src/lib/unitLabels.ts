@@ -42,11 +42,11 @@ const LABELS: Record<MedicineForm, UnitLabels> = {
     innerShort: "pt",
   },
   syrup: {
-    formLabel: "Syrup / Suspension",
-    outer: "carton",
-    inner: "bottle",
-    outerShort: "ctn",
-    innerShort: "btl",
+    formLabel: "Syrup",
+    outer: "piece",
+    inner: "piece",
+    outerShort: "pc",
+    innerShort: "pc",
   },
   injection: {
     formLabel: "Injection / Vial",
@@ -100,6 +100,11 @@ export function toMedicineForm(value: unknown): MedicineForm {
 
 export function unitLabelsFor(form: unknown): UnitLabels {
   return LABELS[toMedicineForm(form)];
+}
+
+export function isPieceOnlyForm(form: unknown): boolean {
+  const f = toMedicineForm(form);
+  return f === "other" || f === "syrup";
 }
 
 /** "carton" -> "Carton", for a table header or the start of a sentence. */

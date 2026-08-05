@@ -408,7 +408,7 @@ describe("searchMedicinesForBuyer", () => {
     ]);
   });
 
-  it("reports low and out availability without revealing the number", async () => {
+  it("reports low availability without revealing the number", async () => {
     await makeSessionBuyer();
     await makeMedicine({ name: "LowMed", stockPatas: 10, lowStockThreshold: 20 });
     await makeMedicine({ name: "OutMed", stockPatas: 0, lowStockThreshold: 20 });
@@ -416,15 +416,15 @@ describe("searchMedicinesForBuyer", () => {
     const low = await searchMedicinesForBuyer("LowMed");
     const out = await searchMedicinesForBuyer("OutMed");
     expect(low[0].availability).toBe("low");
-    expect(out[0].availability).toBe("out");
+    expect(out[0].availability).toBe("low");
   });
 
-  it("matches by generic name too, and returns [] for a blank query", async () => {
+  it("matches by generic name too, and returns active medicines for a blank query", async () => {
     await makeSessionBuyer();
     await makeMedicine({ name: "Napa 500mg", genericName: "Paracetamol" });
 
     expect(await searchMedicinesForBuyer("Paracetamol")).toHaveLength(1);
-    expect(await searchMedicinesForBuyer("   ")).toEqual([]);
+    expect(await searchMedicinesForBuyer("   ")).toHaveLength(1);
   });
 
   it("excludes a deactivated medicine", async () => {

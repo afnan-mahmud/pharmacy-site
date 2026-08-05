@@ -90,9 +90,9 @@ describe("formatStock", () => {
   });
 
   it("uses each form's own words", () => {
-    expect(formatStock(41, 12, "syrup")).toBe("3 carton 5 bottle");
-    expect(formatStock(24, 12, "syrup")).toBe("2 carton");
-    expect(formatStock(5, 12, "syrup")).toBe("5 bottle");
+    expect(formatStock(41, 1, "syrup")).toBe("41 piece");
+    expect(formatStock(24, 1, "syrup")).toBe("24 piece");
+    expect(formatStock(5, 1, "syrup")).toBe("5 piece");
     expect(formatStock(7, 5, "injection")).toBe("1 box 2 vial");
     expect(formatStock(3, 6, "cream")).toBe("3 tube");
     expect(formatStock(6, 6, "drops")).toBe("1 box");
