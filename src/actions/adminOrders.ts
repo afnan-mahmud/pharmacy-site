@@ -12,6 +12,7 @@ import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { MedicineModel } from "@/models/Medicine";
 import { BuyerModel } from "@/models/Buyer";
 import { actionResult, type ActionResult } from "@/lib/actionResult";
+import { assertLineCount } from "@/lib/lineLimits";
 
 export type ApprovalItemInput = {
   medicineId?: string;
@@ -89,6 +90,7 @@ function validateApproval(items: ApprovalItemInput[]): void {
   if (!Array.isArray(items) || items.length === 0) {
     throw new Error("Cart khali");
   }
+  assertLineCount(items.length);
   const seen = new Set<string>();
   let customCounter = 0;
   for (const item of items) {

@@ -13,6 +13,8 @@ import { dashboardSummary } from "@/actions/dashboard";
 import { SaleModel } from "@/models/Sale";
 import { MedicineModel } from "@/models/Medicine";
 import { OrderModel } from "@/models/Order";
+import { BuyerModel } from "@/models/Buyer";
+import { PaymentModel } from "@/models/Payment";
 
 const cookieStore = createMockCookieStore();
 vi.mock("next/headers", () => ({
@@ -213,6 +215,46 @@ describe("dashboardSummary", () => {
   it("rejects a buyer-role session", async () => {
     setSessionCookie(cookieStore, await buyerToken());
     await expect(dashboardSummary()).rejects.toThrow(ADMIN_ONLY_ERROR);
+  });
+});
+
+describe("dashboardSummary — credit total", () => {
+  // The dashboard's "joma" figure comes from listBuyerDues via splitDueTotals.
+  // A buyer whose only wholesale sale was cancelled after they had paid used
+  // to produce no due row at all, so the credit the pharmacy owes them was
+  // silently missing from this number.
+  it("includes credit held by a buyer whose sale was cancelled after payment", async () => {
+    const buyerId = new mongoose.Types.ObjectId();
+    await BuyerModel.create({
+      _id: buyerId,
+      name: "Karim",
+      shopName: "Karim Medical",
+      phone: "01711111111",
+      address: "Mirpur",
+      passwordHash: "x",
+      active: true,
+    });
+
+    await makeSale({
+      type: "wholesale",
+      buyerId,
+      buyerName: "Karim",
+      invoiceNo: "ABC-000001",
+      duePaisa: 120000,
+      paidPaisa: 0,
+      totalPaisa: 120000,
+      status: "cancelled",
+    });
+    await PaymentModel.create({
+      buyerId,
+      amountPaisa: 120000,
+      note: "Cash",
+      createdBy: ADMIN_ID,
+    });
+
+    const summary = await dashboardSummary();
+    expect(summary.totalCreditPaisa).toBe(120000);
+    expect(summary.totalDuePaisa).toBe(0);
   });
 });
 

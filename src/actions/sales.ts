@@ -15,6 +15,7 @@ import { MedicineModel } from "@/models/Medicine";
 import { BuyerModel } from "@/models/Buyer";
 import { RetailCustomerModel } from "@/models/RetailCustomer";
 import { actionResult, type ActionResult } from "@/lib/actionResult";
+import { assertLineCount } from "@/lib/lineLimits";
 
 /**
  * Mirrors the convention in src/actions/medicines.ts: an optional string may
@@ -53,6 +54,7 @@ function validateSaleItems(items: unknown): asserts items is SaleItemShape[] {
   if (!Array.isArray(items) || items.length === 0) {
     throw new Error("Cart khali");
   }
+  assertLineCount(items.length);
 
   const seen = new Set<string>();
   for (const item of items as SaleItemShape[]) {

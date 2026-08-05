@@ -14,6 +14,7 @@ import { type PaymentDoc } from "@/models/Payment";
 import { type SaleDoc } from "@/models/Sale";
 import { toMedicineForm, type MedicineForm } from "@/lib/unitLabels";
 import { actionResult, type ActionResult } from "@/lib/actionResult";
+import { assertLineCount, MAX_LINE_ITEMS, TOO_MANY_LINES_ERROR } from "@/lib/lineLimits";
 
 export type OrderItemInput = { medicineId: string; boxes: number; patas: number };
 export type CustomOrderItemInput = { name: string; boxes: number; patas: number };
@@ -120,6 +121,7 @@ function validateItems(items: OrderItemInput[]): void {
   if (!Array.isArray(items) || items.length === 0) {
     throw new Error("Cart khali");
   }
+  assertLineCount(items.length);
   const seen = new Set<string>();
   for (const item of items) {
     if (!mongoose.Types.ObjectId.isValid(item.medicineId)) {
@@ -298,6 +300,7 @@ export async function submitShortlist(
     if (!Array.isArray(items) || items.length === 0) {
       throw new Error("Cart khali");
     }
+    assertLineCount(items.length);
     for (const item of items) {
       if (!item.name || typeof item.name !== "string" || item.name.trim() === "") {
         throw new Error("Product er nam likhte hobe");
@@ -345,10 +348,36 @@ export async function submitShortlist(
       // Merge into the existing pending order. For each new line, if the
       // same name is already in the order (and has no medicineId), add the boxes together;
       // otherwise append a new line.
-      for (const newLine of lines) {
-        const existingLine = existing.items.find(
-          (ci) => ci.medicineId === null && ci.medicineName.toLowerCase() === newLine.medicineName.toLowerCase(),
+      const matchIn = (line: { medicineName: string }) =>
+        existing.items.find(
+          (ci) => ci.medicineId === null && ci.medicineName.toLowerCase() === line.medicineName.toLowerCase(),
         );
+
+      // Checked against the size the order would *become*, not against this
+      // request alone: this path appends to one long-lived document, so a
+      // buyer adding five items at a time repeatedly would grow it without
+      // bound and eventually push it past MongoDB's 16MB document limit — at
+      // which point the order can no longer be saved or cleanly read, taking
+      // that buyer's portal and the owner's pending-orders list down with it.
+      // Counted over *distinct* new names: two lines with the same name in
+      // one request merge into a single appended line below, so counting them
+      // twice would reject a request that actually fits.
+      const presentNames = new Set(
+        existing.items
+          .filter((ci) => ci.medicineId === null)
+          .map((ci) => ci.medicineName.toLowerCase()),
+      );
+      const appendCount = new Set(
+        lines
+          .map((line) => line.medicineName.toLowerCase())
+          .filter((name) => !presentNames.has(name)),
+      ).size;
+      if (existing.items.length + appendCount > MAX_LINE_ITEMS) {
+        throw new Error(TOO_MANY_LINES_ERROR);
+      }
+
+      for (const newLine of lines) {
+        const existingLine = matchIn(newLine);
         if (existingLine) {
           // Mutate the subdocument directly so Mongoose detects the change
           existingLine.boxes += newLine.boxes;

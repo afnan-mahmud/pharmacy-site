@@ -13,6 +13,10 @@ const retailPaymentSchema = new Schema(
 );
 
 retailPaymentSchema.index({ phone: 1, createdAt: -1 });
+// The phone-keyed counterpart of Payment's { buyerId, amountPaisa } index —
+// see that file for why the ledger index above cannot serve listRetailDues'
+// $match + $group.
+retailPaymentSchema.index({ phone: 1, amountPaisa: 1 });
 
 export type RetailPaymentDoc = InferSchemaType<typeof retailPaymentSchema> & {
   _id: mongoose.Types.ObjectId;

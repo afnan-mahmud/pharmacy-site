@@ -192,6 +192,100 @@ describe("listBuyerDues", () => {
     expect(dues[0].duePaisa).toBe(-60000);
   });
 
+  it("keeps each buyer's payments to their own row", async () => {
+    const medicine = await makeMedicine();
+    const karim = await makeBuyer("Karim");
+    const rahim = await makeBuyer("Rahim");
+
+    await unwrap(recordWholesaleSale({
+      buyerId: karim._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discountPercent: 0,
+      paidPaisa: 0, // Due 12000
+    }));
+
+    // Rahim has no wholesale sale at all, only a payment. His money must not
+    // be borrowed by Karim's row — Karim still owes the full 12000.
+    await PaymentModel.create({
+      buyerId: new mongoose.Types.ObjectId(rahim._id),
+      amountPaisa: 5000,
+      note: "unrelated",
+      createdBy: new mongoose.Types.ObjectId(),
+    });
+
+    const dues = await listBuyerDues();
+    const byId = new Map(dues.map((d) => [d.buyerId, d.duePaisa]));
+    expect(byId.get(karim._id)).toBe(12000);
+    expect(byId.get(rahim._id)).toBe(-5000);
+  });
+
+  // The credit case that used to disappear entirely: with the sale cancelled
+  // there is no active sale to key a row off, so keying on sales alone
+  // dropped the buyer — and the money they are owed — from this list, from
+  // the dashboard's credit total, and from the ledger (reachable only by
+  // clicking the row). computeBuyerDue reported it correctly the whole time,
+  // so the owner's screens and the buyer's own portal disagreed.
+  it("lists a buyer whose sales were all cancelled after they had paid", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer("Karim");
+
+    const sale = await unwrap(recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 10, patas: 0 }], // 120000
+      discountPercent: 0,
+      paidPaisa: 0,
+    }));
+    await unwrap(recordPayment(buyer._id, 1200, "Cash")); // 120000 paisa
+    await unwrap(cancelSale(sale._id, "Bhul order"));
+
+    const dues = await listBuyerDues();
+    expect(dues).toHaveLength(1);
+    expect(dues[0].buyerId).toBe(buyer._id);
+    expect(dues[0].buyerName).toBe("Karim");
+    // The whole balance is credit: no active sale, 120000 paid.
+    expect(dues[0].duePaisa).toBe(-120000);
+    // And it agrees with the derived balance the buyer's own portal reads.
+    expect(await buyerDueBalance(buyer._id)).toBe(-120000);
+  });
+
+  it("still omits a buyer whose sales were cancelled and who never paid", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer("Karim");
+
+    const sale = await unwrap(recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 3, patas: 0 }],
+      discountPercent: 0,
+      paidPaisa: 0,
+    }));
+    await unwrap(cancelSale(sale._id, "test"));
+
+    // Nothing owed either way, so there is nothing to show.
+    expect(await listBuyerDues()).toHaveLength(0);
+  });
+
+  it("still subtracts payments for each listed buyer independently", async () => {
+    const medicine = await makeMedicine();
+    const karim = await makeBuyer("Karim");
+    const rahim = await makeBuyer("Rahim");
+
+    for (const buyer of [karim, rahim]) {
+      await unwrap(recordWholesaleSale({
+        buyerId: buyer._id,
+        items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+        discountPercent: 0,
+        paidPaisa: 0, // Due 12000 each
+      }));
+    }
+
+    await unwrap(recordPayment(karim._id, 50, "Cash")); // 5000 paisa
+
+    const dues = await listBuyerDues();
+    const byId = new Map(dues.map((d) => [d.buyerId, d.duePaisa]));
+    expect(byId.get(karim._id)).toBe(7000);
+    expect(byId.get(rahim._id)).toBe(12000);
+  });
+
   it("orders by due amount descending", async () => {
     const medicine = await makeMedicine();
     const buyer1 = await makeBuyer("Karim");
@@ -421,6 +515,28 @@ describe("listRetailDues", () => {
   it("excludes cancelled sales", async () => {
     await SaleModel.create(retailSale({ status: "cancelled" }));
     expect(await listRetailDues()).toHaveLength(0);
+  });
+
+  // The retail counterpart of listBuyerDues' cancelled-after-paying case —
+  // see the comment there.
+  it("lists a phone whose sales were all cancelled after the customer paid", async () => {
+    await makeRetailCustomer("01711111111", "Karim");
+    await SaleModel.create(retailSale({ status: "cancelled" }));
+    await RetailPaymentModel.create({
+      phone: "01711111111",
+      amountPaisa: 5000,
+      note: "",
+      createdBy: CREATED_BY,
+    });
+
+    const dues = await listRetailDues();
+    expect(dues).toHaveLength(1);
+    expect(dues[0]).toMatchObject({
+      phone: "01711111111",
+      customerName: "Karim",
+      duePaisa: -5000,
+    });
+    expect(await retailDueBalance("01711111111")).toBe(-5000);
   });
 
   it("orders by due amount descending", async () => {

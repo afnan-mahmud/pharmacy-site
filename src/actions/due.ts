@@ -26,10 +26,19 @@ export type DueRow = {
  * payment documents, so there is no running total that can drift out of
  * sync with history.
  *
- * The query returns only buyers who have at least one non-cancelled
- * wholesale sale (i.e. they've ever received goods on credit). Buyers with
- * a zero balance are still returned — the owner can see the credit history
- * even when nothing is owed.
+ * A buyer appears here if they have a non-cancelled wholesale sale, OR if
+ * they have ever made a payment. Buyers with a zero balance are still
+ * returned — the owner can see the credit history even when nothing is owed.
+ *
+ * That second clause is load-bearing, not defensive. A buyer whose sales
+ * were all cancelled after they had already paid holds a credit, and the
+ * owner's rule is that the money stays as credit toward their next purchase
+ * rather than being refunded. Keyed off active sales alone, such a buyer
+ * produced no row at all: they vanished from the due list, their credit was
+ * missing from the dashboard's "joma" total, and the ledger — reachable only
+ * by clicking their row — became unreachable. Meanwhile computeBuyerDue,
+ * which the buyer's own portal reads, reported the credit correctly, so the
+ * two sides of the app disagreed about the same money.
  *
  * duePaisa is signed: positive means the buyer owes the pharmacy (Baki),
  * negative means the pharmacy owes the buyer (Joma ache). A buyer goes
@@ -61,18 +70,51 @@ export async function listBuyerDues(): Promise<DueRow[]> {
     },
   ]);
 
+  // Just the ids of everyone who has ever paid, not their payments. A
+  // distinct on an indexed field is answered by a DISTINCT_SCAN that walks
+  // one key per buyer, so this stays cheap as payments accumulate: its cost
+  // tracks how many buyers the pharmacy has, which does not grow, rather than
+  // how many payments they have made, which does.
+  // Cast because Mongoose's distinct() resolves its element type through a
+  // conditional over the schema's paths that lands on `unknown` here; the
+  // field is a required ObjectId (see src/models/Payment.ts).
+  const payerIds = (await PaymentModel.distinct(
+    "buyerId",
+  )) as mongoose.Types.ObjectId[];
+
+  // The union of "has an active sale" and "has ever paid" — the two ways a
+  // buyer can have a balance worth showing. Deduplicated by string key
+  // because two equal ObjectIds are different object identities.
+  const idByKey = new Map<string, mongoose.Types.ObjectId>();
+  for (const id of [...saleTotals.map((s) => s._id), ...payerIds]) {
+    idByKey.set(String(id), id);
+  }
+  const allIds = [...idByKey.values()];
+
+  // Matched to the payers rather than left unfiltered: an unfiltered $group
+  // has no predicate to match an index against and always collection-scans,
+  // whereas this one is served from Payment's { buyerId, amountPaisa } index
+  // without fetching a single document. payerIds already covers every payment
+  // in the collection, so narrowing it this way costs no rows.
   const paymentTotals = await PaymentModel.aggregate<{
     _id: mongoose.Types.ObjectId;
     totalPaid: number;
-  }>([{ $group: { _id: "$buyerId", totalPaid: { $sum: "$amountPaisa" } } }]);
+  }>([
+    { $match: { buyerId: { $in: payerIds } } },
+    { $group: { _id: "$buyerId", totalPaid: { $sum: "$amountPaisa" } } },
+  ]);
 
   const paymentByBuyer = new Map<string, number>();
   for (const p of paymentTotals) {
     paymentByBuyer.set(String(p._id), p.totalPaid);
   }
 
-  const buyerIds = saleTotals.map((s) => s._id);
-  const buyers = await BuyerModel.find({ _id: { $in: buyerIds } })
+  const dueByBuyer = new Map<string, number>();
+  for (const s of saleTotals) {
+    dueByBuyer.set(String(s._id), s.totalDuePaisa);
+  }
+
+  const buyers = await BuyerModel.find({ _id: { $in: allIds } })
     .select("name shopName")
     .lean<{ _id: mongoose.Types.ObjectId; name: string; shopName: string }[]>();
 
@@ -80,14 +122,14 @@ export async function listBuyerDues(): Promise<DueRow[]> {
     buyers.map((b) => [String(b._id), { name: b.name, shopName: b.shopName }]),
   );
 
-  const rows: DueRow[] = saleTotals.map((s) => {
-    const bid = String(s._id);
-    const paid = paymentByBuyer.get(bid) ?? 0;
+  const rows: DueRow[] = allIds.map((id) => {
+    const bid = String(id);
     // Sale-level duePaisa already accounts for the partial payment made at
     // sale time. Additional payments here reduce it further — and can take
     // it negative (credit); see the module comment above for why that must
-    // be allowed through, not clamped.
-    const duePaisa = s.totalDuePaisa - paid;
+    // be allowed through, not clamped. A buyer with no active sale has no
+    // sale-side total at all, so their whole balance is that credit.
+    const duePaisa = (dueByBuyer.get(bid) ?? 0) - (paymentByBuyer.get(bid) ?? 0);
     const buyer = buyerMap.get(bid) ?? { name: "Unknown", shopName: "" };
     return {
       buyerId: bid,
@@ -242,8 +284,10 @@ export type RetailDueRow = {
 
 /**
  * Same shape as listBuyerDues but grouped by phone instead of buyerId, and
- * only over retail sales. Only phones that have ever had an active retail
- * sale appear — same "at least one sale on credit" gate listBuyerDues uses.
+ * only over retail sales. A phone appears if it has an active retail sale OR
+ * a retail payment on file — the same union, for the same reason, as
+ * listBuyerDues; see that function's comment on why a customer whose sales
+ * were all cancelled after paying must not disappear along with them.
  */
 export async function listRetailDues(): Promise<RetailDueRow[]> {
   await requireAdminAction();
@@ -257,26 +301,43 @@ export async function listRetailDues(): Promise<RetailDueRow[]> {
     { $group: { _id: "$buyerPhone", totalDuePaisa: { $sum: "$duePaisa" } } },
   ]);
 
+  // The phone-keyed counterparts of listBuyerDues' payerIds/allIds — see
+  // there for why the distinct and the $match are shaped this way. The empty
+  // string is filtered out to match the sale side's `buyerPhone: { $gt: "" }`:
+  // a counter sale where the customer gave no number is nobody's balance.
+  const payerPhones = (
+    (await RetailPaymentModel.distinct("phone")) as string[]
+  ).filter((phone) => phone !== "");
+
+  const allPhones = [...new Set([...saleTotals.map((s) => s._id), ...payerPhones])];
+
   const paymentTotals = await RetailPaymentModel.aggregate<{
     _id: string;
     totalPaid: number;
-  }>([{ $group: { _id: "$phone", totalPaid: { $sum: "$amountPaisa" } } }]);
+  }>([
+    { $match: { phone: { $in: payerPhones } } },
+    { $group: { _id: "$phone", totalPaid: { $sum: "$amountPaisa" } } },
+  ]);
 
   const paymentByPhone = new Map<string, number>();
   for (const p of paymentTotals) {
     paymentByPhone.set(p._id, p.totalPaid);
   }
 
-  const phones = saleTotals.map((s) => s._id);
-  const customers = await RetailCustomerModel.find({ phone: { $in: phones } })
+  const dueByPhone = new Map<string, number>();
+  for (const s of saleTotals) {
+    dueByPhone.set(s._id, s.totalDuePaisa);
+  }
+
+  const customers = await RetailCustomerModel.find({ phone: { $in: allPhones } })
     .select("phone name")
     .lean<{ phone: string; name: string }[]>();
   const nameByPhone = new Map(customers.map((c) => [c.phone, c.name]));
 
-  const rows: RetailDueRow[] = saleTotals.map((s) => ({
-    phone: s._id,
-    customerName: nameByPhone.get(s._id) ?? "",
-    duePaisa: s.totalDuePaisa - (paymentByPhone.get(s._id) ?? 0),
+  const rows: RetailDueRow[] = allPhones.map((phone) => ({
+    phone,
+    customerName: nameByPhone.get(phone) ?? "",
+    duePaisa: (dueByPhone.get(phone) ?? 0) - (paymentByPhone.get(phone) ?? 0),
   }));
 
   return rows.sort((a, b) => b.duePaisa - a.duePaisa);

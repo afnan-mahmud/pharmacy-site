@@ -112,6 +112,16 @@ saleSchema.index(
 );
 saleSchema.index({ buyerId: 1, status: 1 });
 saleSchema.index({ createdAt: -1 });
+// Serves the two collection-wide due aggregations — listBuyerDues'
+// { type: "wholesale", status: "active" } and listRetailDues'
+// { type: "retail", status: "active", buyerPhone: { $gt: "" } }. Neither can
+// use { buyerId: 1, status: 1 }, which needs a buyerId to be selective, so
+// before this index both scanned every sale ever recorded. That matters more
+// than it looks: listBuyerDues is called on every dashboard load (via
+// dashboardSummary), which is the screen the owner lands on after login.
+// buyerId trails type and status so the same index also covers a per-buyer
+// lookup within one type.
+saleSchema.index({ type: 1, status: 1, buyerId: 1 });
 
 export type SaleLineDoc = InferSchemaType<typeof saleLineSchema>;
 export type SaleDoc = InferSchemaType<typeof saleSchema> & {

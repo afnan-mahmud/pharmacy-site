@@ -51,6 +51,15 @@ const medicineSchema = new Schema(
 
 medicineSchema.index({ name: 1 });
 medicineSchema.index({ genericName: 1 });
+// Serves dashboardSummary's low-stock query. That query's actual test —
+// $expr: { $lte: ["$stockPatas", "$lowStockThreshold"] } — compares two
+// fields of the same document and so can never use an index itself. What this
+// index does is narrow the candidate set first: only active medicines that
+// have an alert threshold set at all reach the $expr, and a threshold of 0
+// (the default, meaning "no alert") is the common case. On a catalogue where
+// a twentieth of the medicines carry a threshold, that turns a scan of every
+// medicine into a scan of a twentieth of them, with the same result.
+medicineSchema.index({ active: 1, lowStockThreshold: 1 });
 
 export type MedicineDoc = InferSchemaType<typeof medicineSchema> & {
   _id: mongoose.Types.ObjectId;

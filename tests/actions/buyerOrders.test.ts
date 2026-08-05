@@ -13,6 +13,7 @@ import {
 import { BUYER_ONLY_ERROR } from "@/lib/session";
 import {
   submitOrder,
+  submitShortlist,
   listMyOrders,
   getMyOrder,
   cancelMyOrder,
@@ -20,6 +21,7 @@ import {
   myLedger,
   searchMedicinesForBuyer,
 } from "@/actions/buyerOrders";
+import { MAX_LINE_ITEMS, TOO_MANY_LINES_ERROR } from "@/lib/lineLimits";
 import { recordWholesaleSale } from "@/actions/sales";
 import { recordPayment } from "@/actions/due";
 import { BuyerModel } from "@/models/Buyer";
@@ -441,5 +443,102 @@ describe("searchMedicinesForBuyer", () => {
   it("rejects an admin caller", async () => {
     setSessionCookie(cookieStore, await adminToken());
     await expect(searchMedicinesForBuyer("napa")).rejects.toThrow(BUYER_ONLY_ERROR);
+  });
+});
+
+// A Server Action is a directly-callable POST endpoint, so the length of an
+// items array is set by the caller, not by the UI. Both order paths walk that
+// array one document at a time, and submitShortlist appends to a single
+// long-lived document — see src/lib/lineLimits.ts for why an unbounded array
+// is an availability problem rather than just a validation one.
+describe("order size cap", () => {
+  it("rejects a submitOrder payload past the cap", async () => {
+    await makeSessionBuyer();
+
+    const items = Array.from({ length: MAX_LINE_ITEMS + 1 }, () => ({
+      medicineId: String(new mongoose.Types.ObjectId()),
+      boxes: 1,
+      patas: 0,
+    }));
+
+    await expect(submitOrder(items)).resolves.toMatchObject({
+      ok: false,
+      error: TOO_MANY_LINES_ERROR,
+    });
+  });
+
+  it("still accepts an order exactly at the cap", async () => {
+    await makeSessionBuyer();
+    const medicine = await makeMedicine();
+
+    // One real line plus the cap's worth minus one is awkward to build with
+    // distinct medicines, so check the boundary through the validator's own
+    // ordering: a payload *at* the cap gets past the length check and fails
+    // later, on a medicine that does not exist — not on the cap.
+    const items = Array.from({ length: MAX_LINE_ITEMS }, (_, i) =>
+      i === 0
+        ? { medicineId: String(medicine._id), boxes: 1, patas: 0 }
+        : { medicineId: String(new mongoose.Types.ObjectId()), boxes: 1, patas: 0 },
+    );
+
+    const result = await submitOrder(items);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).not.toBe(TOO_MANY_LINES_ERROR);
+  });
+
+  it("counts the merged size, not just the incoming request, on submitShortlist", async () => {
+    const buyer = await makeSessionBuyer();
+
+    // A pending order already sitting at the cap.
+    await OrderModel.create({
+      buyerId: buyer._id,
+      buyerName: buyer.name,
+      buyerShopName: buyer.shopName,
+      status: "pending",
+      items: Array.from({ length: MAX_LINE_ITEMS }, (_, i) => ({
+        medicineId: null,
+        medicineName: `Product ${i}`,
+        form: "custom",
+        boxes: 1,
+        patas: 0,
+        wholesaleBoxPricePaisa: 0,
+        wholesalePataPricePaisa: 0,
+      })),
+    });
+
+    // One more *new* name would take it past the cap, even though the request
+    // itself is a single item.
+    await expect(
+      submitShortlist([{ name: "Product NEW", boxes: 1, patas: 0 }]),
+    ).resolves.toMatchObject({ ok: false, error: TOO_MANY_LINES_ERROR });
+  });
+
+  it("still merges into a full order when the name already exists", async () => {
+    const buyer = await makeSessionBuyer();
+
+    await OrderModel.create({
+      buyerId: buyer._id,
+      buyerName: buyer.name,
+      buyerShopName: buyer.shopName,
+      status: "pending",
+      items: Array.from({ length: MAX_LINE_ITEMS }, (_, i) => ({
+        medicineId: null,
+        medicineName: `Product ${i}`,
+        form: "custom",
+        boxes: 1,
+        patas: 0,
+        wholesaleBoxPricePaisa: 0,
+        wholesalePataPricePaisa: 0,
+      })),
+    });
+
+    // Adding to a line that is already there appends nothing, so a full order
+    // must not become un-addable — only *growth* past the cap is refused.
+    const order = await unwrap(
+      submitShortlist([{ name: "Product 0", boxes: 4, patas: 0 }]),
+    );
+
+    expect(order.items).toHaveLength(MAX_LINE_ITEMS);
+    expect(order.items[0].boxes).toBe(5);
   });
 });
