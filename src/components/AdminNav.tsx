@@ -7,15 +7,15 @@ import { Brand } from "@/components/Brand";
 
 const LINKS = [
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/sell", label: "Khuchra Bikri" },
-  { href: "/wholesale", label: "Wholesale Bikri" },
-  { href: "/orders", label: "Pending Order" },
-  { href: "/medicines", label: "Medicine" },
-  { href: "/buyers", label: "Buyer" },
-  { href: "/retail-customers", label: "Khuchra Buyer" },
+  { href: "/reports", label: "Sob Bikrir Hisab" },
   { href: "/due", label: "Baki Khata" },
-  { href: "/retail-due", label: "Khuchra Baki" },
-  { href: "/reports", label: "Report" },
+  { href: "/wholesale", label: "Wholesale Bikri" },
+  { href: "/buyers", label: "Buyer" },
+  { href: "/sell", label: "Khuchra Bikri" },
+  { href: "/retail-customers", label: "Khuchra Buyer" },
+  { href: "/medicines", label: "Medicine" },
+  { href: "/orders", label: "Pending Order" },
+  { href: "/custom-bill", label: "Custom Bill" },
   { href: "/settings", label: "Settings" },
 ];
 

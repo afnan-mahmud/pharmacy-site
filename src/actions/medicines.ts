@@ -173,7 +173,7 @@ export async function updateMedicine(
       const medicine = await MedicineModel.findByIdAndUpdate(
         id,
         { $set: toFields(input) },
-        { new: true, runValidators: true },
+        { returnDocument: "after", runValidators: true },
       ).lean<MedicineDoc>();
 
       if (!medicine) throw new Error("Medicine not found");

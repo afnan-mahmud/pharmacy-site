@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { filterBuyers } from "@/lib/buyerSearch";
 import {
   RetailCustomerForm,
@@ -12,13 +13,6 @@ export type RetailCustomerRow = RetailCustomerFormValues & {
   id: string;
 };
 
-/**
- * The khuchra-buyer list, deliberately built the same way as BuyerTable: one
- * hero with the search box in it, a desktop table, phone-sized cards below
- * `md`. A retail customer has no shop, no address and no login, so there is
- * no status column and no password — just the name and the phone the whole
- * retail ledger hangs off.
- */
 export function RetailCustomerTable({
   customers,
 }: {
@@ -40,137 +34,185 @@ export function RetailCustomerTable({
     );
   }
 
-  // Same in-memory filter the wholesale list uses — the page already handed
-  // every customer down, so results appear as the owner types.
   const shown = filterBuyers(customers, query);
-  const searching = query.trim().length > 0;
-
-  const actions = (row: RetailCustomerRow) => (
-    <button
-      onClick={() => setEditing(row)}
-      className="rounded-full px-2.5 py-1 text-xs font-semibold text-brand-strong hover:bg-brand-tint"
-    >
-      Edit
-    </button>
-  );
+  const totalCount = customers.length;
 
   return (
-    <div className="flex flex-col pb-6">
-      <section className="-mx-4 -mt-4 mb-6 sm:-mx-6 sm:-mt-6 rounded-b-3xl bg-gradient-to-br from-brand to-brand-deep px-6 pb-8 pt-8 text-white shadow-sm relative overflow-hidden">
-        <div className="absolute right-0 top-0 -translate-y-1/3 translate-x-1/3 h-64 w-64 rounded-full bg-white/5 blur-3xl"></div>
-        <div className="absolute left-0 bottom-0 translate-y-1/3 -translate-x-1/3 h-48 w-48 rounded-full bg-black/10 blur-2xl"></div>
+    <div className="flex flex-col pb-12">
+      {/* Hero Banner */}
+      <section className="-mx-4 -mt-4 mb-5 sm:-mx-6 sm:-mt-6 rounded-b-3xl bg-gradient-to-br from-brand to-brand-deep px-5 pb-6 pt-6 text-white shadow-xs relative overflow-hidden">
+        <div className="absolute right-0 top-0 -translate-y-1/3 translate-x-1/3 h-56 w-56 rounded-full bg-white/5 blur-3xl pointer-events-none"></div>
+        <div className="absolute left-0 bottom-0 translate-y-1/3 -translate-x-1/3 h-40 w-40 rounded-full bg-black/10 blur-2xl pointer-events-none"></div>
 
-        <div className="relative z-10 flex flex-col md:flex-row md:items-end justify-between gap-4">
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h1 className="mb-1 font-display text-3xl font-extrabold leading-tight">
-              Khuchra Buyer
+            <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-0.5 text-xs font-semibold backdrop-blur-sm">
+              <span className="text-yellow-300">👥</span> খুচরা ক্রেতা তালিকা (Retail Customers)
+            </div>
+            <h1 className="font-display text-xl sm:text-2xl font-black leading-tight">
+              খুচরা কাস্টমার তালিকা
             </h1>
-            <p className="text-sm text-white/90">
-              Apnar shob khuchra customer er list.
+            <p className="text-xs text-white/80 mt-0.5">
+              দোকানের সকল খুচরা নিয়মিত কাস্টমার এবং তাদের ফোন নম্বর।
             </p>
           </div>
+
           <button
+            type="button"
             onClick={() => setAdding(true)}
-            className="rounded-full bg-white px-6 py-2.5 text-sm font-bold text-brand-strong shadow-lg transition hover:bg-brand-tint"
+            className="inline-flex items-center justify-center gap-1.5 rounded-2xl bg-white px-5 py-3 text-sm font-black text-brand-strong shadow-lg hover:bg-brand-tint active:scale-95 transition"
           >
-            + Notun khuchra buyer
+            <span>+ নতুন খুচরা ক্রেতা</span>
           </button>
         </div>
 
-        <div className="relative z-10 mt-6 flex items-center">
-          <div className="absolute left-4">
+        {/* Count badge & Search */}
+        <div className="relative z-10 mt-4 flex items-center justify-between gap-2 border-t border-white/15 pt-3">
+          <div className="rounded-2xl bg-white/10 px-4 py-2 backdrop-blur-xs text-xs font-bold text-white">
+            মোট কাস্টমার: <span className="font-display text-sm font-black text-yellow-300 ml-1">{totalCount}</span> জন
+          </div>
+        </div>
+
+        <div className="relative z-10 mt-3">
+          <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2">
             <SearchIcon className="h-5 w-5 text-white/60" />
           </div>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Nam ba phone diye khojo..."
-            className="w-full rounded-2xl border-0 bg-white/10 pl-11 pr-4 py-3 text-white placeholder:text-white/60 focus:bg-white focus:text-ink focus:placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-white transition"
+            placeholder="ক্রেতার নাম বা মোবাইল নম্বর দিয়ে খুঁজুন..."
+            className="w-full rounded-2xl border border-white/20 bg-white/15 py-3 pl-11 pr-10 text-sm font-medium text-white placeholder:text-white/60 backdrop-blur-md focus:bg-white focus:text-ink focus:placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-white transition"
           />
-          {searching && (
+          {query.trim() && (
             <button
               type="button"
               onClick={() => setQuery("")}
-              aria-label="Search muche dao"
-              className="absolute right-3 grid h-6 w-6 place-items-center rounded-full bg-white/20 text-white transition hover:bg-white/30"
+              aria-label="মুছে দিন"
+              className="absolute right-3 top-1/2 -translate-y-1/2 grid h-6 w-6 place-items-center rounded-full bg-white/20 text-xs font-bold text-white hover:bg-white/40 transition"
             >
-              ×
+              ✕
             </button>
           )}
         </div>
       </section>
 
+      {/* Content */}
       {customers.length === 0 ? (
-        <p className={`${card} p-8 text-center text-sm text-muted`}>
-          Kono khuchra buyer nai. Upor theke add koro.
-        </p>
+        <div className={`${card} p-8 text-center text-sm text-muted`}>
+          কোনো খুচরা ক্রেতা নেই। ওপরের বাটনে ক্লিক করে নতুন ক্রেতা যোগ করুন।
+        </div>
       ) : shown.length === 0 ? (
-        <p className={`${card} p-8 text-center text-sm text-muted`}>
-          &ldquo;{query.trim()}&rdquo; naame kono khuchra buyer pawa jay ni.
-        </p>
+        <div className={`${card} p-8 text-center text-sm text-muted`}>
+          "{query.trim()}" দিয়ে কোনো ক্রেতা পাওয়া যায়নি।
+        </div>
       ) : (
         <>
-          <DesktopRows rows={shown} actions={actions} />
-          <MobileCards rows={shown} actions={actions} />
+          {/* Mobile Card List */}
+          <div className="md:hidden space-y-2.5">
+            {shown.map((row) => (
+              <div
+                key={row.id}
+                className="rounded-2xl border border-line bg-surface p-3.5 space-y-3 shadow-2xs"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-brand-tint text-brand-strong text-sm font-black uppercase">
+                      {row.name.charAt(0) || "C"}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-display text-sm font-bold text-ink truncate">
+                        {row.name}
+                      </div>
+                      <a
+                        href={`tel:${row.phone}`}
+                        className="text-xs font-bold text-brand-strong hover:underline flex items-center gap-1 mt-0.5"
+                      >
+                        <span>📞</span> {row.phone}
+                      </a>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setEditing(row)}
+                    className="rounded-xl border border-line bg-canvas px-3 py-1.5 text-xs font-bold text-ink hover:bg-line/50 transition shadow-2xs"
+                  >
+                    ✏️ এডিট
+                  </button>
+                </div>
+
+                <div className="flex items-center justify-between gap-2 border-t border-line/60 pt-2.5">
+                  <Link
+                    href={`/retail-due?phone=${encodeURIComponent(row.phone)}`}
+                    className="inline-flex items-center gap-1 rounded-xl bg-brand-tint/30 px-3 py-1.5 text-xs font-bold text-brand-strong hover:bg-brand hover:text-white transition"
+                  >
+                    <span>📒 খুচরা বাকি খাতা</span>
+                  </Link>
+
+                  <a
+                    href={`tel:${row.phone}`}
+                    className="inline-flex items-center gap-1 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-700 hover:bg-emerald-100 transition"
+                  >
+                    <span>📞 কল করুন</span>
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className={`hidden md:block overflow-x-auto ${card} shadow-xs border border-line`}>
+            <table className="w-full text-sm">
+              <thead className={thead}>
+                <tr>
+                  <th className={th}>ক্রেতার নাম</th>
+                  <th className={th}>মোবাইল নম্বর</th>
+                  <th className={`${th} text-right`}>অ্যাকশন</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line/60">
+                {shown.map((row) => (
+                  <tr key={row.id} className={trow}>
+                    <td className={td}>
+                      <div className="flex items-center gap-2.5">
+                        <div className="grid h-8 w-8 place-items-center rounded-xl bg-brand-tint text-brand-strong text-xs font-black uppercase">
+                          {row.name.charAt(0) || "C"}
+                        </div>
+                        <span className="font-bold text-ink">{row.name}</span>
+                      </div>
+                    </td>
+                    <td className={td}>
+                      <a
+                        href={`tel:${row.phone}`}
+                        className="font-semibold text-brand-strong hover:underline"
+                      >
+                        {row.phone}
+                      </a>
+                    </td>
+                    <td className={`${td} text-right`}>
+                      <div className="flex items-center justify-end gap-2">
+                        <Link
+                          href={`/retail-due?phone=${encodeURIComponent(row.phone)}`}
+                          className="rounded-xl bg-brand-tint/30 px-2.5 py-1 text-xs font-bold text-brand-strong hover:bg-brand hover:text-white transition"
+                        >
+                          বাকি খাতা
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => setEditing(row)}
+                          className="rounded-xl border border-line px-2.5 py-1 text-xs font-bold text-ink hover:bg-line/40 transition"
+                        >
+                          এডিট
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </>
       )}
-    </div>
-  );
-}
-
-function DesktopRows({
-  rows,
-  actions,
-}: {
-  rows: RetailCustomerRow[];
-  actions: (row: RetailCustomerRow) => React.ReactNode;
-}) {
-  return (
-    <div className={`hidden overflow-x-auto md:block ${card}`}>
-      <table className="w-full">
-        <thead className={thead}>
-          <tr>
-            <th className={th}>Nam</th>
-            <th className={th}>Phone</th>
-            <th className={th}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.id} className={trow}>
-              <td className={`${td} font-semibold`}>{row.name}</td>
-              <td className={`${td} text-muted`}>{row.phone}</td>
-              <td className={`${td} text-right`}>{actions(row)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function MobileCards({
-  rows,
-  actions,
-}: {
-  rows: RetailCustomerRow[];
-  actions: (row: RetailCustomerRow) => React.ReactNode;
-}) {
-  return (
-    <div className="space-y-2.5 md:hidden">
-      {rows.map((row) => (
-        <div key={row.id} className={`${card} p-3.5`}>
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <div className="font-display text-sm font-bold text-ink">
-                {row.name}
-              </div>
-              <div className="mt-0.5 text-xs text-muted">{row.phone}</div>
-            </div>
-            {actions(row)}
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
@@ -184,6 +226,7 @@ function SearchIcon({ className }: { className?: string }) {
       stroke="currentColor"
       strokeWidth={2}
       strokeLinecap="round"
+      strokeLinejoin="round"
       aria-hidden="true"
     >
       <circle cx="11" cy="11" r="7" />

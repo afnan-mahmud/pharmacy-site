@@ -179,15 +179,53 @@ describe("approveOrder", () => {
     expect((await OrderModel.findById(order._id))!.items[0].boxes).toBe(10);
   });
 
-  it("refuses an item not in the order", async () => {
+  it("allows the owner to add a medicine not in the original order", async () => {
     const buyer = await makeBuyer();
-    const medicine = await makeMedicine();
-    const other = await makeMedicine({ name: "Ace" });
+    const medicine = await makeMedicine({ name: "Napa 500mg" }, 500);
+    const other = await makeMedicine({ name: "Ace 500mg", wholesaleBoxPricePaisa: 15000 }, 300);
     const order = await makeOrder(buyer._id, medicine, 3);
 
-    await expect(
-      unwrap(approveOrder(String(order._id), [{ medicineId: String(other._id), boxes: 1 }])),
-    ).rejects.toThrow("Order er baire er medicine");
+    const sale = await unwrap(
+      approveOrder(String(order._id), [
+        { medicineId: String(medicine._id), boxes: 3 },
+        { medicineId: String(other._id), boxes: 2 },
+      ]),
+    );
+
+    expect(sale.items).toHaveLength(2);
+    expect(sale.items[0].medicineName).toBe("Napa 500mg");
+    expect(sale.items[0].quantity).toBe(3);
+    expect(sale.items[1].medicineName).toBe("Ace 500mg");
+    expect(sale.items[1].quantity).toBe(2);
+    expect(sale.subtotalPaisa).toBe(3 * 12000 + 2 * 15000);
+    expect((await MedicineModel.findById(other._id))!.stockPatas).toBe(280);
+    expect((await OrderModel.findById(order._id))!.status).toBe("approved");
+  });
+
+  it("allows the owner to approve an order with both added medicines and custom items", async () => {
+    const buyer = await makeBuyer();
+    const medicine = await makeMedicine({ name: "Napa 500mg" }, 500);
+    const other = await makeMedicine({ name: "Ace 500mg", wholesaleBoxPricePaisa: 15000 }, 300);
+    const order = await makeOrder(buyer._id, medicine, 2);
+
+    const sale = await unwrap(
+      approveOrder(String(order._id), [
+        { medicineId: String(medicine._id), boxes: 2 },
+        { medicineId: String(other._id), boxes: 1 },
+        { customName: "Surgical Gloves", customPricePaisa: 45000, boxes: 3 },
+      ]),
+    );
+
+    expect(sale.items).toHaveLength(3);
+    expect(sale.items[0].medicineName).toBe("Napa 500mg");
+    expect(sale.items[1].medicineName).toBe("Ace 500mg");
+    expect(sale.items[2].medicineName).toBe("Surgical Gloves");
+    expect(sale.items[2].medicineId).toBeNull();
+    expect(sale.items[2].quantity).toBe(3);
+    expect(sale.items[2].ratePaisa).toBe(45000);
+    expect(sale.items[2].lineTotalPaisa).toBe(3 * 45000);
+    expect(sale.subtotalPaisa).toBe(2 * 12000 + 1 * 15000 + 3 * 45000);
+    expect((await OrderModel.findById(order._id))!.status).toBe("approved");
   });
 
   it("approves even when stock is short, leaving stock negative and the order approved", async () => {

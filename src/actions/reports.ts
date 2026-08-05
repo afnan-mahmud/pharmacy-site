@@ -8,6 +8,7 @@ import { MedicineModel, type MedicineDoc } from "@/models/Medicine";
 
 export type SalesReportRow = {
   saleId: string;
+  orderId?: string | null;
   createdAt: string;
   type: "retail" | "wholesale";
   invoiceNo: string | null;
@@ -124,6 +125,7 @@ export async function salesReport(
 
     return {
       saleId: sale._id.toString(),
+      orderId: sale.orderId ? sale.orderId.toString() : null,
       createdAt: sale.createdAt ? new Date(sale.createdAt).toISOString() : new Date().toISOString(),
       type: (sale.type === "wholesale" ? "wholesale" : "retail") as "retail" | "wholesale",
       invoiceNo: sale.invoiceNo ?? null,

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { approveOrder, rejectOrder } from "@/actions/adminOrders";
 import { buyerDueBalance } from "@/actions/due";
 import { formatTaka, takaToPaisa } from "@/lib/money";
@@ -110,7 +111,10 @@ export function OrderEditor({
   };
 
   const addMedicine = (medicine: PickedMedicine) => {
-    if (items.some((i) => i.medicineId === medicine.id)) return;
+    if (items.some((i) => i.medicineId === medicine.id)) {
+      toast.error("Ei medicine already add kora hoyeche");
+      return;
+    }
     const current = currentPrices[medicine.id];
     setItems((prev) => [
       ...prev,
@@ -127,16 +131,17 @@ export function OrderEditor({
       },
     ]);
     setPickerOpen(false);
+    toast.success(`"${medicine.name}" add kora hoyeche`);
   };
 
   const addCustomItem = () => {
     if (!customName.trim()) {
-      alert("Nam dite hobe");
+      toast.error("Nam dite hobe");
       return;
     }
-    const parsedPrice = parseFloat(customPrice);
+    const parsedPrice = parseFloat(customPrice || "0");
     if (isNaN(parsedPrice) || parsedPrice < 0) {
-      alert("Thikmoto dam din");
+      toast.error("Thikmoto dam din");
       return;
     }
     const pricePaisa = Math.round(takaToPaisa(parsedPrice));
@@ -158,6 +163,7 @@ export function OrderEditor({
     setCustomName("");
     setCustomPrice("");
     setCustomBoxes(1);
+    toast.success(`"${customName.trim()}" add kora hoyeche`);
   };
 
   const handleApprove = async () => {
@@ -166,7 +172,9 @@ export function OrderEditor({
     // Validate custom items have prices
     for (const item of items) {
       if (!item.medicineId && item.boxPricePaisa < 0) {
-        setError(`"${item.medicineName}" er dam thik nai!`);
+        const msg = `"${item.medicineName}" er dam thik nai!`;
+        setError(msg);
+        toast.error(msg);
         return;
       }
     }
@@ -185,7 +193,9 @@ export function OrderEditor({
       if (discountSource === "percent") {
         const percent = parsePercentInput(percentDiscount);
         if (percent === null) {
-          setError("Discount thik nai");
+          const msg = "Discount thik nai";
+          setError(msg);
+          toast.error(msg);
           setBusy(false);
           return;
         }
@@ -193,7 +203,9 @@ export function OrderEditor({
       } else {
         const amountPaisa = parseTakaInput(amountDiscount);
         if (amountPaisa === null) {
-          setError("Discount thik nai");
+          const msg = "Discount thik nai";
+          setError(msg);
+          toast.error(msg);
           setBusy(false);
           return;
         }
@@ -202,7 +214,9 @@ export function OrderEditor({
 
       const paidPaisa = parseTakaInput(paidStr);
       if (paidPaisa === null) {
-        setError("Joma thik nai");
+        const msg = "Joma thik nai";
+        setError(msg);
+        toast.error(msg);
         setBusy(false);
         return;
       }
@@ -210,12 +224,16 @@ export function OrderEditor({
       const result = await approveOrder(order._id, inputItems, discountArg, paidPaisa);
       if (!result.ok) {
         setError(result.error);
+        toast.error(result.error);
         setBusy(false);
         return;
       }
+      toast.success("Order approve hoyeche!");
       router.push(`/invoice/${result.data._id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Kichu ekta bhul holo");
+      const msg = err instanceof Error ? err.message : "Kichu ekta bhul holo";
+      setError(msg);
+      toast.error(msg);
       setBusy(false);
     }
   };
@@ -223,17 +241,25 @@ export function OrderEditor({
   const handleReject = async () => {
     const reason = window.prompt("Reject korar karon:");
     if (reason === null) return;
+    if (!reason.trim()) {
+      toast.error("Reject korar karon likhte hobe");
+      return;
+    }
     setError("");
     setBusy(true);
     try {
       const result = await rejectOrder(order._id, reason);
       if (!result.ok) {
         setError(result.error);
+        toast.error(result.error);
         return;
       }
+      toast.success("Order reject kora hoyeche");
       router.push("/orders");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Kichu ekta bhul holo");
+      const msg = err instanceof Error ? err.message : "Kichu ekta bhul holo";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
@@ -279,7 +305,7 @@ export function OrderEditor({
   const totalPayablePaisa = netTotalPaisa + effectivePriorDue;
   const finalDuePaisa = totalPayablePaisa - paidPaisa;
 
-  const hasBillableLine = items.some((i) => i.boxes > 0 || i.patas > 0 || !i.medicineId);
+  const hasBillableLine = items.some((i) => i.boxes > 0 || i.patas > 0);
 
   return (
     <div className="flex flex-col pb-32 space-y-4">
@@ -336,9 +362,12 @@ export function OrderEditor({
                         <input
                           type="number"
                           placeholder="Price"
-                          value={item.boxPricePaisa > 0 ? (item.boxPricePaisa / 100).toString() : ""}
+                          min={0}
+                          step="any"
+                          value={item.boxPricePaisa > 0 ? (item.boxPricePaisa / 100).toString() : item.boxPricePaisa === 0 ? "0" : ""}
                           onChange={(e) => {
-                            const pricePaisa = Math.round(takaToPaisa(parseFloat(e.target.value) || 0));
+                            const val = e.target.value;
+                            const pricePaisa = val === "" ? 0 : Math.round(takaToPaisa(parseFloat(val) || 0));
                             updateItem(item.id, { boxPricePaisa: pricePaisa, pataPricePaisa: pricePaisa });
                           }}
                           className="w-full max-w-[120px] rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm font-medium focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
@@ -427,11 +456,13 @@ export function OrderEditor({
                       <span className="ml-2 font-normal text-muted">(0 qty)</span>
                     )}
                   </div>
-                  {item.isAdded && (
-                    <button onClick={() => setItems(prev => prev.filter(i => i.id !== item.id))} className="text-xs text-danger font-medium hover:underline">
-                      Remove
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setItems((prev) => prev.filter((i) => i.id !== item.id))}
+                    className="text-xs text-danger font-medium hover:underline flex items-center gap-1"
+                  >
+                    ✕ Remove
+                  </button>
                </div>
             </div>
           );

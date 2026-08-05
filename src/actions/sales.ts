@@ -7,9 +7,11 @@ import { requireAdminAction } from "@/lib/session";
 import { applyStockDelta } from "@/lib/stockTransaction";
 import { writeWholesaleSale } from "@/lib/writeWholesaleSale";
 import { writeRetailSale } from "@/lib/writeRetailSale";
-import type { DiscountInput } from "@/lib/saleTotals";
+import { computeTotals, type DiscountInput } from "@/lib/saleTotals";
+import { buildSaleLines } from "@/lib/saleLines";
 import { toPlain, type Serialized } from "@/lib/serialize";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
+import { MedicineModel } from "@/models/Medicine";
 import { BuyerModel } from "@/models/Buyer";
 import { RetailCustomerModel } from "@/models/RetailCustomer";
 import { actionResult, type ActionResult } from "@/lib/actionResult";
@@ -371,3 +373,141 @@ export async function searchRetailCustomers(
 
   return customers.map((c) => ({ name: c.name, phone: c.phone }));
 }
+
+export type UpdateSaleItemInput = {
+  medicineId?: string;
+  customName?: string;
+  customPricePaisa?: number;
+  boxes: number;
+  patas: number;
+};
+
+export type UpdateSaleInput = {
+  saleId: string;
+  items: UpdateSaleItemInput[];
+  discount: DiscountInput;
+  paidPaisa: number;
+};
+
+export async function currentPricesForSale(
+  medicineIds: string[],
+  type: "wholesale" | "retail" = "wholesale",
+): Promise<Record<string, { boxPricePaisa: number; pataPricePaisa: number }>> {
+  await requireAdminAction();
+  await connectDb();
+
+  if (!Array.isArray(medicineIds)) return {};
+  const validIds = medicineIds.filter((id) =>
+    mongoose.Types.ObjectId.isValid(id),
+  );
+  if (validIds.length === 0) return {};
+
+  const medicines = await MedicineModel.find({
+    _id: { $in: validIds },
+    active: true,
+  })
+    .select("wholesaleBoxPricePaisa wholesalePataPricePaisa retailBoxPricePaisa retailPataPricePaisa")
+    .lean<{
+      _id: mongoose.Types.ObjectId;
+      wholesaleBoxPricePaisa: number;
+      wholesalePataPricePaisa: number;
+      retailBoxPricePaisa: number;
+      retailPataPricePaisa: number;
+    }[]>();
+
+  return Object.fromEntries(
+    medicines.map((m) => [
+      m._id.toString(),
+      {
+        boxPricePaisa:
+          type === "wholesale"
+            ? m.wholesaleBoxPricePaisa
+            : m.retailBoxPricePaisa,
+        pataPricePaisa:
+          type === "wholesale"
+            ? m.wholesalePataPricePaisa
+            : m.retailPataPricePaisa,
+      },
+    ]),
+  );
+}
+
+export async function updateSale(
+  input: UpdateSaleInput,
+): Promise<ActionResult<Serialized<SaleDoc>>> {
+  return actionResult(async () => {
+    const adminSession = await requireAdminAction();
+    await connectDb();
+
+    if (!mongoose.Types.ObjectId.isValid(input.saleId)) {
+      throw new Error("Bikri pawa jay ni");
+    }
+
+    validateSaleItems(input.items);
+    validateDiscountShape(input.discount);
+    validatePaidPaisa(input.paidPaisa);
+
+    const session = await mongoose.startSession();
+    let updatedSaleId: mongoose.Types.ObjectId | null = null;
+
+    try {
+      await session.withTransaction(async () => {
+        const sale = await SaleModel.findById(input.saleId).session(session);
+        if (!sale) throw new Error("Bikri pawa jay ni");
+        if (sale.status === "cancelled") {
+          throw new Error("Batil kora bikri edit kora jabe na");
+        }
+
+        // 1. Return old stock for original items
+        for (const oldLine of sale.items) {
+          if (oldLine.medicineId && oldLine.patasDeducted > 0) {
+            const ok = await applyStockDelta(
+              oldLine.medicineId,
+              oldLine.patasDeducted,
+              session,
+            );
+            if (!ok) throw new Error("Medicine stock update korte somosya hoyeche");
+          }
+        }
+
+        // 2. Build new lines & deduct new stock
+        const priceMode = sale.type === "wholesale" ? "wholesale" : "retail";
+        const newLines = await buildSaleLines(input.items, session, priceMode);
+
+        // 3. Compute totals
+        const { subtotalPaisa, discountPercent, discountPaisa, totalPaisa, duePaisa } =
+          computeTotals(
+            newLines.map((l) => ({ ratePaisa: l.lineTotalPaisa, quantity: 1 })),
+            input.discount,
+            input.paidPaisa,
+          );
+
+        // 4. Update the Sale document
+        sale.items = newLines as any;
+        sale.subtotalPaisa = subtotalPaisa;
+        sale.discountPercent = discountPercent;
+        sale.discountPaisa = discountPaisa;
+        sale.totalPaisa = totalPaisa;
+        sale.paidPaisa = input.paidPaisa;
+        sale.duePaisa = duePaisa;
+
+        await sale.save({ session });
+        updatedSaleId = sale._id;
+      });
+    } finally {
+      await session.endSession();
+    }
+
+    revalidatePath("/reports");
+    revalidatePath("/medicines");
+    revalidatePath(`/invoice/${input.saleId}`);
+    revalidatePath("/orders");
+    revalidatePath("/due");
+    revalidatePath("/retail-due");
+    revalidatePath("/dashboard");
+
+    const updatedSale = await SaleModel.findById(updatedSaleId).lean<SaleDoc>();
+    return toPlain(updatedSale!);
+  });
+}
+

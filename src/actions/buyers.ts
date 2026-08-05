@@ -104,7 +104,7 @@ export async function updateBuyer(
       const buyer = await BuyerModel.findByIdAndUpdate(
         id,
         { $set: toFields(input) },
-        { new: true, runValidators: true },
+        { returnDocument: "after", runValidators: true },
       )
         .select(PUBLIC_FIELDS)
         .lean<PublicBuyerDoc>();

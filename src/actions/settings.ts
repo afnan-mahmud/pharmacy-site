@@ -96,7 +96,7 @@ export async function getSettings(): Promise<Serialized<SettingsDoc>> {
     SettingsModel.findOneAndUpdate(
       { key: "singleton" },
       { $setOnInsert: { key: "singleton" } },
-      { upsert: true, new: true, setDefaultsOnInsert: true },
+      { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
     ).lean<SettingsDoc>(),
   );
   return toPlain(settings!);
@@ -190,7 +190,7 @@ export async function updateSettings(
           $set: { pharmacyName, tagline, invoicePrefix, address, phone, aboutUs },
           $setOnInsert: { key: "singleton" },
         },
-        { upsert: true, new: true, setDefaultsOnInsert: true },
+        { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
       ).lean<SettingsDoc>(),
     );
 

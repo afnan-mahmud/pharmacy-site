@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getSale } from "@/actions/sales";
 import { readSettings } from "@/actions/settings";
@@ -15,11 +16,22 @@ export default async function InvoicePage({
   const [sale, settings] = await Promise.all([getSale(id), readSettings()]);
   if (!sale) notFound();
 
-
   return (
     <div className="space-y-4">
-      <div className="no-print flex items-center gap-3">
+      <div className="no-print flex flex-wrap items-center gap-3">
         <PrintButton />
+        {sale.status === "active" && (
+          <Link
+            href={`/sales/${id}/edit`}
+            className="inline-flex items-center gap-1.5 rounded-full border border-brand/40 bg-brand/10 hover:bg-brand/20 px-4 py-2 text-sm font-bold text-brand-strong transition shadow-xs active:scale-95"
+            title="অর্ডার বা বিক্রির প্রোডাক্ট, মূল্য, ডিসকাউন্ট বা জমা এডিট করুন"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+            </svg>
+            <span>✏️ এডিট করুন</span>
+          </Link>
+        )}
         {sale.status === "active" && (
           <form
             action={async (formData: FormData) => {

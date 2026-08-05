@@ -21,7 +21,7 @@ export async function nextInvoiceSeq(session: ClientSession): Promise<number> {
   const counter = await CounterModel.findOneAndUpdate(
     { key: INVOICE_KEY },
     { $inc: { seq: 1 } },
-    { upsert: true, new: true, session },
+    { upsert: true, returnDocument: "after", session },
   );
   return counter!.seq;
 }

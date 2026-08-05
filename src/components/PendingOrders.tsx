@@ -1,13 +1,14 @@
 "use client";
 
+import { useState } from "react";
+import Link from "next/link";
+import { toast } from "sonner";
 import { formatTaka } from "@/lib/money";
 import { formatDhakaDateTime } from "@/lib/dhakaDate";
 import type { Serialized } from "@/lib/serialize";
 import type { OrderDoc } from "@/models/Order";
-import Link from "next/link";
 import { unitLabelsFor } from "@/lib/unitLabels";
 import { approveOrder, rejectOrder } from "@/actions/adminOrders";
-import { useState } from "react";
 
 export type PendingOrderRow = Serialized<OrderDoc>;
 
@@ -21,14 +22,22 @@ export function PendingOrders({
 
   const handleReject = async (orderId: string) => {
     const reason = window.prompt("Reject korar karon likhun:");
-    if (!reason) return;
+    if (reason === null) return;
+    if (!reason.trim()) {
+      toast.error("Reject korar karon likhte hobe");
+      return;
+    }
 
     setBusyId(orderId);
     try {
       const res = await rejectOrder(orderId, reason);
-      if (!res.ok) alert(res.error);
+      if (!res.ok) {
+        toast.error(res.error);
+      } else {
+        toast.success("Order reject kora hoyeche");
+      }
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message || "Kichu ekta bhul holo");
     } finally {
       setBusyId(null);
     }
@@ -38,7 +47,7 @@ export function PendingOrders({
     // 1-click approve cannot price custom items.
     const hasCustomItems = order.items.some(i => !i.medicineId);
     if (hasCustomItems) {
-      alert("Ei order e short items ase. Apnake Edit e click kore dam boshiye approve korte hobe.");
+      toast.error("Ei order e short items ase. Apnake Edit e click kore dam boshiye approve korte hobe.");
       return;
     }
 
@@ -54,12 +63,13 @@ export function PendingOrders({
 
       const res = await approveOrder(order._id, approvalItems);
       if (res.ok) {
+        toast.success("Order approve hoyeche!");
         setPrintSaleId(res.data._id);
       } else {
-        alert(res.error);
+        toast.error(res.error);
       }
     } catch (e: any) {
-      alert(e.message);
+      toast.error(e.message || "Kichu ekta bhul holo");
     } finally {
       setBusyId(null);
     }

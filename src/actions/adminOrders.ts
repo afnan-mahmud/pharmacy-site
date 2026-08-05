@@ -128,9 +128,9 @@ function validateApproval(items: ApprovalItemInput[]): void {
 }
 
 /**
- * Approves a pending order into a wholesale sale. The owner may reduce
- * quantities or drop lines (a buyer ordered 10 boxes; only 6 are in stock —
- * approve 6), but may not introduce a medicine the buyer never ordered.
+ * Approves a pending order into a wholesale sale. The owner may adjust
+ * quantities, drop lines, add custom items, or add additional medicines from
+ * the inventory.
  *
  * Stock deduction, invoice numbering, and the sale itself go through the same
  * writeWholesaleSale used by the wholesale form, so an order-sourced sale is
@@ -171,15 +171,6 @@ export async function approveOrder(
         // approving, so an unknown order reports "not found" rather than
         // "cart empty" when both are true of the call.
         validateApproval(items);
-
-        const ordered = new Set(
-          order.items.map((line) => String(line.medicineId)),
-        );
-        for (const item of items) {
-          if (item.medicineId && !ordered.has(item.medicineId)) {
-            throw new Error("Order er baire er medicine dewa jabe na");
-          }
-        }
 
 
         // The order denormalises the buyer's name and shop but not the phone,
