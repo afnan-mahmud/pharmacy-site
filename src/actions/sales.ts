@@ -14,6 +14,8 @@ import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { MedicineModel } from "@/models/Medicine";
 import { BuyerModel } from "@/models/Buyer";
 import { RetailCustomerModel } from "@/models/RetailCustomer";
+import { PaymentModel } from "@/models/Payment";
+import { RetailPaymentModel } from "@/models/RetailPayment";
 import { actionResult, type ActionResult } from "@/lib/actionResult";
 import { assertLineCount } from "@/lib/lineLimits";
 
@@ -291,13 +293,16 @@ export async function getSale(id: string): Promise<Serialized<SaleDoc> | null> {
  * The stock returned comes from each line's snapshotted `patasDeducted`,
  * not from recomputing boxes x patasPerBox — if the pack size changed after
  * the sale, recomputing would return a different quantity than went out.
+ *
+ * Money already handed over is returned as credit, not erased — see the
+ * comment on the compensating payment below.
  */
 export async function cancelSale(
   id: string,
   reason: string,
 ): Promise<ActionResult<void>> {
   return actionResult(async () => {
-    await requireAdminAction();
+    const adminSession = await requireAdminAction();
     await connectDb();
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -344,6 +349,64 @@ export async function cancelSale(
             session,
           );
           if (!ok) throw new Error("Medicine pawa jay ni");
+        }
+
+        // The goods came back; the money that paid for them did not.
+        //
+        // A balance is "active sales' duePaisa minus payments" (see
+        // src/lib/dueComputation.ts). Cancelling drops this sale out of the
+        // first half of that sum — and `paidPaisa` lives *on the sale*, not
+        // as a Payment document, so cash taken at the counter left the books
+        // along with it. A fully-paid sale that was cancelled read as "Baki
+        // nei" while the pharmacy was still holding the customer's money.
+        //
+        // Recording the compensating credit as an ordinary payment is what
+        // the balance model already expects rather than a special case bolted
+        // onto it: a payment deliberately carries no saleId so that it
+        // survives the sale it was made against, and both due lists key off
+        // "has ever paid" as well as "has an active sale" (see listBuyerDues'
+        // comment on why that clause is load-bearing) — so a customer whose
+        // only sale was cancelled still appears, now holding the credit.
+        //
+        // Using `paidPaisa` is right for a partial payment too: the unpaid
+        // half leaves with the sale's own duePaisa, and what is left is
+        // exactly what the customer is owed back.
+        if (sale.paidPaisa > 0) {
+          const note = sale.invoiceNo
+            ? `Bikri ${sale.invoiceNo} batil`
+            : "Batil kora bikri";
+
+          if (sale.type === "wholesale" && sale.buyerId) {
+            await PaymentModel.create(
+              [
+                {
+                  buyerId: sale.buyerId,
+                  amountPaisa: sale.paidPaisa,
+                  note,
+                  createdBy: new mongoose.Types.ObjectId(adminSession.userId),
+                },
+              ],
+              { session },
+            );
+          } else if (sale.type === "retail" && sale.buyerPhone) {
+            await RetailPaymentModel.create(
+              [
+                {
+                  phone: sale.buyerPhone,
+                  amountPaisa: sale.paidPaisa,
+                  note,
+                  createdBy: new mongoose.Types.ObjectId(adminSession.userId),
+                },
+              ],
+              { session },
+            );
+          }
+          // A counter sale with no phone is the one case with nothing to
+          // credit, and that is correct rather than a gap: there is no
+          // customer record, no ledger, and no balance keyed to an anonymous
+          // walk-in — the refund is cash across the counter. Such a sale also
+          // cannot carry a due (writeRetailSale refuses a due without a
+          // phone), so no balance is left wrong by skipping it.
         }
       });
     } finally {
@@ -444,6 +507,7 @@ export async function currentPricesForSale(
     ]),
   );
 }
+
 
 export async function updateSale(
   input: UpdateSaleInput,

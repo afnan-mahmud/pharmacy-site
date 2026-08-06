@@ -16,9 +16,14 @@ import {
   searchRetailCustomers,
 } from "@/actions/sales";
 import { createBuyer } from "@/actions/buyers";
+import { listBuyerDues } from "@/actions/due";
+import { computeBuyerDue } from "@/lib/dueComputation";
+import { computeRetailDue } from "@/lib/retailDueComputation";
 import { MedicineModel } from "@/models/Medicine";
 import { SaleModel } from "@/models/Sale";
 import { SettingsModel } from "@/models/Settings";
+import { PaymentModel } from "@/models/Payment";
+import { RetailPaymentModel } from "@/models/RetailPayment";
 
 const cookieStore = createMockCookieStore();
 vi.mock("next/headers", () => ({
@@ -692,6 +697,190 @@ describe("cancelSale", () => {
     await expect(
       unwrap(cancelSale("507f1f77bcf86cd799439011", "test")),
     ).rejects.toThrow();
+  });
+});
+
+/**
+ * Cancelling returns the goods. The money the customer already handed over is
+ * theirs either way, so it has to survive the sale as credit — before this,
+ * `paidPaisa` lived on the sale document and left the books along with it,
+ * and a fully-paid sale that was cancelled read as "Baki nei" while the
+ * pharmacy was still holding the cash.
+ */
+describe("cancelSale returns the money paid, not only the stock", () => {
+  it("leaves a fully-paid wholesale buyer holding the whole amount as credit", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    const sale = await unwrap(recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discountPercent: 0,
+      paidPaisa: 12000,
+    }));
+    expect(await computeBuyerDue(buyer._id)).toBe(0);
+
+    await unwrap(cancelSale(sale._id, "Buyer shob ferot diyeche"));
+
+    // Negative means the pharmacy owes the buyer — see src/lib/dueDisplay.ts.
+    expect(await computeBuyerDue(buyer._id)).toBe(-12000);
+  });
+
+  it("credits only what was actually paid on a part-paid sale", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    const sale = await unwrap(recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discountPercent: 0,
+      paidPaisa: 5000,
+    }));
+    // Owes the unpaid 7000 of a 12000 sale.
+    expect(await computeBuyerDue(buyer._id)).toBe(7000);
+
+    await unwrap(cancelSale(sale._id, "ferot"));
+
+    // The unpaid 7000 leaves with the sale; the 5000 he handed over does not.
+    expect(await computeBuyerDue(buyer._id)).toBe(-5000);
+  });
+
+  it("records the credit as a payment naming the cancelled invoice", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    const sale = await unwrap(recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discountPercent: 0,
+      paidPaisa: 12000,
+    }));
+
+    await unwrap(cancelSale(sale._id, "ferot"));
+
+    const payments = await PaymentModel.find({ buyerId: buyer._id }).lean();
+    expect(payments).toHaveLength(1);
+    expect(payments[0]!.amountPaisa).toBe(12000);
+    // The owner has to be able to explain the credit to the buyer.
+    expect(payments[0]!.note).toContain(sale.invoiceNo!);
+  });
+
+  it("writes nothing when the sale was never paid for", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    const sale = await unwrap(recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discountPercent: 0,
+      paidPaisa: 0,
+    }));
+    expect(await computeBuyerDue(buyer._id)).toBe(12000);
+
+    await unwrap(cancelSale(sale._id, "ferot"));
+
+    expect(await PaymentModel.countDocuments({ buyerId: buyer._id })).toBe(0);
+    expect(await computeBuyerDue(buyer._id)).toBe(0);
+  });
+
+  it("keeps the buyer visible on the due list, holding the credit", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    const sale = await unwrap(recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discountPercent: 0,
+      paidPaisa: 12000,
+    }));
+
+    await unwrap(cancelSale(sale._id, "ferot"));
+
+    // A buyer with no active sale left must not vanish along with it — the
+    // credit is only reachable from their row.
+    const rows = await listBuyerDues();
+    const row = rows.find((r) => r.buyerId === buyer._id);
+    expect(row).toBeDefined();
+    expect(row!.duePaisa).toBe(-12000);
+  });
+
+  it("credits a retail customer against their phone number", async () => {
+    const medicine = await makeMedicine();
+    const sale = await unwrap(recordRetailSale({
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      customerName: "Rahim",
+      customerPhone: "01712345678",
+      discount: percent(0),
+      paidPaisa: 13000,
+    }));
+    expect(await computeRetailDue("01712345678")).toBe(0);
+
+    await unwrap(cancelSale(sale._id, "ferot"));
+
+    expect(await computeRetailDue("01712345678")).toBe(-13000);
+    const payments = await RetailPaymentModel.find({
+      phone: "01712345678",
+    }).lean();
+    expect(payments).toHaveLength(1);
+    expect(payments[0]!.amountPaisa).toBe(13000);
+  });
+
+  it("records no credit for an anonymous counter sale, and still returns stock", async () => {
+    const medicine = await makeMedicine({}, 500);
+    const sale = await unwrap(recordRetailSale({
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      customerName: "Walk-in",
+      discount: percent(0),
+      paidPaisa: 13000,
+    }));
+
+    // No phone means no customer record and no ledger to credit — the refund
+    // is cash across the counter. Such a sale cannot carry a due either, so
+    // no balance is left wrong by having nowhere to put this.
+    await unwrap(cancelSale(sale._id, "ferot"));
+
+    expect(await RetailPaymentModel.countDocuments({})).toBe(0);
+    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(500);
+  });
+
+  it("does not credit twice when a cancel is attempted twice", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    const sale = await unwrap(recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discountPercent: 0,
+      paidPaisa: 12000,
+    }));
+
+    await unwrap(cancelSale(sale._id, "first"));
+    await expect(unwrap(cancelSale(sale._id, "second"))).rejects.toThrow(
+      "Ei bikri age theke cancel kora",
+    );
+
+    expect(await PaymentModel.countDocuments({ buyerId: buyer._id })).toBe(1);
+    expect(await computeBuyerDue(buyer._id)).toBe(-12000);
+  });
+
+  it("leaves an unrelated buyer-level payment untouched", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    // Two sales; he settles one of them at the counter later.
+    const kept = await unwrap(recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discountPercent: 0,
+      paidPaisa: 0,
+    }));
+    const cancelled = await unwrap(recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discountPercent: 0,
+      paidPaisa: 12000,
+    }));
+    expect(kept.duePaisa).toBe(12000);
+
+    await unwrap(cancelSale(cancelled._id, "ferot"));
+
+    // Still owes 12000 on the kept sale, against 12000 of credit from the
+    // cancelled one: square, not zero-by-accident.
+    expect(await computeBuyerDue(buyer._id)).toBe(0);
+    expect(await PaymentModel.countDocuments({ buyerId: buyer._id })).toBe(1);
   });
 });
 
