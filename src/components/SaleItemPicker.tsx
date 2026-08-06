@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react";
 import { listMedicines } from "@/actions/medicines";
 import { toMedicineForm, unitLabelsFor } from "@/lib/unitLabels";
-import { formatTaka, takaToPaisa } from "@/lib/money";
+import { formatTaka } from "@/lib/money";
+import { parseTakaInput } from "@/lib/takaInput";
 import { type PickedMedicine } from "./MedicinePicker";
 
 export type CartLine = {
@@ -48,6 +49,7 @@ export function SaleItemPicker({
   const [showCustomModal, setShowCustomModal] = useState(false);
   const [customName, setCustomName] = useState("");
   const [customPrice, setCustomPrice] = useState("");
+  const [customCost, setCustomCost] = useState("");
   const [customBoxes, setCustomBoxes] = useState(1);
 
   const [step1Boxes, setStep1Boxes] = useState<Record<string, number>>({});
@@ -62,14 +64,34 @@ export function SaleItemPicker({
     return sum + (line.boxes * boxRate + line.patas * pataRate);
   }, 0);
 
+  // Live "what does this line actually earn" hint inside the custom-item
+  // modal. Only shown once a costing has been typed: with the box blank the
+  // profit is the whole price, which is exactly the reading this field
+  // exists to correct, so showing it would be noise.
+  const customPreview = (() => {
+    if (!customCost.trim()) return null;
+    const pricePaisa = parseTakaInput(customPrice);
+    const costPaisa = parseTakaInput(customCost);
+    if (pricePaisa === null || costPaisa === null) return null;
+    const unitProfitPaisa = pricePaisa - costPaisa;
+    return { unitProfitPaisa, totalProfitPaisa: unitProfitPaisa * customBoxes };
+  })();
+
   function addCustomItem() {
     if (!customName.trim()) {
       alert("পণ্য বা আইটেমের নাম লিখুন");
       return;
     }
-    const pricePaisa = Math.round(takaToPaisa(customPrice || 0));
-    if (pricePaisa < 0) {
+    const pricePaisa = parseTakaInput(customPrice);
+    if (pricePaisa === null) {
       alert("সঠিক দাম লিখুন");
+      return;
+    }
+    // Blank costing is allowed — the item then reports as all profit, which
+    // is what every custom item did before this field existed.
+    const costPaisa = parseTakaInput(customCost);
+    if (costPaisa === null) {
+      alert("সঠিক ক্রয়মূল্য (কস্টিং) লিখুন");
       return;
     }
     const id = `custom_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`;
@@ -84,6 +106,7 @@ export function SaleItemPicker({
       retailBoxPricePaisa: pricePaisa,
       retailPataPricePaisa: pricePaisa,
       stockPatas: 0,
+      customCostPaisa: costPaisa,
     };
 
     setStep1Boxes((prev) => ({ ...prev, [id]: customBoxes }));
@@ -91,6 +114,7 @@ export function SaleItemPicker({
 
     setCustomName("");
     setCustomPrice("");
+    setCustomCost("");
     setCustomBoxes(1);
     setShowCustomModal(false);
   }
@@ -515,7 +539,7 @@ export function SaleItemPicker({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-ink">মূল্য (৳)</label>
+                  <label className="text-xs font-bold text-ink">বিক্রয় মূল্য (৳)</label>
                   <input
                     type="number"
                     step="0.01"
@@ -527,6 +551,45 @@ export function SaleItemPicker({
                 </div>
 
                 <div>
+                  <label className="text-xs font-bold text-ink">কস্টিং / ক্রয়মূল্য (৳)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={customCost}
+                    onChange={(e) => setCustomCost(e.target.value)}
+                    className="mt-1 w-full rounded-2xl border border-line px-4 py-3 text-sm font-bold text-ink focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none transition"
+                  />
+                </div>
+              </div>
+
+              {customPreview && (
+                <div className="rounded-2xl bg-canvas px-4 py-2.5 text-xs font-semibold text-muted">
+                  প্রতি ইউনিট লাভ:{" "}
+                  <span
+                    className={
+                      customPreview.unitProfitPaisa >= 0
+                        ? "font-bold text-emerald-700"
+                        : "font-bold text-rose-600"
+                    }
+                  >
+                    {formatTaka(customPreview.unitProfitPaisa)}
+                  </span>{" "}
+                  · মোট লাভ:{" "}
+                  <span
+                    className={
+                      customPreview.totalProfitPaisa >= 0
+                        ? "font-bold text-emerald-700"
+                        : "font-bold text-rose-600"
+                    }
+                  >
+                    {formatTaka(customPreview.totalProfitPaisa)}
+                  </span>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
                   <label className="text-xs font-bold text-ink">পরিমাণ (Box/Qty)</label>
                   <div className="mt-1 flex items-center rounded-2xl border border-line bg-surface overflow-hidden h-[46px]">
                     <button

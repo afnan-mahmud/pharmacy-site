@@ -24,6 +24,13 @@ type EditingItem = {
   patas: number;
   boxPricePaisa: number;
   pataPricePaisa: number;
+  /**
+   * Per-box buying cost, custom lines only. An order's custom lines are
+   * buyer-typed text with no cost behind them, so this starts at 0 and the
+   * owner fills it in at approval — without it the approved sale reports
+   * the whole custom amount as profit.
+   */
+  customCostPaisa: number;
   form: string;
   isAdded: boolean;
 };
@@ -68,6 +75,7 @@ export function OrderEditor({
         patas: i.patas,
         boxPricePaisa: current?.boxPricePaisa ?? i.wholesaleBoxPricePaisa,
         pataPricePaisa: current?.pataPricePaisa ?? i.wholesalePataPricePaisa,
+        customCostPaisa: 0,
         form: i.form,
         isAdded: false,
       };
@@ -79,6 +87,7 @@ export function OrderEditor({
   
   const [customName, setCustomName] = useState("");
   const [customPrice, setCustomPrice] = useState("");
+  const [customCost, setCustomCost] = useState("");
   const [customBoxes, setCustomBoxes] = useState(1);
   const [discountSource, setDiscountSource] = useState<"percent" | "amount">(
     "percent",
@@ -126,6 +135,7 @@ export function OrderEditor({
         patas: 0,
         boxPricePaisa: current?.boxPricePaisa ?? medicine.wholesaleBoxPricePaisa,
         pataPricePaisa: current?.pataPricePaisa ?? medicine.wholesalePataPricePaisa,
+        customCostPaisa: 0,
         form: medicine.form,
         isAdded: true,
       },
@@ -145,6 +155,14 @@ export function OrderEditor({
       return;
     }
     const pricePaisa = Math.round(takaToPaisa(parsedPrice));
+    // Blank costing is allowed — the line then reports as all profit, which
+    // is what every custom item did before this field existed.
+    const parsedCost = parseFloat(customCost || "0");
+    if (isNaN(parsedCost) || parsedCost < 0) {
+      toast.error("Costing thik nai");
+      return;
+    }
+    const costPaisa = Math.round(takaToPaisa(parsedCost));
     setItems((prev) => [
       ...prev,
       {
@@ -155,6 +173,7 @@ export function OrderEditor({
         patas: 0,
         boxPricePaisa: pricePaisa,
         pataPricePaisa: pricePaisa,
+        customCostPaisa: costPaisa,
         form: "other",
         isAdded: true,
       },
@@ -162,6 +181,7 @@ export function OrderEditor({
     setShowCustomForm(false);
     setCustomName("");
     setCustomPrice("");
+    setCustomCost("");
     setCustomBoxes(1);
     toast.success(`"${customName.trim()}" add kora hoyeche`);
   };
@@ -185,6 +205,7 @@ export function OrderEditor({
         medicineId: i.medicineId,
         customName: i.customName,
         customPricePaisa: i.boxPricePaisa,
+        customCostPaisa: i.customCostPaisa,
         boxes: i.boxes,
         patas: i.patas,
       }));
@@ -357,21 +378,47 @@ export function OrderEditor({
                  <div className="min-w-0">
                    <label className="block text-xs font-semibold text-muted mb-1">Rate</label>
                    {isCustom ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-ink">৳</span>
-                        <input
-                          type="number"
-                          placeholder="Price"
-                          min={0}
-                          step="any"
-                          value={item.boxPricePaisa > 0 ? (item.boxPricePaisa / 100).toString() : item.boxPricePaisa === 0 ? "0" : ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const pricePaisa = val === "" ? 0 : Math.round(takaToPaisa(parseFloat(val) || 0));
-                            updateItem(item.id, { boxPricePaisa: pricePaisa, pataPricePaisa: pricePaisa });
-                          }}
-                          className="w-full max-w-[120px] rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm font-medium focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
-                        />
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-ink">৳</span>
+                          <input
+                            type="number"
+                            placeholder="Price"
+                            min={0}
+                            step="any"
+                            value={item.boxPricePaisa > 0 ? (item.boxPricePaisa / 100).toString() : item.boxPricePaisa === 0 ? "0" : ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const pricePaisa = val === "" ? 0 : Math.round(takaToPaisa(parseFloat(val) || 0));
+                              updateItem(item.id, { boxPricePaisa: pricePaisa, pataPricePaisa: pricePaisa });
+                            }}
+                            className="w-full max-w-[120px] rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm font-medium focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-semibold uppercase text-muted mb-1">
+                            Costing
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-medium text-ink">৳</span>
+                            <input
+                              type="number"
+                              placeholder="Costing"
+                              min={0}
+                              step="any"
+                              value={(item.customCostPaisa / 100).toString()}
+                              onChange={(e) => {
+                                // takaToPaisa throws on a negative or unparseable
+                                // figure, and a number input will happily hand us
+                                // "-" mid-keystroke — clamp instead of crashing.
+                                const parsed = parseFloat(e.target.value);
+                                const taka = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+                                updateItem(item.id, { customCostPaisa: takaToPaisa(taka) });
+                              }}
+                              className="w-full max-w-[120px] rounded-lg border border-line bg-surface px-2.5 py-1.5 text-sm font-medium focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
+                            />
+                          </div>
+                        </div>
                       </div>
                    ) : (
                      <div className="text-sm font-semibold text-ink">
@@ -498,6 +545,15 @@ export function OrderEditor({
                     placeholder="Price (৳)"
                     value={customPrice}
                     onChange={(e) => setCustomPrice(e.target.value)}
+                    className="w-full rounded-xl border border-line bg-surface px-4 py-2.5 text-sm focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
+                  />
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="number"
+                    placeholder="Costing (৳)"
+                    value={customCost}
+                    onChange={(e) => setCustomCost(e.target.value)}
                     className="w-full rounded-xl border border-line bg-surface px-4 py-2.5 text-sm focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
                   />
                 </div>

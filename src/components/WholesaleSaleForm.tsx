@@ -163,6 +163,7 @@ export function WholesaleSaleForm({
           return {
             customName: l.medicine.name,
             customPricePaisa: l.medicine.wholesaleBoxPricePaisa,
+            customCostPaisa: l.medicine.customCostPaisa ?? 0,
             boxes: l.boxes,
             patas: l.patas,
           };
@@ -403,6 +404,16 @@ export function WholesaleSaleForm({
                         <div className="text-xs text-muted">
                           দর: {formatTaka(line.medicine.wholesaleBoxPricePaisa)}/{units.outer}
                         </div>
+                        {isCustom && (line.medicine.customCostPaisa ?? 0) > 0 && (
+                          <div className="text-[11px] text-muted">
+                            কস্টিং: {formatTaka(line.medicine.customCostPaisa!)} · লাভ:{" "}
+                            {formatTaka(
+                              (line.medicine.wholesaleBoxPricePaisa -
+                                line.medicine.customCostPaisa!) *
+                                line.boxes,
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       <button
@@ -480,6 +491,11 @@ export function WholesaleSaleForm({
                         </td>
                         <td className="px-3 py-2.5 font-medium">
                           {formatTaka(line.medicine.wholesaleBoxPricePaisa)}
+                          {isCustom && (line.medicine.customCostPaisa ?? 0) > 0 && (
+                            <div className="text-[11px] font-normal text-muted">
+                              কস্টিং: {formatTaka(line.medicine.customCostPaisa!)}
+                            </div>
+                          )}
                         </td>
                         <td className="px-3 py-2.5">
                           <div className="flex items-center gap-1.5">

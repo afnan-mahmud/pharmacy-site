@@ -39,6 +39,7 @@ type SaleItemShape = {
   medicineId?: string;
   customName?: string;
   customPricePaisa?: number;
+  customCostPaisa?: number;
   boxes: number;
   patas: number;
 };
@@ -72,6 +73,13 @@ function validateSaleItems(items: unknown): asserts items is SaleItemShape[] {
       }
       if (typeof item.customPricePaisa !== "number" || item.customPricePaisa < 0) {
         throw new Error("Custom item er price thik nai");
+      }
+      // Optional — a custom line with no costing recorded still sells, it
+      // just reports as all profit the way it always did.
+      if (item.customCostPaisa !== undefined) {
+        if (typeof item.customCostPaisa !== "number" || item.customCostPaisa < 0) {
+          throw new Error("Custom item er costing thik nai");
+        }
       }
     }
 
@@ -110,6 +118,7 @@ export type RetailSaleInput = {
     medicineId?: string;
     customName?: string;
     customPricePaisa?: number;
+    customCostPaisa?: number;
     boxes: number;
     patas: number;
   }[];
@@ -174,6 +183,7 @@ export type WholesaleSaleInput = {
     medicineId?: string;
     customName?: string;
     customPricePaisa?: number;
+    customCostPaisa?: number;
     boxes: number;
     patas: number;
   }[];
@@ -380,6 +390,7 @@ export type UpdateSaleItemInput = {
   medicineId?: string;
   customName?: string;
   customPricePaisa?: number;
+  customCostPaisa?: number;
   boxes: number;
   patas: number;
 };

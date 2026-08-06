@@ -17,6 +17,14 @@ export type PickedMedicine = {
   retailBoxPricePaisa: number;
   retailPataPricePaisa: number;
   stockPatas: number;
+  /**
+   * Set only on the fabricated medicines SaleItemPicker builds for custom
+   * items: the per-box buying cost the owner typed, carried through the cart
+   * so the sale payload can snapshot it (see SaleItemInput.customCostPaisa in
+   * src/lib/saleLines.ts). A real catalog medicine leaves this undefined —
+   * its cost comes from purchasePricePaisa on the server.
+   */
+  customCostPaisa?: number;
 };
 
 export function MedicinePicker({

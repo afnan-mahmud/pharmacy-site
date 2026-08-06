@@ -222,6 +222,7 @@ export function RetailSaleForm({
           return {
             customName: l.medicine.name,
             customPricePaisa: l.medicine.retailBoxPricePaisa,
+            customCostPaisa: l.medicine.customCostPaisa ?? 0,
             boxes: l.boxes,
             patas: l.patas,
           };
@@ -532,6 +533,16 @@ export function RetailSaleForm({
                           {line.medicine.retailPataPricePaisa > 0 &&
                             ` · ${formatTaka(line.medicine.retailPataPricePaisa)}/${units.inner}`}
                         </div>
+                        {isCustom && (line.medicine.customCostPaisa ?? 0) > 0 && (
+                          <div className="text-[11px] text-muted">
+                            কস্টিং: {formatTaka(line.medicine.customCostPaisa!)} · লাভ:{" "}
+                            {formatTaka(
+                              (line.medicine.retailBoxPricePaisa -
+                                line.medicine.customCostPaisa!) *
+                                line.boxes,
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       <button
@@ -609,6 +620,11 @@ export function RetailSaleForm({
                         </td>
                         <td className={tdCls}>
                           {formatTaka(line.medicine.retailBoxPricePaisa)}
+                          {isCustom && (line.medicine.customCostPaisa ?? 0) > 0 && (
+                            <div className="text-[11px] text-muted">
+                              কস্টিং: {formatTaka(line.medicine.customCostPaisa!)}
+                            </div>
+                          )}
                         </td>
                         <td className={tdCls}>
                           <div className="flex items-center gap-2">

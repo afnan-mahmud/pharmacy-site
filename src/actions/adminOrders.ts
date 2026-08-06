@@ -18,6 +18,8 @@ export type ApprovalItemInput = {
   medicineId?: string;
   customName?: string;
   customPricePaisa?: number;
+  /** Per-box buying cost of a custom line — see SaleItemInput in src/lib/saleLines.ts. */
+  customCostPaisa?: number;
   boxes: number;
   patas?: number;
 };
@@ -102,6 +104,14 @@ function validateApproval(items: ApprovalItemInput[]): void {
     } else {
       if (!item.customName || item.customPricePaisa === undefined) {
         throw new Error("Custom item er nam o dam dite hobe");
+      }
+      // Optional — an approval that records no costing still bills the same,
+      // it just reports as all profit the way it always did.
+      if (
+        item.customCostPaisa !== undefined &&
+        (typeof item.customCostPaisa !== "number" || item.customCostPaisa < 0)
+      ) {
+        throw new Error("Custom item er costing thik nai");
       }
       idStr = `custom_${customCounter++}`;
     }

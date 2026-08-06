@@ -96,6 +96,48 @@ describe("buildSaleLines", () => {
     expect(lines[0].patasDeducted).toBe(0);
   });
 
+  it("costs a custom item at its per-box costing times quantity", async () => {
+    const lines = await run(
+      [
+        {
+          customName: "Syringe",
+          customPricePaisa: 2000,
+          customCostPaisa: 1200,
+          boxes: 3,
+        },
+      ],
+      "retail",
+    );
+    expect(lines[0].costPaisa).toBe(3600);
+    // 6000 sold - 3600 cost is the 2400 the profit report should show,
+    // rather than the whole 6000 a costless custom line used to report.
+    expect(lines[0].lineTotalPaisa - lines[0].costPaisa).toBe(2400);
+  });
+
+  it("costs a custom item at 0 when no costing is given", async () => {
+    const lines = await run(
+      [{ customName: "Syringe", customPricePaisa: 2000, boxes: 3 }],
+      "retail",
+    );
+    expect(lines[0].costPaisa).toBe(0);
+  });
+
+  it("ignores patas when costing a custom item — the line is box-only", async () => {
+    const lines = await run(
+      [
+        {
+          customName: "Syringe",
+          customPricePaisa: 2000,
+          customCostPaisa: 1200,
+          boxes: 2,
+          patas: 5,
+        },
+      ],
+      "retail",
+    );
+    expect(lines[0].costPaisa).toBe(2400);
+  });
+
   it("rejects a custom item with no price", async () => {
     await expect(
       run([{ customName: "Syringe", boxes: 1 }], "retail"),

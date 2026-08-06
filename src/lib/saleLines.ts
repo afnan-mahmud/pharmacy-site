@@ -7,6 +7,14 @@ export type SaleItemInput = {
   medicineId?: string;
   customName?: string;
   customPricePaisa?: number;
+  /**
+   * Per-box buying cost of a custom item, in paisa. A custom line has no
+   * medicine behind it, so nothing else can supply the cost the profit
+   * report subtracts — without it every custom sale reads as pure profit.
+   * Optional: omitted (or 0) keeps the old behaviour for callers and saved
+   * lines that never captured a cost.
+   */
+  customCostPaisa?: number;
   boxes: number;
   patas?: number;
 };
@@ -110,7 +118,9 @@ export async function buildSaleLines(
         ratePaisa: item.customPricePaisa,
         lineTotalPaisa: item.boxes * item.customPricePaisa,
         patasDeducted: 0,
-        costPaisa: 0,
+        // Box-only, exactly like lineTotalPaisa above: a custom line never
+        // has a patas leg to cost.
+        costPaisa: item.boxes * (item.customCostPaisa ?? 0),
       });
     }
   }

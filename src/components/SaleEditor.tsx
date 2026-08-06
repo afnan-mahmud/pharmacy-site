@@ -26,6 +26,13 @@ export type EditingSaleItem = {
   patas: number;
   boxPricePaisa: number;
   pataPricePaisa: number;
+  /**
+   * Per-box buying cost, custom lines only. A catalog line's cost is
+   * re-derived server-side from the medicine, but a custom line has no
+   * medicine — if this were not carried through an edit, saving would reset
+   * the line's cost to 0 and the sale would read as pure profit again.
+   */
+  customCostPaisa: number;
   form: string;
   isAdded: boolean;
 };
@@ -59,6 +66,13 @@ export function SaleEditor({
         patas: line.leftoverPatas ?? 0,
         boxPricePaisa: current?.boxPricePaisa ?? line.ratePaisa,
         pataPricePaisa: current?.pataPricePaisa ?? line.ratePaisa,
+        // The saved line stores the whole line's cost; the editor works in
+        // per-box terms, so divide back out. A zero-quantity line has no
+        // per-box cost to recover — it also cost nothing.
+        customCostPaisa:
+          isCustom && line.quantity > 0
+            ? Math.round((line.costPaisa ?? 0) / line.quantity)
+            : 0,
         form: line.form ?? "tablet",
         isAdded: false,
       };
@@ -70,6 +84,7 @@ export function SaleEditor({
 
   const [customName, setCustomName] = useState("");
   const [customPrice, setCustomPrice] = useState("");
+  const [customCost, setCustomCost] = useState("");
   const [customBoxes, setCustomBoxes] = useState(1);
 
   const [discountSource, setDiscountSource] = useState<"percent" | "amount">(
@@ -138,6 +153,7 @@ export function SaleEditor({
         patas: 0,
         boxPricePaisa: boxPrice,
         pataPricePaisa: pataPrice,
+        customCostPaisa: 0,
         form: medicine.form,
         isAdded: true,
       },
@@ -157,6 +173,14 @@ export function SaleEditor({
       return;
     }
     const pricePaisa = Math.round(takaToPaisa(parsedPrice));
+    // Blank costing is allowed — the line then reports as all profit, which
+    // is what every custom item did before this field existed.
+    const parsedCost = parseFloat(customCost || "0");
+    if (isNaN(parsedCost) || parsedCost < 0) {
+      toast.error("সঠিক কস্টিং দিন");
+      return;
+    }
+    const costPaisa = Math.round(takaToPaisa(parsedCost));
     setItems((prev) => [
       ...prev,
       {
@@ -167,6 +191,7 @@ export function SaleEditor({
         patas: 0,
         boxPricePaisa: pricePaisa,
         pataPricePaisa: pricePaisa,
+        customCostPaisa: costPaisa,
         form: "custom",
         isAdded: true,
       },
@@ -174,6 +199,7 @@ export function SaleEditor({
     setShowCustomForm(false);
     setCustomName("");
     setCustomPrice("");
+    setCustomCost("");
     setCustomBoxes(1);
     toast.success(`"${customName.trim()}" কাস্টম আইটেম যুক্ত হয়েছে`);
   };
@@ -211,6 +237,7 @@ export function SaleEditor({
         medicineId: i.medicineId,
         customName: i.customName,
         customPricePaisa: i.boxPricePaisa,
+        customCostPaisa: i.customCostPaisa,
         boxes: i.boxes,
         patas: i.patas,
       }));
@@ -425,21 +452,47 @@ export function SaleEditor({
                       মূল্য / দর (Rate)
                     </label>
                     {isCustom ? (
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-sm font-bold text-ink">৳</span>
-                        <input
-                          type="number"
-                          placeholder="Price"
-                          min={0}
-                          step="any"
-                          value={item.boxPricePaisa > 0 ? (item.boxPricePaisa / 100).toString() : item.boxPricePaisa === 0 ? "0" : ""}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            const pricePaisa = val === "" ? 0 : Math.round(takaToPaisa(parseFloat(val) || 0));
-                            updateItem(item.id, { boxPricePaisa: pricePaisa, pataPricePaisa: pricePaisa });
-                          }}
-                          className="w-28 rounded-xl border border-line bg-canvas px-3 py-1.5 text-xs sm:text-sm font-bold text-ink focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
-                        />
+                      <div className="flex flex-wrap items-end gap-3">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm font-bold text-ink">৳</span>
+                          <input
+                            type="number"
+                            placeholder="Price"
+                            min={0}
+                            step="any"
+                            value={item.boxPricePaisa > 0 ? (item.boxPricePaisa / 100).toString() : item.boxPricePaisa === 0 ? "0" : ""}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              const pricePaisa = val === "" ? 0 : Math.round(takaToPaisa(parseFloat(val) || 0));
+                              updateItem(item.id, { boxPricePaisa: pricePaisa, pataPricePaisa: pricePaisa });
+                            }}
+                            className="w-28 rounded-xl border border-line bg-canvas px-3 py-1.5 text-xs sm:text-sm font-bold text-ink focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <span className="block text-[10px] font-bold uppercase text-muted mb-0.5">
+                            কস্টিং
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm font-bold text-ink">৳</span>
+                            <input
+                              type="number"
+                              placeholder="Costing"
+                              min={0}
+                              step="any"
+                              value={(item.customCostPaisa / 100).toString()}
+                              onChange={(e) => {
+                                // takaToPaisa throws on a negative or unparseable
+                                // figure, and a number input will happily hand us
+                                // "-" mid-keystroke — clamp instead of crashing.
+                                const parsed = parseFloat(e.target.value);
+                                const taka = Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+                                updateItem(item.id, { customCostPaisa: takaToPaisa(taka) });
+                              }}
+                              className="w-28 rounded-xl border border-line bg-canvas px-3 py-1.5 text-xs sm:text-sm font-bold text-ink focus:border-brand focus:ring-1 focus:ring-brand focus:outline-none"
+                            />
+                          </div>
+                        </div>
                       </div>
                     ) : (
                       <div className="text-xs sm:text-sm font-bold text-ink">
@@ -572,9 +625,9 @@ export function SaleEditor({
                 onChange={(e) => setCustomName(e.target.value)}
                 className="w-full rounded-2xl border border-line bg-surface px-4 py-2.5 text-xs sm:text-sm text-ink focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none"
               />
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-muted mb-1">মূল্য (৳)</label>
+                  <label className="block text-[11px] font-bold text-muted mb-1">বিক্রয় মূল্য (৳)</label>
                   <input
                     type="number"
                     min={0}
@@ -582,6 +635,18 @@ export function SaleEditor({
                     placeholder="প্রতিটির দাম (৳)"
                     value={customPrice}
                     onChange={(e) => setCustomPrice(e.target.value)}
+                    className="w-full rounded-2xl border border-line bg-surface px-4 py-2 text-xs sm:text-sm text-ink focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-muted mb-1">কস্টিং (৳)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    step="any"
+                    placeholder="প্রতিটির ক্রয়মূল্য (৳)"
+                    value={customCost}
+                    onChange={(e) => setCustomCost(e.target.value)}
                     className="w-full rounded-2xl border border-line bg-surface px-4 py-2 text-xs sm:text-sm text-ink focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none"
                   />
                 </div>
