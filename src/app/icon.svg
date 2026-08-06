@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!--
+    Tab icon: the same two-tone capsule as <CapsuleMark> in src/components/Brand.tsx,
+    reworked for 16px. Two changes the header mark doesn't need: the capsule sits on a
+    filled brand-green tile (on transparent it vanishes against a dark tab bar), and the
+    left half is white rather than green so the pill still reads as two halves once the
+    seam is sub-pixel.
+  -->
+  <rect width="64" height="64" rx="14" fill="#16a34a" />
+  <g transform="rotate(-38 32 32)">
+    <rect x="13" y="23" width="38" height="18" rx="9" fill="#ffffff" />
+    <path d="M32 23 h10 a9 9 0 0 1 0 18 h-10 z" fill="#fb923c" />
+    <rect x="31.1" y="23" width="1.8" height="18" fill="#16a34a" opacity="0.5" />
+  </g>
+</svg>
