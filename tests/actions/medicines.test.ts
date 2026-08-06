@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import mongoose from "mongoose";
 import { setupTestDb } from "../helpers/db";
 import { unwrap } from "../helpers/action";
 import {
@@ -7,6 +8,7 @@ import {
   clearSessionCookie,
   adminToken,
   buyerToken,
+  BUYER_USER_ID,
 } from "../helpers/auth";
 import { ADMIN_ONLY_ERROR } from "@/lib/session";
 import {
@@ -15,7 +17,16 @@ import {
   listMedicines,
   searchMedicines,
   toggleMedicineActive,
+  deleteMedicine,
 } from "@/actions/medicines";
+import {
+  SOLD_MEDICINE_DELETE_ERROR,
+  ORDERED_MEDICINE_DELETE_ERROR,
+} from "@/lib/medicineReferences";
+import { recordRetailSale, cancelSale, updateSale } from "@/actions/sales";
+import { submitOrder } from "@/actions/buyerOrders";
+import { BuyerModel } from "@/models/Buyer";
+import { MedicineModel } from "@/models/Medicine";
 
 const cookieStore = createMockCookieStore();
 vi.mock("next/headers", () => ({
@@ -493,3 +504,149 @@ describe("expiryDate", () => {
   });
 });
 
+
+/**
+ * Denormalising the name and price onto a sale line keeps an old invoice
+ * readable after the medicine is deleted, but reading is not all a sale has
+ * to do: cancelling returns each line's stock and editing returns it before
+ * deducting the new, and both abort when the medicine is gone. Deleting a
+ * sold medicine used to freeze every sale containing it — uncancellable and
+ * uneditable, permanently, including its due.
+ */
+describe("deleteMedicine", () => {
+  async function stocked(overrides = {}) {
+    const medicine = await unwrap(createMedicine({ ...napa, ...overrides }));
+    await MedicineModel.updateOne(
+      { _id: medicine._id },
+      { $set: { stockPatas: 500 } },
+    );
+    return medicine;
+  }
+
+  it("deletes a medicine nothing refers to yet", async () => {
+    const medicine = await stocked();
+
+    await unwrap(deleteMedicine(medicine._id));
+
+    expect(await MedicineModel.findById(medicine._id)).toBeNull();
+  });
+
+  it("refuses to delete a medicine that has been sold", async () => {
+    const medicine = await stocked();
+    await unwrap(recordRetailSale({
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      customerName: "Walk-in",
+      discount: { kind: "percent", percent: 0 },
+      paidPaisa: 13000,
+    }));
+
+    await expect(unwrap(deleteMedicine(medicine._id))).rejects.toThrow(
+      SOLD_MEDICINE_DELETE_ERROR,
+    );
+    expect(await MedicineModel.findById(medicine._id)).not.toBeNull();
+  });
+
+  it("keeps a sold medicine's sale cancellable", async () => {
+    const medicine = await stocked();
+    const sale = await unwrap(recordRetailSale({
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      customerName: "Walk-in",
+      discount: { kind: "percent", percent: 0 },
+      paidPaisa: 13000,
+    }));
+
+    await expect(unwrap(deleteMedicine(medicine._id))).rejects.toThrow();
+
+    // The whole point: the sale still works afterwards.
+    await unwrap(cancelSale(sale._id, "customer ferot diyeche"));
+    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(500);
+  });
+
+  it("keeps a sold medicine's sale editable", async () => {
+    const medicine = await stocked();
+    const sale = await unwrap(recordRetailSale({
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      customerName: "Walk-in",
+      discount: { kind: "percent", percent: 0 },
+      paidPaisa: 13000,
+    }));
+
+    await expect(unwrap(deleteMedicine(medicine._id))).rejects.toThrow();
+
+    const edited = await unwrap(updateSale({
+      saleId: sale._id,
+      items: [{ medicineId: medicine._id, boxes: 2, patas: 0 }],
+      discount: { kind: "percent", percent: 0 },
+      paidPaisa: 26000,
+    }));
+    expect(edited.totalPaisa).toBe(26000);
+  });
+
+  it("refuses even when the only sale was cancelled", async () => {
+    const medicine = await stocked();
+    const sale = await unwrap(recordRetailSale({
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      customerName: "Walk-in",
+      discount: { kind: "percent", percent: 0 },
+      paidPaisa: 13000,
+    }));
+    await unwrap(cancelSale(sale._id, "test"));
+
+    // salesReport reads the medicine back to recover a line's cost when none
+    // was snapshotted, so deleting it would rewrite historical profit.
+    await expect(unwrap(deleteMedicine(medicine._id))).rejects.toThrow(
+      SOLD_MEDICINE_DELETE_ERROR,
+    );
+  });
+
+  it("refuses to delete a medicine sitting in a pending order", async () => {
+    const medicine = await stocked();
+    // buyerToken() signs a token for BUYER_USER_ID, so the buyer document
+    // must carry that exact _id for submitOrder to find it.
+    await BuyerModel.create({
+      _id: new mongoose.Types.ObjectId(BUYER_USER_ID),
+      name: "Karim Uddin",
+      shopName: "Karim Medical Hall",
+      phone: "01733333333",
+      address: "Mirpur",
+      passwordHash: "x",
+      active: true,
+    });
+    setSessionCookie(cookieStore, await buyerToken());
+    await unwrap(submitOrder([{ medicineId: medicine._id, boxes: 1, patas: 0 }]));
+    setSessionCookie(cookieStore, await adminToken());
+
+    await expect(unwrap(deleteMedicine(medicine._id))).rejects.toThrow(
+      ORDERED_MEDICINE_DELETE_ERROR,
+    );
+    expect(await MedicineModel.findById(medicine._id)).not.toBeNull();
+  });
+
+  it("throws for an unknown medicine", async () => {
+    await expect(
+      unwrap(deleteMedicine("507f1f77bcf86cd799439011")),
+    ).rejects.toThrow("Medicine not found");
+  });
+
+  it("throws for a malformed id", async () => {
+    await expect(unwrap(deleteMedicine("not-an-id"))).rejects.toThrow(
+      "Medicine not found",
+    );
+  });
+
+  it("rejects an unauthenticated caller", async () => {
+    const medicine = await stocked();
+    clearSessionCookie(cookieStore);
+    await expect(unwrap(deleteMedicine(medicine._id))).rejects.toThrow(
+      ADMIN_ONLY_ERROR,
+    );
+  });
+});
+
+/**
+ * Search used to be an unanchored case-insensitive regex over name and
+ * genericName, which MongoDB cannot serve from an index — so every keystroke
+ * in the sale picker scanned the whole collection. It now prefix-matches an
+ * indexed array of words. These pin the behaviour that had to survive that
+ * change, and the one that deliberately did not.
+ */

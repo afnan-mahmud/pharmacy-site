@@ -6,6 +6,7 @@ import { connectDb } from "@/lib/db";
 import { requireAdminAction } from "@/lib/session";
 import { toPlain, toPlainList, type Serialized } from "@/lib/serialize";
 import { MedicineModel, type MedicineDoc } from "@/models/Medicine";
+import { assertMedicineIsDeletable } from "@/lib/medicineReferences";
 import { actionResult, type ActionResult } from "@/lib/actionResult";
 import {
   isMedicineForm,
@@ -276,6 +277,16 @@ export async function toggleMedicineActive(
   });
 }
 
+/**
+ * Deletes a medicine that nothing refers to yet — a mistyped entry, a
+ * duplicate — and refuses when anything does.
+ *
+ * The refusal is the point, and the reasoning about which references block a
+ * delete lives with the check itself in src/lib/medicineReferences.ts. The
+ * check and the delete share one transaction so the former cannot go stale
+ * before the latter: without that, a sale rung up in the window between them
+ * would produce exactly the frozen, uncancellable sale this guards against.
+ */
 export async function deleteMedicine(
   id: string,
 ): Promise<ActionResult<void>> {
@@ -285,15 +296,22 @@ export async function deleteMedicine(
     if (!mongoose.Types.ObjectId.isValid(id)) {
       throw new Error("Medicine not found");
     }
-    
-    // Hard delete the medicine document. Note: Past sales and orders have 
-    // denormalised the medicine name, form, and price, so they will continue 
-    // to read correctly even after the referenced document is deleted.
-    const deleted = await MedicineModel.findByIdAndDelete(id);
-    if (!deleted) {
-      throw new Error("Medicine not found");
+    const medicineId = new mongoose.Types.ObjectId(id);
+
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        await assertMedicineIsDeletable(medicineId, session);
+
+        const deleted = await MedicineModel.findByIdAndDelete(medicineId, {
+          session,
+        });
+        if (!deleted) throw new Error("Medicine not found");
+      });
+    } finally {
+      await session.endSession();
     }
-    
+
     revalidatePath("/medicines");
   });
 }
