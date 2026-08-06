@@ -130,7 +130,18 @@ saleSchema.index({ createdAt: -1 });
 // dashboardSummary), which is the screen the owner lands on after login.
 // buyerId trails type and status so the same index also covers a per-buyer
 // lookup within one type.
-saleSchema.index({ type: 1, status: 1, buyerId: 1 });
+//
+// duePaisa is on the end so the aggregation is answered from index keys
+// alone. Without it the $group had every field it needed except the one it
+// sums, so MongoDB fetched every matching sale document to read a single
+// number off it — the dominant cost of a screen the owner lands on after
+// every login. Widening the index rather than adding one keeps the three
+// leading fields serving everything they served before, as a prefix.
+saleSchema.index({ type: 1, status: 1, buyerId: 1, duePaisa: 1 });
+// The retail counterpart, keyed by phone because that is what a retail
+// balance is grouped by (buyerId is null on a counter sale). Same covering
+// trick, for listRetailDues.
+saleSchema.index({ type: 1, status: 1, buyerPhone: 1, duePaisa: 1 });
 
 export type SaleLineDoc = InferSchemaType<typeof saleLineSchema>;
 export type SaleDoc = InferSchemaType<typeof saleSchema> & {

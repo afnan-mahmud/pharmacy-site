@@ -13,6 +13,7 @@ import { BuyerModel } from "@/models/Buyer";
 import { RetailCustomerModel } from "@/models/RetailCustomer";
 import { RetailPaymentModel, type RetailPaymentDoc } from "@/models/RetailPayment";
 import { actionResult, type ActionResult } from "@/lib/actionResult";
+import { splitDueTotals } from "@/lib/dueDisplay";
 
 export type DueRow = {
   buyerId: string;
@@ -50,24 +51,36 @@ export type DueRow = {
  * other active sales (see buyerDueBalance's doc comment for the worked
  * example) — so callers must not clamp this value themselves either.
  */
-export async function listBuyerDues(): Promise<DueRow[]> {
-  await requireAdminAction();
-  await connectDb();
-
-  // Pull all non-cancelled wholesale sales grouped by buyer.
+/**
+ * Every buyer's signed balance, keyed by buyer id.
+ *
+ * The single read behind both the due ledger and the dashboard's summary
+ * figures, so the two screens cannot drift into reporting different money —
+ * the same reason splitDueTotals is shared rather than reimplemented.
+ *
+ * Cost tracks the number of active wholesale sales, and stays that way on
+ * purpose. Caching a running total per buyer would make this O(1), and would
+ * also be a number that can silently disagree with the sales it came from:
+ * it would have to be kept correct in writeWholesaleSale, updateSale,
+ * cancelSale and recordPayment alike, and C-1 is a recent demonstration of
+ * how quietly one of those goes wrong. Deriving it means the answer is
+ * always whatever the documents actually say. What was worth fixing is the
+ * constant: both aggregations are answered from index keys now, with no
+ * document fetched by either.
+ */
+async function wholesaleBalances(): Promise<Map<string, number>> {
+  // Pull all non-cancelled wholesale sales grouped by buyer. Sums duePaisa
+  // and nothing else: this used to sum paidPaisa alongside it, which no
+  // caller ever read — and the extra field is the difference between an
+  // index-only scan and fetching every matching sale document, because
+  // Sale's { type, status, buyerId, duePaisa } index covers exactly this
+  // shape and no more.
   const saleTotals = await SaleModel.aggregate<{
     _id: mongoose.Types.ObjectId;
     totalDuePaisa: number;
-    totalPaidPaisa: number;
   }>([
     { $match: { type: "wholesale", status: "active" } },
-    {
-      $group: {
-        _id: "$buyerId",
-        totalDuePaisa: { $sum: "$duePaisa" },
-        totalPaidPaisa: { $sum: "$paidPaisa" },
-      },
-    },
+    { $group: { _id: "$buyerId", totalDuePaisa: { $sum: "$duePaisa" } } },
   ]);
 
   // Just the ids of everyone who has ever paid, not their payments. A
@@ -82,15 +95,6 @@ export async function listBuyerDues(): Promise<DueRow[]> {
     "buyerId",
   )) as mongoose.Types.ObjectId[];
 
-  // The union of "has an active sale" and "has ever paid" — the two ways a
-  // buyer can have a balance worth showing. Deduplicated by string key
-  // because two equal ObjectIds are different object identities.
-  const idByKey = new Map<string, mongoose.Types.ObjectId>();
-  for (const id of [...saleTotals.map((s) => s._id), ...payerIds]) {
-    idByKey.set(String(id), id);
-  }
-  const allIds = [...idByKey.values()];
-
   // Matched to the payers rather than left unfiltered: an unfiltered $group
   // has no predicate to match an index against and always collection-scans,
   // whereas this one is served from Payment's { buyerId, amountPaisa } index
@@ -104,17 +108,28 @@ export async function listBuyerDues(): Promise<DueRow[]> {
     { $group: { _id: "$buyerId", totalPaid: { $sum: "$amountPaisa" } } },
   ]);
 
-  const paymentByBuyer = new Map<string, number>();
-  for (const p of paymentTotals) {
-    paymentByBuyer.set(String(p._id), p.totalPaid);
-  }
-
-  const dueByBuyer = new Map<string, number>();
+  // Walking both sides into one map is also what forms the union of "has an
+  // active sale" and "has ever paid" — the two ways a buyer can have a
+  // balance worth showing. See listBuyerDues on why the second clause is
+  // load-bearing rather than defensive.
+  const balances = new Map<string, number>();
   for (const s of saleTotals) {
-    dueByBuyer.set(String(s._id), s.totalDuePaisa);
+    balances.set(String(s._id), s.totalDuePaisa);
   }
+  for (const p of paymentTotals) {
+    const key = String(p._id);
+    balances.set(key, (balances.get(key) ?? 0) - p.totalPaid);
+  }
+  return balances;
+}
 
-  const buyers = await BuyerModel.find({ _id: { $in: allIds } })
+export async function listBuyerDues(): Promise<DueRow[]> {
+  await requireAdminAction();
+  await connectDb();
+
+  const balances = await wholesaleBalances();
+
+  const buyers = await BuyerModel.find({ _id: { $in: [...balances.keys()] } })
     .select("name shopName")
     .lean<{ _id: mongoose.Types.ObjectId; name: string; shopName: string }[]>();
 
@@ -122,17 +137,10 @@ export async function listBuyerDues(): Promise<DueRow[]> {
     buyers.map((b) => [String(b._id), { name: b.name, shopName: b.shopName }]),
   );
 
-  const rows: DueRow[] = allIds.map((id) => {
-    const bid = String(id);
-    // Sale-level duePaisa already accounts for the partial payment made at
-    // sale time. Additional payments here reduce it further — and can take
-    // it negative (credit); see the module comment above for why that must
-    // be allowed through, not clamped. A buyer with no active sale has no
-    // sale-side total at all, so their whole balance is that credit.
-    const duePaisa = (dueByBuyer.get(bid) ?? 0) - (paymentByBuyer.get(bid) ?? 0);
-    const buyer = buyerMap.get(bid) ?? { name: "Unknown", shopName: "" };
+  const rows: DueRow[] = [...balances].map(([buyerId, duePaisa]) => {
+    const buyer = buyerMap.get(buyerId) ?? { name: "Unknown", shopName: "" };
     return {
-      buyerId: bid,
+      buyerId,
       buyerName: buyer.name,
       buyerShopName: buyer.shopName,
       duePaisa,
@@ -140,6 +148,26 @@ export async function listBuyerDues(): Promise<DueRow[]> {
   });
 
   return rows.sort((a, b) => b.duePaisa - a.duePaisa);
+}
+
+/**
+ * Just the two figures the dashboard shows, without the per-buyer rows.
+ *
+ * The dashboard called listBuyerDues and threw away everything but this,
+ * which meant fetching every buyer's name and building a row per buyer on
+ * the screen the owner opens after every login. Shares wholesaleBalances and
+ * splitDueTotals with the ledger, so the two can still never disagree about
+ * the same money.
+ */
+export async function buyerDueTotals(): Promise<{
+  totalDuePaisa: number;
+  totalCreditPaisa: number;
+}> {
+  await requireAdminAction();
+  await connectDb();
+
+  const balances = await wholesaleBalances();
+  return splitDueTotals([...balances.values()].map((duePaisa) => ({ duePaisa })));
 }
 
 /**

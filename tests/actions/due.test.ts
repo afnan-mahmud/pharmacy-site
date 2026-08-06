@@ -16,8 +16,10 @@ import { PaymentModel } from "@/models/Payment";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { RetailCustomerModel } from "@/models/RetailCustomer";
 import { RetailPaymentModel } from "@/models/RetailPayment";
+import { splitDueTotals } from "@/lib/dueDisplay";
 import {
   listBuyerDues,
+  buyerDueTotals,
   buyerDueBalance,
   buyerLedger,
   recordPayment,
@@ -637,5 +639,144 @@ describe("recordRetailPayment", () => {
     expect(fulfilled).toHaveLength(1);
     expect(rejected).toHaveLength(1);
     expect(await retailDueBalance("01711111111")).toBe(0);
+  });
+});
+
+/**
+ * The due figures are derived from the sale and payment documents on every
+ * read, never cached — a running total is a number that can silently
+ * disagree with the history it came from, and cancelSale is a recent lesson
+ * in how quietly that happens. So the cost is bounded by making the reads
+ * index-only rather than by storing the answer.
+ */
+describe("due totals are read from index keys, not documents", () => {
+  async function buyerWithSales(count: number) {
+    const buyerId = new mongoose.Types.ObjectId();
+    for (let i = 0; i < count; i++) {
+      await SaleModel.create({
+        type: "wholesale",
+        buyerId,
+        buyerName: "Karim",
+        invoiceNo: `NP-${String(i).padStart(6, "0")}`,
+        items: [
+          {
+            medicineName: "Napa",
+            unit: "box",
+            quantity: 1,
+            ratePaisa: 1000,
+            lineTotalPaisa: 1000,
+            patasDeducted: 10,
+          },
+        ],
+        subtotalPaisa: 1000,
+        totalPaisa: 1000,
+        paidPaisa: 0,
+        duePaisa: 1000,
+        status: "active",
+        createdBy: new mongoose.Types.ObjectId(),
+      });
+    }
+    return buyerId;
+  }
+
+  it("fetches no sale documents to total what buyers owe", async () => {
+    await buyerWithSales(40);
+
+    const plan = await SaleModel.aggregate([
+      { $match: { type: "wholesale", status: "active" } },
+      { $group: { _id: "$buyerId", totalDuePaisa: { $sum: "$duePaisa" } } },
+    ]).explain("executionStats");
+
+    const stats = JSON.stringify(plan);
+    // The number that matters: reading a document per sale to pick one field
+    // off it is what made this grow with the shop's whole history.
+    expect(stats).toContain('"totalDocsExamined":0');
+    expect(stats).not.toContain("COLLSCAN");
+  });
+
+  // Payment's { buyerId, amountPaisa } index already covered this before the
+  // sale side did, so this one passes either way — a regression guard for a
+  // property the code relies on, not evidence of the change.
+  it("fetches no payment documents to total what buyers have paid", async () => {
+    const buyerId = new mongoose.Types.ObjectId();
+    for (let i = 0; i < 40; i++) {
+      await PaymentModel.create({
+        buyerId,
+        amountPaisa: 100,
+        createdBy: new mongoose.Types.ObjectId(),
+      });
+    }
+
+    const plan = await PaymentModel.aggregate([
+      { $match: { buyerId: { $in: [buyerId] } } },
+      { $group: { _id: "$buyerId", totalPaid: { $sum: "$amountPaisa" } } },
+    ]).explain("executionStats");
+
+    expect(JSON.stringify(plan)).toContain('"totalDocsExamined":0');
+  });
+
+  it("fetches no sale documents to total the khuchra dues either", async () => {
+    for (let i = 0; i < 40; i++) {
+      await SaleModel.create({
+        type: "retail",
+        buyerName: "Walk-in",
+        buyerPhone: "01711111111",
+        invoiceNo: `NP-9${String(i).padStart(5, "0")}`,
+        items: [
+          {
+            medicineName: "Napa",
+            unit: "box",
+            quantity: 1,
+            ratePaisa: 1000,
+            lineTotalPaisa: 1000,
+            patasDeducted: 10,
+          },
+        ],
+        subtotalPaisa: 1000,
+        totalPaisa: 1000,
+        paidPaisa: 0,
+        duePaisa: 1000,
+        status: "active",
+        createdBy: new mongoose.Types.ObjectId(),
+      });
+    }
+
+    const plan = await SaleModel.aggregate([
+      { $match: { type: "retail", status: "active", buyerPhone: { $gt: "" } } },
+      { $group: { _id: "$buyerPhone", totalDuePaisa: { $sum: "$duePaisa" } } },
+    ]).explain("executionStats");
+
+    expect(JSON.stringify(plan)).toContain('"totalDocsExamined":0');
+  });
+});
+
+describe("the dashboard and the due ledger cannot disagree", () => {
+  it("reports the same money from both paths", async () => {
+    const medicine = await makeMedicine();
+    const owing = await makeBuyer("Owing Buyer");
+    const inCredit = await makeBuyer("Credit Buyer");
+
+    // One buyer owes; the other paid for a sale that was then cancelled, so
+    // they hold credit. Netting the two would hide both.
+    await unwrap(recordWholesaleSale({
+      buyerId: owing._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discountPercent: 0,
+      paidPaisa: 0,
+    }));
+    const paid = await unwrap(recordWholesaleSale({
+      buyerId: inCredit._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discountPercent: 0,
+      paidPaisa: 12000,
+    }));
+    await unwrap(cancelSale(paid._id, "ferot"));
+
+    const rows = await listBuyerDues();
+    const totals = await buyerDueTotals();
+
+    expect(totals).toEqual(splitDueTotals(rows));
+    expect(totals.totalDuePaisa).toBe(12000);
+    expect(totals.totalCreditPaisa).toBe(12000);
   });
 });

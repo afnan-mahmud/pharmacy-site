@@ -3,8 +3,7 @@
 import { connectDb } from "@/lib/db";
 import { requireAdminAction } from "@/lib/session";
 import { dhakaToday, dhakaDayBounds } from "@/lib/dhakaDate";
-import { listBuyerDues } from "@/actions/due";
-import { splitDueTotals } from "@/lib/dueDisplay";
+import { buyerDueTotals } from "@/actions/due";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { MedicineModel, type MedicineDoc } from "@/models/Medicine";
 import { OrderModel } from "@/models/Order";
@@ -58,7 +57,7 @@ export async function dashboardSummary(): Promise<DashboardSummary> {
         createdAt: { $gte: start, $lt: end },
         status: "active",
       }).lean<SaleDoc[]>(),
-      listBuyerDues(),
+      buyerDueTotals(),
       // A threshold of 0 means the owner set no alert for that medicine, so an
       // empty one must not nag him forever — hence $gt: 0 rather than $gte.
       MedicineModel.find({
@@ -80,9 +79,10 @@ export async function dashboardSummary(): Promise<DashboardSummary> {
   const todayRetailPaisa = sumBy("retail");
   const todayWholesalePaisa = sumBy("wholesale");
 
-  // Shared with DueTable via splitDueTotals so the two screens cannot drift
-  // into reporting different figures for the same money.
-  const { totalDuePaisa, totalCreditPaisa } = splitDueTotals(dues);
+  // Shares wholesaleBalances and splitDueTotals with the due ledger, so the
+  // two screens cannot drift into reporting different figures for the same
+  // money — but skips the per-buyer rows, which this screen never shows.
+  const { totalDuePaisa, totalCreditPaisa } = dues;
 
   return {
     today,
