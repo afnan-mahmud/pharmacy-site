@@ -88,8 +88,8 @@ export function Invoice({
 
   return (
     <div
-      className="invoice mx-auto max-w-sm bg-white px-4 py-4 font-mono text-xs text-black"
-      style={{ width: "80mm" }}
+      className="invoice mx-auto max-w-[58mm] bg-white px-3 py-3 font-mono text-[10px] text-black"
+      style={{ width: "58mm" }}
     >
       {cancelled && (
         <div className="mb-2 border border-red-600 p-1 text-center font-bold text-red-600">
@@ -97,21 +97,21 @@ export function Invoice({
         </div>
       )}
 
-      <div className="mb-4 text-center">
+      <div className="mb-3 text-center">
         {logoUrl && (
           <img
             src={logoUrl}
             alt={pharmacyName}
-            className="mx-auto mb-2 h-12 w-auto max-w-[120px] object-contain"
+            className="mx-auto mb-1.5 h-8 w-auto max-w-[80px] object-contain"
           />
         )}
-        <div className="text-base font-bold">{pharmacyName}</div>
-        {proprietorName && <div>Proprietor - {proprietorName}</div>}
-        {address && <div>{address}</div>}
-        {phone && <div>Tel: {phone}</div>}
+        <div className="text-sm font-bold leading-tight">{pharmacyName}</div>
+        {proprietorName && <div className="text-[9px]">স্বত্বাধিকারী - {proprietorName}</div>}
+        {address && <div className="text-[9px]">{address}</div>}
+        {phone && <div className="text-[9px]">Tel: {phone}</div>}
       </div>
 
-      <div className="mb-2 border-t border-b border-dashed border-black py-1">
+      <div className="mb-2 border-t border-b border-dashed border-black py-1 text-[9px]">
         <div className="flex justify-between">
           <span>Invoice:</span>
           <span className="font-bold">{invoiceNo}</span>
@@ -123,24 +123,24 @@ export function Invoice({
         {buyerName && (
           <div className="flex justify-between">
             <span>Buyer:</span>
-            <span>{buyerName}</span>
+            <span className="truncate max-w-[120px] text-right">{buyerName}</span>
           </div>
         )}
         {buyerShopName && (
           <div className="flex justify-between">
             <span>Shop:</span>
-            <span>{buyerShopName}</span>
+            <span className="truncate max-w-[120px] text-right">{buyerShopName}</span>
           </div>
         )}
       </div>
 
-      <table className="mb-2 w-full">
+      <table className="mb-2 w-full text-[9px]">
         <thead>
           <tr className="border-b border-dashed border-black">
-            <th className="py-1 text-left">Item</th>
-            <th className="py-1 text-right">Qty</th>
-            <th className="py-1 text-right">Rate</th>
-            <th className="py-1 text-right">Amt</th>
+            <th className="py-0.5 text-left">Item</th>
+            <th className="py-0.5 text-right">Qty</th>
+            <th className="py-0.5 text-right">Rate</th>
+            <th className="py-0.5 text-right">Amt</th>
           </tr>
         </thead>
         <tbody>
@@ -152,8 +152,8 @@ export function Invoice({
               : item.quantity === 0;
             return (
               <tr key={idx} className="border-b border-dashed border-slate-200">
-                <td className="py-1 pr-1">{item.medicineName}</td>
-                <td className="py-1 text-right">
+                <td className="py-0.5 pr-1 leading-tight">{item.medicineName}</td>
+                <td className="py-0.5 text-right whitespace-nowrap">
                   {item.unit === "box"
                     ? formatWholesaleQty(item.quantity, leftoverPatas, labels.outerShort, labels.innerShort)
                     : `${item.quantity}${labels.innerShort}`}
@@ -161,10 +161,10 @@ export function Invoice({
                 {/* A zero line is on the paper to show what was ordered and
                     could not be supplied, so it carries no price at all —
                     neither a rate nor an amount. */}
-                <td className="py-1 text-right">
+                <td className="py-0.5 text-right whitespace-nowrap">
                   {isZeroLine ? "" : formatTaka(item.ratePaisa)}
                 </td>
-                <td className="py-1 text-right">
+                <td className="py-0.5 text-right whitespace-nowrap font-semibold">
                   {isZeroLine ? "" : formatTaka(item.lineTotalPaisa)}
                 </td>
               </tr>
@@ -241,7 +241,7 @@ export function Invoice({
         </div>
       </div>
 
-      <div className="mt-4 text-center text-xs text-slate-500">
+      <div className="mt-3 text-center text-[9px] text-slate-500">
         Dhanyabad! Abar asben.
       </div>
     </div>

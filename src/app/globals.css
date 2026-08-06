@@ -54,19 +54,19 @@ h1, h2, h3, .font-display {
 }
 
 /*
- * 80mm thermal receipt. The printer is installed as an ordinary Windows
- * driver, so the browser's own print dialog does the work — no bridge
- * program, no ESC/POS.
+ * 58mm thermal receipt (GOOJPRT PT-210 portable printer). The printer is
+ * connected via USB/Bluetooth and uses the browser's print dialog — no
+ * bridge program, no ESC/POS.
  */
 @media print {
   /*
-   * `size: 80mm auto` gives the roll's width and lets the height grow to fit
+   * `size: 58mm auto` gives the roll's width and lets the height grow to fit
    * the receipt, which is what a continuous roll wants. Without it the
    * browser lays the page out for its default paper (A4/Letter) regardless
    * of how wide the invoice element is.
    */
   @page {
-    size: 80mm auto;
+    size: 58mm auto;
     margin: 0;
   }
 
@@ -101,14 +101,14 @@ h1, h2, h3, .font-display {
     left: 0;
     top: 0;
     /* Stated explicitly rather than relying on Tailwind's preflight: with
-       content-box, `width: 80mm` plus 4mm of padding each side would lay the
-       receipt out 88mm wide on 80mm paper and clip the right edge. */
+       content-box, `width: 58mm` plus 3mm of padding each side would lay the
+       receipt out 64mm wide on 58mm paper and clip the right edge. */
     box-sizing: border-box;
     margin: 0 !important;
-    padding: 4mm !important;
-    width: 80mm !important;
-    max-width: 80mm !important;
-    font-size: 10pt;
+    padding: 3mm !important;
+    width: 58mm !important;
+    max-width: 58mm !important;
+    font-size: 8pt;
     color: black;
   }
 
