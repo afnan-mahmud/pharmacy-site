@@ -170,17 +170,23 @@ export async function buyerDueBalance(buyerId: string): Promise<number> {
 export type BuyerLedgerResult = {
   sales: Serialized<SaleDoc>[];
   payments: Serialized<PaymentDoc>[];
+  /** Entries in the whole ledger, of which the above is the newest window. */
+  totalEntries: number;
 };
 
-export async function buyerLedger(buyerId: string): Promise<BuyerLedgerResult> {
+export async function buyerLedger(
+  buyerId: string,
+  limit?: number,
+): Promise<BuyerLedgerResult> {
   await requireAdminAction();
   await connectDb();
 
-  const { sales, payments } = await loadBuyerLedger(buyerId);
+  const { sales, payments, totalEntries } = await loadBuyerLedger(buyerId, limit);
 
   return {
     sales: toPlainList(sales),
     payments: toPlainList(payments),
+    totalEntries,
   };
 }
 
@@ -353,15 +359,20 @@ export async function retailDueBalance(phone: string): Promise<number> {
 export type RetailLedgerResult = {
   sales: Serialized<SaleDoc>[];
   payments: Serialized<RetailPaymentDoc>[];
+  /** Entries in the whole ledger, of which the above is the newest window. */
+  totalEntries: number;
 };
 
-export async function retailLedger(phone: string): Promise<RetailLedgerResult> {
+export async function retailLedger(
+  phone: string,
+  limit?: number,
+): Promise<RetailLedgerResult> {
   await requireAdminAction();
   await connectDb();
-  if (typeof phone !== "string") return { sales: [], payments: [] };
+  if (typeof phone !== "string") return { sales: [], payments: [], totalEntries: 0 };
 
-  const { sales, payments } = await loadRetailLedger(phone);
-  return { sales: toPlainList(sales), payments: toPlainList(payments) };
+  const { sales, payments, totalEntries } = await loadRetailLedger(phone, limit);
+  return { sales: toPlainList(sales), payments: toPlainList(payments), totalEntries };
 }
 
 /**

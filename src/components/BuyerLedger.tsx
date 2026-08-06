@@ -65,17 +65,25 @@ export function BuyerLedger({ buyerId, buyerName, buyerShopName, duePaisa, ledge
     });
   }
 
-  // Oldest first to calculate running balance
-  entries.sort((a, b) => a.date.getTime() - b.date.getTime());
+  // Newest first, and the running balance is walked *backwards* from the
+  // customer's current balance rather than forwards from zero.
+  //
+  // Forwards only works when every entry ever recorded is in hand, which is
+  // what this used to assume — the ledger loaded a whole history to render a
+  // screen that is read from the top. It now arrives as the newest window of
+  // that history (see loadBuyerLedger), and on a window the forward sum would
+  // start from a balance of zero that was never true. Backwards needs no such
+  // assumption: the balance after the newest entry is duePaisa, which is
+  // known independently, and every older row follows from the one after it.
+  entries.sort((a, b) => b.date.getTime() - a.date.getTime());
 
-  let runningBalance = 0;
+  let balanceAfter = duePaisa;
   const rows = entries.map((e) => {
-    runningBalance = runningBalance + e.debit - e.credit;
-    return { ...e, balance: runningBalance };
+    const row = { ...e, balance: balanceAfter };
+    // The balance before this entry is the balance after the next older one.
+    balanceAfter = balanceAfter - e.debit + e.credit;
+    return row;
   });
-
-  // Most recent first for display
-  rows.reverse();
 
   async function handlePayment(e: React.FormEvent) {
     e.preventDefault();
@@ -346,6 +354,15 @@ export function BuyerLedger({ buyerId, buyerName, buyerShopName, duePaisa, ledge
           </tbody>
         </table>
       </div>
+
+      {/* The ledger is read from the top, so it arrives as the newest window
+          of a history that only grows. Say so rather than presenting a slice
+          as the whole book. */}
+      {ledger.totalEntries > rows.length && (
+        <p className="px-1 pt-2 text-[11px] font-medium text-muted">
+          \u09b8\u09ac\u09b6\u09c7\u09b7 {rows.length} \u099f\u09bf \u09b2\u09c7\u09a8\u09a6\u09c7\u09a8 \u09a6\u09c7\u0996\u09be\u09a8\u09cb \u09b9\u099a\u09cd\u099b\u09c7 (\u09ae\u09cb\u099f {ledger.totalEntries} \u099f\u09bf)
+        </p>
+      )}
     </div>
   );
 }

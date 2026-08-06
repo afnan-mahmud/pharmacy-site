@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { RetailPaymentModel, type RetailPaymentDoc } from "@/models/RetailPayment";
+import { LEDGER_WINDOW, MAX_LEDGER_WINDOW } from "@/lib/pagination";
 
 /**
  * A retail customer's signed outstanding balance in paisa, keyed by phone
@@ -33,20 +34,30 @@ export async function computeRetailDue(
   return (saleAgg?.total ?? 0) - (payAgg?.total ?? 0);
 }
 
-/** A retail customer's sales and payments for one phone, newest first. */
+/**
+ * A retail customer's most recent sales and payments for one phone, newest
+ * first. Bounded exactly like loadBuyerLedger — see that function for why the
+ * window is safe and what totalEntries is for.
+ */
 export async function loadRetailLedger(
   phone: string,
-): Promise<{ sales: SaleDoc[]; payments: RetailPaymentDoc[] }> {
+  limit = LEDGER_WINDOW,
+): Promise<{ sales: SaleDoc[]; payments: RetailPaymentDoc[]; totalEntries: number }> {
   const trimmed = phone.trim();
-  if (!trimmed) return { sales: [], payments: [] };
+  if (!trimmed) return { sales: [], payments: [], totalEntries: 0 };
+  const capped = Math.min(Math.max(Math.trunc(limit) || LEDGER_WINDOW, 1), MAX_LEDGER_WINDOW);
 
-  const [sales, payments] = await Promise.all([
+  const [sales, payments, saleCount, paymentCount] = await Promise.all([
     SaleModel.find({ buyerPhone: trimmed, type: "retail" })
       .sort({ createdAt: -1 })
+      .limit(capped)
       .lean<SaleDoc[]>(),
     RetailPaymentModel.find({ phone: trimmed })
       .sort({ createdAt: -1 })
+      .limit(capped)
       .lean<RetailPaymentDoc[]>(),
+    SaleModel.countDocuments({ buyerPhone: trimmed, type: "retail" }),
+    RetailPaymentModel.countDocuments({ phone: trimmed }),
   ]);
-  return { sales, payments };
+  return { sales, payments, totalEntries: saleCount + paymentCount };
 }

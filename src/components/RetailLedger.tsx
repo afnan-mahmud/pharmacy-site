@@ -64,14 +64,17 @@ export function RetailLedger({ phone, customerName, duePaisa, ledger, onClose }:
     });
   }
 
-  entries.sort((a, b) => a.date.getTime() - b.date.getTime());
+  // Newest first, with the running balance walked backwards from the
+  // customer's current balance — see BuyerLedger for why a windowed ledger
+  // cannot sum forwards from zero.
+  entries.sort((a, b) => b.date.getTime() - a.date.getTime());
 
-  let runningBalance = 0;
+  let balanceAfter = duePaisa;
   const rows = entries.map((e) => {
-    runningBalance = runningBalance + e.debit - e.credit;
-    return { ...e, balance: runningBalance };
+    const row = { ...e, balance: balanceAfter };
+    balanceAfter = balanceAfter - e.debit + e.credit;
+    return row;
   });
-  rows.reverse();
 
   async function handlePayment(e: React.FormEvent) {
     e.preventDefault();
@@ -343,6 +346,15 @@ export function RetailLedger({ phone, customerName, duePaisa, ledger, onClose }:
           </tbody>
         </table>
       </div>
+
+      {/* The ledger is read from the top, so it arrives as the newest window
+          of a history that only grows. Say so rather than presenting a slice
+          as the whole book. */}
+      {ledger.totalEntries > rows.length && (
+        <p className="px-1 pt-2 text-[11px] font-medium text-muted">
+          \u09b8\u09ac\u09b6\u09c7\u09b7 {rows.length} \u099f\u09bf \u09b2\u09c7\u09a8\u09a6\u09c7\u09a8 \u09a6\u09c7\u0996\u09be\u09a8\u09cb \u09b9\u099a\u09cd\u099b\u09c7 (\u09ae\u09cb\u099f {ledger.totalEntries} \u099f\u09bf)
+        </p>
+      )}
     </div>
   );
 }

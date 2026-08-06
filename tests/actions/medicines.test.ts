@@ -18,6 +18,7 @@ import {
   searchMedicines,
   toggleMedicineActive,
   deleteMedicine,
+  listMedicinesPage,
 } from "@/actions/medicines";
 import {
   SOLD_MEDICINE_DELETE_ERROR,
@@ -640,6 +641,157 @@ describe("deleteMedicine", () => {
     await expect(unwrap(deleteMedicine(medicine._id))).rejects.toThrow(
       ADMIN_ONLY_ERROR,
     );
+  });
+});
+
+/**
+ * The medicines page used to hand the browser every medicine document and
+ * filter them there. Paging that without moving the tab and form filters to
+ * the server would have answered "the low-stock medicines that happen to be
+ * on this page" — which looks exactly like a complete answer.
+ */
+describe("listMedicinesPage", () => {
+  async function makeMany(count: number, overrides: (i: number) => object = () => ({})) {
+    for (let i = 0; i < count; i++) {
+      await unwrap(
+        createMedicine({ ...napa, name: `Med ${String(i).padStart(3, "0")}`, ...overrides(i) }),
+      );
+    }
+  }
+
+  it("returns one page and the full total", async () => {
+    await makeMany(55);
+
+    const first = await listMedicinesPage({});
+    expect(first.rows).toHaveLength(50);
+    expect(first.total).toBe(55);
+    expect(first.pageSize).toBe(50);
+    expect(first.page).toBe(1);
+
+    const second = await listMedicinesPage({ page: 2 });
+    expect(second.rows).toHaveLength(5);
+    expect(second.page).toBe(2);
+  });
+
+  it("never repeats a row across pages", async () => {
+    await makeMany(55);
+    const first = await listMedicinesPage({ page: 1 });
+    const second = await listMedicinesPage({ page: 2 });
+    const ids = [...first.rows, ...second.rows].map((m) => m._id);
+    expect(new Set(ids).size).toBe(55);
+  });
+
+  it("clamps a page past the end instead of returning nothing", async () => {
+    await makeMany(3);
+    const page = await listMedicinesPage({ page: 99 });
+    expect(page.rows).toHaveLength(3);
+    expect(page.page).toBe(1);
+  });
+
+  it("survives a malformed page number", async () => {
+    await makeMany(3);
+    for (const bad of [0, -1, 2.5, "2" as unknown as number]) {
+      const page = await listMedicinesPage({ page: bad });
+      expect(page.rows).toHaveLength(3);
+    }
+  });
+
+  it("counts the tab badges over the whole catalogue, not the page", async () => {
+    await makeMany(55);
+    const page = await listMedicinesPage({});
+    // 50 rows in hand, but the badge must still say 55.
+    expect(page.rows).toHaveLength(50);
+    expect(page.counts.all).toBe(55);
+    expect(page.counts.active).toBe(55);
+    expect(page.counts.inactive).toBe(0);
+  });
+
+  it("keeps the badge counts steady while a search narrows the rows", async () => {
+    await makeMany(12);
+    const page = await listMedicinesPage({ query: "Med 00" });
+    expect(page.total).toBe(10); // Med 000..009
+    expect(page.counts.all).toBe(12);
+  });
+
+  it("filters low stock on the server, across every page", async () => {
+    await makeMany(55);
+    const all = await listMedicinesPage({});
+    // Put one low-stock medicine beyond the first page.
+    const last = all.total;
+    expect(last).toBe(55);
+    await MedicineModel.updateOne({ name: "Med 000" }, { $set: { stockPatas: 0 } });
+
+    const low = await listMedicinesPage({ tab: "low-stock" });
+    expect(low.total).toBe(55); // every other medicine has 0 stock too
+    expect(low.counts.lowStock).toBe(55);
+
+    await MedicineModel.updateMany({}, { $set: { stockPatas: 500 } });
+    await MedicineModel.updateOne({ name: "Med 054" }, { $set: { stockPatas: 0 } });
+    const one = await listMedicinesPage({ tab: "low-stock" });
+    expect(one.total).toBe(1);
+    expect(one.rows[0]!.name).toBe("Med 054");
+  });
+
+  it("separates active from inactive", async () => {
+    await makeMany(4);
+    await MedicineModel.updateOne({ name: "Med 000" }, { $set: { active: false } });
+
+    const active = await listMedicinesPage({ tab: "active" });
+    const inactive = await listMedicinesPage({ tab: "inactive" });
+    expect(active.total).toBe(3);
+    expect(inactive.total).toBe(1);
+    expect(inactive.rows[0]!.name).toBe("Med 000");
+    expect(active.counts.inactive).toBe(1);
+  });
+
+  it("filters by dosage form", async () => {
+    await makeMany(3);
+    await unwrap(createMedicine({ ...napa, name: "Napa Syrup", form: "syrup" }));
+
+    const syrup = await listMedicinesPage({ form: "syrup" });
+    expect(syrup.total).toBe(1);
+    expect(syrup.rows[0]!.name).toBe("Napa Syrup");
+    // The form filter narrows rows but not the tab badges.
+    expect(syrup.counts.all).toBe(4);
+  });
+
+  it("rejects an unknown tab", async () => {
+    await expect(
+      listMedicinesPage({ tab: "everything" as never }),
+    ).rejects.toThrow("tab thik nai");
+  });
+
+  it("rejects an unauthenticated caller", async () => {
+    clearSessionCookie(cookieStore);
+    await expect(listMedicinesPage({})).rejects.toThrow(ADMIN_ONLY_ERROR);
+  });
+});
+
+describe("listMedicines caps the sale picker's search", () => {
+  it("never returns more than the ceiling, even with an empty query", async () => {
+    for (let i = 0; i < 105; i++) {
+      await unwrap(createMedicine({ ...napa, name: `Cap ${String(i).padStart(3, "0")}` }));
+    }
+    // The picker opens with no query, which used to mean the whole catalogue.
+    const all = await listMedicines();
+    expect(all).toHaveLength(100);
+  });
+
+  it("clamps a limit sent from the client", async () => {
+    for (let i = 0; i < 105; i++) {
+      await unwrap(createMedicine({ ...napa, name: `Cap ${String(i).padStart(3, "0")}` }));
+    }
+    const huge = await listMedicines(undefined, false, 1_000_000);
+    expect(huge).toHaveLength(100);
+  });
+
+  it("rejects a malformed limit", async () => {
+    await expect(
+      listMedicines(undefined, false, 0),
+    ).rejects.toThrow("limit must be a whole number");
+    await expect(
+      listMedicines(undefined, false, 2.5),
+    ).rejects.toThrow("limit must be a whole number");
   });
 });
 

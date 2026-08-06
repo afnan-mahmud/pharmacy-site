@@ -12,6 +12,9 @@ import { createBuyer } from "@/actions/buyers";
 import { recordPayment } from "@/actions/due";
 import { MedicineModel } from "@/models/Medicine";
 import { computeBuyerDue, loadBuyerLedger } from "@/lib/dueComputation";
+import mongoose from "mongoose";
+import { SaleModel } from "@/models/Sale";
+import { PaymentModel } from "@/models/Payment";
 
 const cookieStore = createMockCookieStore();
 vi.mock("next/headers", () => ({
@@ -129,5 +132,101 @@ describe("loadBuyerLedger", () => {
     const ledger = await loadBuyerLedger("not-an-id");
     expect(ledger.sales).toEqual([]);
     expect(ledger.payments).toEqual([]);
+  });
+});
+
+/**
+ * A ledger is read from the top, but it was fetching a buyer's entire history
+ * to render that. It now returns the newest window plus how big the whole
+ * book is — the components compute the running balance backwards from the
+ * buyer's current balance, so a window is exactly as correct as the full set.
+ */
+describe("loadBuyerLedger is bounded", () => {
+  async function buyerWithHistory(sales: number, payments: number) {
+    const buyerId = new mongoose.Types.ObjectId();
+    for (let i = 0; i < sales; i++) {
+      await SaleModel.create({
+        type: "wholesale",
+        buyerId,
+        buyerName: "Karim",
+        invoiceNo: `NP-${String(i).padStart(6, "0")}`,
+        items: [
+          {
+            medicineName: "Napa",
+            unit: "box",
+            quantity: 1,
+            ratePaisa: 1000,
+            lineTotalPaisa: 1000,
+            patasDeducted: 10,
+          },
+        ],
+        subtotalPaisa: 1000,
+        totalPaisa: 1000,
+        paidPaisa: 0,
+        duePaisa: 1000,
+        status: "active",
+        createdBy: new mongoose.Types.ObjectId(),
+      });
+    }
+    for (let i = 0; i < payments; i++) {
+      await PaymentModel.create({
+        buyerId,
+        amountPaisa: 100,
+        createdBy: new mongoose.Types.ObjectId(),
+      });
+    }
+    return String(buyerId);
+  }
+
+  it("caps each side at the window", async () => {
+    const buyerId = await buyerWithHistory(120, 130);
+
+    const ledger = await loadBuyerLedger(buyerId, 100);
+    expect(ledger.sales).toHaveLength(100);
+    expect(ledger.payments).toHaveLength(100);
+  });
+
+  it("reports the size of the whole book, not the window", async () => {
+    const buyerId = await buyerWithHistory(120, 130);
+
+    const ledger = await loadBuyerLedger(buyerId, 100);
+    // The screen has to be able to say "latest 200 of 250" rather than
+    // presenting a slice as the whole history.
+    expect(ledger.totalEntries).toBe(250);
+  });
+
+  it("returns the newest entries, not an arbitrary hundred", async () => {
+    const buyerId = await buyerWithHistory(120, 0);
+
+    const ledger = await loadBuyerLedger(buyerId, 100);
+    const invoices = ledger.sales.map((s) => s.invoiceNo);
+    // Created oldest-first, so the newest hundred are NP-000020..NP-000119.
+    expect(invoices).toContain("NP-000119");
+    expect(invoices).not.toContain("NP-000000");
+  });
+
+  it("returns everything when the history is smaller than the window", async () => {
+    const buyerId = await buyerWithHistory(3, 2);
+
+    const ledger = await loadBuyerLedger(buyerId, 100);
+    expect(ledger.sales).toHaveLength(3);
+    expect(ledger.payments).toHaveLength(2);
+    expect(ledger.totalEntries).toBe(5);
+  });
+
+  it("clamps an absurd window rather than reading everything", async () => {
+    const buyerId = await buyerWithHistory(5, 0);
+
+    // The limit reaches this from a server action, so it is not bounded by
+    // what the UI would send.
+    const ledger = await loadBuyerLedger(buyerId, 10_000_000);
+    expect(ledger.sales).toHaveLength(5);
+  });
+
+  it("is empty for an unknown buyer", async () => {
+    const ledger = await loadBuyerLedger(String(new mongoose.Types.ObjectId()));
+    expect(ledger.sales).toEqual([]);
+    expect(ledger.payments).toEqual([]);
+    expect(ledger.totalEntries).toBe(0);
   });
 });

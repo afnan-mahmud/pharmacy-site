@@ -75,7 +75,7 @@ import { MedicineModel } from "@/models/Medicine";
 
 describe("salesReport", () => {
   it("returns an empty report when there are no sales", async () => {
-    const report = await salesReport("2026-07-01", "2026-07-31");
+    const report = await salesReport({ fromDate: "2026-07-01", toDate: "2026-07-31" });
     expect(report.rows).toEqual([]);
     expect(report.grandTotalPaisa).toBe(0);
     expect(report.grandCostPaisa).toBe(0);
@@ -101,7 +101,7 @@ describe("salesReport", () => {
         },
       ],
     });
-    const report = await salesReport("2026-07-17", "2026-07-17");
+    const report = await salesReport({ fromDate: "2026-07-17", toDate: "2026-07-17" });
     expect(report.rows).toHaveLength(1);
     expect(report.grandTotalPaisa).toBe(2800);
     expect(report.grandCostPaisa).toBe(2000);
@@ -146,7 +146,7 @@ describe("salesReport", () => {
       ],
     });
 
-    const report = await salesReport("2026-07-17", "2026-07-17");
+    const report = await salesReport({ fromDate: "2026-07-17", toDate: "2026-07-17" });
     expect(report.rows).toHaveLength(1);
     expect(report.rows[0].costPaisa).toBe(1000);
     expect(report.rows[0].profitPaisa).toBe(500);
@@ -156,13 +156,13 @@ describe("salesReport", () => {
 
   it("excludes a sale before the range", async () => {
     await makeSale({ createdAt: new Date("2026-07-16T10:00:00Z") });
-    const report = await salesReport("2026-07-17", "2026-07-17");
+    const report = await salesReport({ fromDate: "2026-07-17", toDate: "2026-07-17" });
     expect(report.rows).toHaveLength(0);
   });
 
   it("excludes a sale after the range", async () => {
     await makeSale({ createdAt: new Date("2026-07-19T10:00:00Z") });
-    const report = await salesReport("2026-07-17", "2026-07-18");
+    const report = await salesReport({ fromDate: "2026-07-17", toDate: "2026-07-18" });
     expect(report.rows).toHaveLength(0);
   });
 
@@ -170,7 +170,7 @@ describe("salesReport", () => {
     // 22:30 Dhaka on the 17th is 16:30 UTC on the 17th. A UTC-day report
     // would still catch this one; the next test is the one that matters.
     await makeSale({ createdAt: new Date("2026-07-17T16:30:00Z") });
-    const report = await salesReport("2026-07-17", "2026-07-17");
+    const report = await salesReport({ fromDate: "2026-07-17", toDate: "2026-07-17" });
     expect(report.rows).toHaveLength(1);
   });
 
@@ -179,8 +179,8 @@ describe("salesReport", () => {
     // would wrongly report this as the 17th's takings.
     await makeSale({ createdAt: new Date("2026-07-17T18:30:00Z") });
 
-    expect((await salesReport("2026-07-17", "2026-07-17")).rows).toHaveLength(0);
-    expect((await salesReport("2026-07-18", "2026-07-18")).rows).toHaveLength(1);
+    expect((await salesReport({ fromDate: "2026-07-17", toDate: "2026-07-17" })).rows).toHaveLength(0);
+    expect((await salesReport({ fromDate: "2026-07-18", toDate: "2026-07-18" })).rows).toHaveLength(1);
   });
 
   it("splits retail and wholesale totals", async () => {
@@ -222,7 +222,7 @@ describe("salesReport", () => {
       ],
     });
 
-    const report = await salesReport("2026-07-17", "2026-07-17");
+    const report = await salesReport({ fromDate: "2026-07-17", toDate: "2026-07-17" });
     expect(report.retail).toEqual({
       count: 1,
       totalPaisa: 2800,
@@ -252,7 +252,7 @@ describe("salesReport", () => {
       createdAt: new Date("2026-07-17T11:00:00Z"),
     });
 
-    const report = await salesReport("2026-07-17", "2026-07-17");
+    const report = await salesReport({ fromDate: "2026-07-17", toDate: "2026-07-17" });
     expect(report.retail).toEqual({
       count: 1,
       totalPaisa: 2800,
@@ -272,7 +272,7 @@ describe("salesReport", () => {
       createdAt: new Date("2026-07-17T11:00:00Z"),
     });
 
-    const report = await salesReport("2026-07-17", "2026-07-17");
+    const report = await salesReport({ fromDate: "2026-07-17", toDate: "2026-07-17" });
     expect(report.rows).toHaveLength(1);
     expect(report.rows[0].cancelled).toBe(true);
     expect(report.cancelledCount).toBe(1);
@@ -288,7 +288,7 @@ describe("salesReport", () => {
       createdAt: new Date("2026-07-17T12:00:00Z"),
     });
 
-    const report = await salesReport("2026-07-17", "2026-07-17");
+    const report = await salesReport({ fromDate: "2026-07-17", toDate: "2026-07-17" });
     expect(report.rows.map((r) => r.totalPaisa)).toEqual([200, 100]);
   });
 
@@ -300,13 +300,13 @@ describe("salesReport", () => {
       createdAt: new Date("2026-07-17T10:00:00Z"),
     });
 
-    const report = await salesReport("2026-07-17", "2026-07-17");
+    const report = await salesReport({ fromDate: "2026-07-17", toDate: "2026-07-17" });
     expect(report.rows[0].invoiceNo).toBe("NP-000041");
     expect(report.rows[0].buyerName).toBe("Karim Uddin");
   });
 
   it("echoes back the requested range", async () => {
-    const report = await salesReport("2026-07-01", "2026-07-31");
+    const report = await salesReport({ fromDate: "2026-07-01", toDate: "2026-07-31" });
     expect(report.fromDate).toBe("2026-07-01");
     expect(report.toDate).toBe("2026-07-31");
   });
@@ -314,33 +314,149 @@ describe("salesReport", () => {
   it("spans a multi-day range inclusively", async () => {
     await makeSale({ createdAt: new Date("2026-07-17T10:00:00Z") });
     await makeSale({ createdAt: new Date("2026-07-19T10:00:00Z") });
-    const report = await salesReport("2026-07-17", "2026-07-19");
+    const report = await salesReport({ fromDate: "2026-07-17", toDate: "2026-07-19" });
     expect(report.rows).toHaveLength(2);
   });
 
   it("rejects a malformed date", async () => {
-    await expect(salesReport("17-07-2026", "2026-07-17")).rejects.toThrow(
+    await expect(salesReport({ fromDate: "17-07-2026", toDate: "2026-07-17" })).rejects.toThrow(
       "Date ta YYYY-MM-DD hote hobe",
     );
   });
 
   it("rejects a reversed range", async () => {
-    await expect(salesReport("2026-07-31", "2026-07-01")).rejects.toThrow(
+    await expect(salesReport({ fromDate: "2026-07-31", toDate: "2026-07-01" })).rejects.toThrow(
       "Sesh date ta shuru date er age hote parbe na",
     );
   });
 
   it("rejects an unauthenticated caller", async () => {
     clearSessionCookie(cookieStore);
-    await expect(salesReport("2026-07-01", "2026-07-31")).rejects.toThrow(
+    await expect(salesReport({ fromDate: "2026-07-01", toDate: "2026-07-31" })).rejects.toThrow(
       ADMIN_ONLY_ERROR,
     );
   });
 
   it("rejects a buyer-role session", async () => {
     setSessionCookie(cookieStore, await buyerToken());
-    await expect(salesReport("2026-07-01", "2026-07-31")).rejects.toThrow(
+    await expect(salesReport({ fromDate: "2026-07-01", toDate: "2026-07-31" })).rejects.toThrow(
       ADMIN_ONLY_ERROR,
     );
+  });
+});
+
+/**
+ * A full-year range used to assemble every sale in it — items included — and
+ * serialise the lot to the browser. Rows now arrive one page at a time, which
+ * is only correct because the filters and the sort moved to the server with
+ * them: filtering or ranking a page in the browser answers only for the rows
+ * that happened to land on it.
+ */
+describe("salesReport paging", () => {
+  const DAY = { fromDate: "2026-07-17", toDate: "2026-07-17" };
+
+  async function makeSales(count: number, overrides: (i: number) => object = () => ({})) {
+    for (let i = 0; i < count; i++) {
+      await makeSale({
+        createdAt: new Date(`2026-07-17T10:00:${String(i % 60).padStart(2, "0")}Z`),
+        buyerName: `Customer ${String(i).padStart(3, "0")}`,
+        ...overrides(i),
+      });
+    }
+  }
+
+  it("returns one page and says how many rows there are in total", async () => {
+    await makeSales(55);
+
+    const first = await salesReport(DAY);
+    expect(first.rows).toHaveLength(50);
+    expect(first.totalRows).toBe(55);
+    expect(first.page).toBe(1);
+    expect(first.pageSize).toBe(50);
+
+    const second = await salesReport({ ...DAY, page: 2 });
+    expect(second.rows).toHaveLength(5);
+    expect(second.page).toBe(2);
+  });
+
+  it("keeps the summary totals over the whole range, not the page", async () => {
+    await makeSales(55);
+
+    const page = await salesReport(DAY);
+    // 50 rows in hand, but the cards must still add up all 55 sales.
+    expect(page.rows).toHaveLength(50);
+    expect(page.retail.count).toBe(55);
+    expect(page.grandTotalPaisa).toBe(55 * 2800);
+  });
+
+  it("keeps the totals steady while a search narrows the rows", async () => {
+    await makeSales(12);
+
+    const page = await salesReport({ ...DAY, search: "Customer 00" });
+    expect(page.totalRows).toBe(10); // Customer 000..009
+    // The summary answers "what did this range do", not "what matched".
+    expect(page.retail.count).toBe(12);
+  });
+
+  it("never repeats a row across pages", async () => {
+    await makeSales(55);
+    const first = await salesReport({ ...DAY, page: 1 });
+    const second = await salesReport({ ...DAY, page: 2 });
+    const ids = [...first.rows, ...second.rows].map((r) => r.saleId);
+    expect(new Set(ids).size).toBe(55);
+  });
+
+  it("sorts across the whole range, not within a page", async () => {
+    await makeSales(55);
+    // One much larger sale, deliberately the oldest so "newest" buries it.
+    await makeSale({
+      createdAt: new Date("2026-07-17T00:00:00Z"),
+      buyerName: "Big",
+      totalPaisa: 999999,
+      paidPaisa: 999999,
+    });
+
+    const byAmount = await salesReport({ ...DAY, sortBy: "amount_desc" });
+    // If sorting ran after paging, this row would be stranded on page 2 and
+    // could never reach the top.
+    expect(byAmount.rows[0]!.buyerName).toBe("Big");
+  });
+
+  it("clamps a page past the end instead of returning nothing", async () => {
+    await makeSales(3);
+    const page = await salesReport({ ...DAY, page: 99 });
+    expect(page.rows).toHaveLength(3);
+    expect(page.page).toBe(1);
+  });
+
+  it("survives a malformed page number", async () => {
+    await makeSales(3);
+    for (const bad of [0, -1, 2.5, "2" as unknown as number]) {
+      const page = await salesReport({ ...DAY, page: bad });
+      expect(page.rows).toHaveLength(3);
+    }
+  });
+
+  it("filters by channel across the whole range", async () => {
+    await makeSales(3);
+    const retail = await salesReport({ ...DAY, channel: "retail" });
+    const wholesale = await salesReport({ ...DAY, channel: "wholesale" });
+    expect(retail.totalRows).toBe(3);
+    expect(wholesale.totalRows).toBe(0);
+  });
+
+  it("filters by due status", async () => {
+    await makeSales(3);
+    await makeSale({
+      createdAt: new Date("2026-07-17T11:00:00Z"),
+      buyerName: "Owes",
+      buyerPhone: "01711111111",
+      paidPaisa: 0,
+      duePaisa: 2800,
+    });
+
+    const due = await salesReport({ ...DAY, status: "due" });
+    expect(due.totalRows).toBe(1);
+    expect(due.rows[0]!.buyerName).toBe("Owes");
   });
 });

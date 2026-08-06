@@ -270,14 +270,18 @@ export async function myDueBalance(): Promise<number> {
 }
 
 /** The session's own sales/payments history — see myDueBalance above. */
-export async function myLedger(): Promise<{
+export async function myLedger(limit?: number): Promise<{
   sales: Serialized<SaleDoc>[];
   payments: Serialized<PaymentDoc>[];
+  totalEntries: number;
 }> {
   const session = await requireBuyerAction();
   await connectDb();
-  const { sales, payments } = await loadBuyerLedger(session.userId);
-  return { sales: toPlainList(sales), payments: toPlainList(payments) };
+  const { sales, payments, totalEntries } = await loadBuyerLedger(
+    session.userId,
+    limit,
+  );
+  return { sales: toPlainList(sales), payments: toPlainList(payments), totalEntries };
 }
 
 /**

@@ -7,6 +7,13 @@ import { requireAdminAction } from "@/lib/session";
 import { toPlain, toPlainList, type Serialized } from "@/lib/serialize";
 import { MedicineModel, type MedicineDoc } from "@/models/Medicine";
 import { assertMedicineIsDeletable } from "@/lib/medicineReferences";
+import {
+  MEDICINE_PAGE_SIZE,
+  MAX_MEDICINE_SEARCH_RESULTS,
+  normalizePage,
+  pageCount,
+  skipFor,
+} from "@/lib/pagination";
 import { actionResult, type ActionResult } from "@/lib/actionResult";
 import {
   isMedicineForm,
@@ -194,15 +201,28 @@ export async function updateMedicine(
 }
 
 /**
+ * The search behind the sale screen's medicine picker.
+ *
  * `activeOnly` defaults to false because the medicines admin table has to
  * list deactivated rows — that table is the only place they can be switched
  * back on, so filtering them out by default would strand them. Callers that
  * are choosing something to *sell* (the sale pickers) pass true: a
  * deactivated medicine must never reach a cart.
+ *
+ * Capped at `limit`, and that cap is the point: the picker opens with an
+ * empty query, which means "no filter", which used to mean the entire
+ * catalogue — every document, in full — was assembled and shipped to the
+ * browser every time the owner opened the picker to add one line to a sale.
+ * A picker is something you type into, so showing the first 100 matches and
+ * letting the query narrow them is what it was already asking people to do;
+ * the whole list was never a thing anyone scrolled to the end of. The admin
+ * table, which genuinely does page through everything, uses
+ * listMedicinesPage below instead.
  */
 export async function listMedicines(
   query?: string,
   activeOnly = false,
+  limit = 100,
 ): Promise<Serialized<MedicineDoc>[]> {
   await requireAdminAction();
   await connectDb();
@@ -216,6 +236,9 @@ export async function listMedicines(
   if (typeof activeOnly !== "boolean") {
     throw new Error("activeOnly must be a boolean");
   }
+  if (typeof limit !== "number" || !Number.isInteger(limit) || limit < 1) {
+    throw new Error("limit must be a whole number");
+  }
 
   const filter: Record<string, unknown> = {};
   if (term) {
@@ -227,8 +250,123 @@ export async function listMedicines(
 
   const docs = await MedicineModel.find(filter)
     .sort({ createdAt: -1 })
+    // Math.min, not the raw value: `limit` arrives over the network on a
+    // directly-callable endpoint, so an unclamped one is the same unbounded
+    // read this cap exists to close.
+    .limit(Math.min(limit, MAX_MEDICINE_SEARCH_RESULTS))
     .lean<MedicineDoc[]>();
   return toPlainList(docs);
+}
+
+export type MedicineListTab = "all" | "low-stock" | "active" | "inactive";
+
+export type MedicineListInput = {
+  query?: string;
+  tab?: MedicineListTab;
+  /** A MEDICINE_FORMS value, or "all". */
+  form?: string;
+  page?: number;
+};
+
+export type MedicineListPage = {
+  rows: Serialized<MedicineDoc>[];
+  /** Rows matching the current query/tab/form, across every page. */
+  total: number;
+  page: number;
+  pageSize: number;
+  /**
+   * Tab badge counts. Deliberately unaffected by the search box and the form
+   * filter — they answer "how many medicines are low on stock", which is a
+   * fact about the shop, not about what is currently typed. That is also what
+   * they showed before paging existed, when they were counted client-side
+   * over the whole catalogue.
+   */
+  counts: { all: number; lowStock: number; active: number; inactive: number };
+};
+
+/**
+ * "Low stock" as the medicines table has always defined it: nothing left at
+ * all, or at/below an alert level the owner actually set. Kept as a filter
+ * fragment so the tab, its badge count, and the page query cannot drift into
+ * three slightly different ideas of low.
+ *
+ * Note this is *not* dashboardSummary's definition, which requires a
+ * threshold to have been set and so ignores an out-of-stock medicine with no
+ * alert configured. That difference predates paging; it is preserved rather
+ * than quietly unified, because changing what the owner's dashboard counts
+ * is a decision for them, not a side effect of this.
+ */
+const LOW_STOCK_FILTER = {
+  $or: [
+    { stockPatas: { $lte: 0 } },
+    {
+      $and: [
+        { lowStockThreshold: { $gt: 0 } },
+        { $expr: { $lte: ["$stockPatas", "$lowStockThreshold"] } },
+      ],
+    },
+  ],
+};
+
+/**
+ * One page of the medicines admin table.
+ *
+ * Replaces reading the whole collection into the page and filtering it in the
+ * browser. That worked while the catalogue was small and degraded without any
+ * error as it grew — every visit re-sent every medicine document in full.
+ *
+ * The tab and form filters moved to the server along with the paging, because
+ * they had to: filtering one page of 50 in the browser would have shown "the
+ * low-stock medicines that happen to be on this page", which looks exactly
+ * like a complete answer and is not one.
+ */
+export async function listMedicinesPage(
+  input: MedicineListInput = {},
+): Promise<MedicineListPage> {
+  await requireAdminAction();
+  await connectDb();
+
+  const term = toOptionalString(input.query, "query").trim();
+  const tab = input.tab ?? "all";
+  if (!["all", "low-stock", "active", "inactive"].includes(tab)) {
+    throw new Error("tab thik nai");
+  }
+  const form = toOptionalString(input.form, "form").trim();
+  const page = normalizePage(input.page);
+
+  const filter: Record<string, unknown> = {};
+  if (term) {
+    filter.name = { $regex: escapeRegex(term), $options: "i" };
+  }
+  if (form && form !== "all") {
+    filter.form = form;
+  }
+  if (tab === "active") filter.active = true;
+  else if (tab === "inactive") filter.active = false;
+  else if (tab === "low-stock") Object.assign(filter, LOW_STOCK_FILTER);
+
+  const [total, all, lowStock, active] = await Promise.all([
+    MedicineModel.countDocuments(filter),
+    MedicineModel.countDocuments({}),
+    MedicineModel.countDocuments(LOW_STOCK_FILTER),
+    MedicineModel.countDocuments({ active: true }),
+  ]);
+
+  const docs = await MedicineModel.find(filter)
+    .sort({ createdAt: -1 })
+    .skip(skipFor(page, MEDICINE_PAGE_SIZE, total))
+    .limit(MEDICINE_PAGE_SIZE)
+    .lean<MedicineDoc[]>();
+
+  return {
+    rows: toPlainList(docs),
+    total,
+    page: Math.min(page, pageCount(total, MEDICINE_PAGE_SIZE)),
+    pageSize: MEDICINE_PAGE_SIZE,
+    // Derived rather than counted separately: one fewer round trip, and the
+    // two can never disagree about how many medicines exist.
+    counts: { all, lowStock, active, inactive: all - active },
+  };
 }
 
 export async function searchMedicines(

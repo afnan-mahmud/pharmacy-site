@@ -1,8 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { toggleMedicineActive, deleteMedicine, listMedicines } from "@/actions/medicines";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { useSearchParams } from "next/navigation";
+import {
+  toggleMedicineActive,
+  deleteMedicine,
+  listMedicinesPage,
+} from "@/actions/medicines";
 import { stockIn } from "@/actions/stock";
 import { formatTaka } from "@/lib/money";
 import { formatStock, boxesToPatas } from "@/lib/units";
@@ -14,6 +18,7 @@ import {
   type MedicineForm as DosageForm,
 } from "@/lib/unitLabels";
 import { MedicineForm, type MedicineFormValues } from "./MedicineForm";
+import { Pager } from "./Pager";
 import {
   card,
   thead,
@@ -31,8 +36,17 @@ export type MedicineRow = MedicineFormValues & {
 
 type FilterTab = "all" | "low-stock" | "active" | "inactive";
 
-export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
-  const router = useRouter();
+export function MedicineTable({
+  initialRows,
+  initialTotal,
+  initialCounts,
+  pageSize,
+}: {
+  initialRows: MedicineRow[];
+  initialTotal: number;
+  initialCounts: { all: number; lowStock: number; active: number; inactive: number };
+  pageSize: number;
+}) {
   const searchParams = useSearchParams();
   const initialSearch = searchParams.get("search") || "";
   const initialFilterParam = searchParams.get("filter");
@@ -54,7 +68,10 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
   const [search, setSearch] = useState(initialSearch);
   const [tab, setTab] = useState<FilterTab>(initialTab);
   const [selectedForm, setSelectedForm] = useState<string>("all");
-  const [filteredMedicines, setFilteredMedicines] = useState(medicines);
+  const [rows, setRows] = useState(initialRows);
+  const [total, setTotal] = useState(initialTotal);
+  const [counts, setCounts] = useState(initialCounts);
+  const [page, setPage] = useState(1);
   const [searching, setSearching] = useState(false);
 
   // Quick Stock-In Modal State
@@ -65,22 +82,25 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
   const [stockInBusy, setStockInBusy] = useState(false);
   const [stockInError, setStockInError] = useState("");
 
-  useEffect(() => {
-    if (!search.trim()) setFilteredMedicines(medicines);
-  }, [medicines, search]);
-
-  const doSearch = useCallback(
-    async (term: string) => {
-      if (!term.trim()) {
-        setFilteredMedicines(medicines);
-        setSearching(false);
-        return;
-      }
+  // One page of rows, always straight from the server.
+  //
+  // The tab and form filters are part of that query rather than a pass over
+  // what arrived, because a page is a slice: filtering 50 rows in the browser
+  // would answer "the low-stock medicines that happen to be on this page",
+  // which looks identical to a complete answer and is not one. Same reason
+  // the badge counts come back from the server instead of being counted here.
+  const load = useCallback(
+    async (opts: { search: string; tab: FilterTab; form: string; page: number }) => {
       setSearching(true);
       try {
-        const results = await listMedicines(term);
-        setFilteredMedicines(
-          results.map((m) => ({
+        const result = await listMedicinesPage({
+          query: opts.search,
+          tab: opts.tab,
+          form: opts.form,
+          page: opts.page,
+        });
+        setRows(
+          result.rows.map((m) => ({
             id: m._id,
             name: m.name,
             genericName: m.genericName,
@@ -99,52 +119,56 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
             expiryDate: m.expiryDate ? String(m.expiryDate) : null,
           })),
         );
+        setTotal(result.total);
+        setCounts(result.counts);
+        // The server clamps a page past the end back to the last real one;
+        // mirroring it here keeps the controls from highlighting a page that
+        // does not exist.
+        setPage(result.page);
       } catch {
-        setFilteredMedicines(medicines);
+        setError("ঔষধের তালিকা লোড করা যায়নি");
       } finally {
         setSearching(false);
       }
     },
-    [medicines],
+    [],
   );
 
+  // Typing is debounced; changing a tab, a form or a page is not — those are
+  // deliberate single actions and should feel immediate.
+  const firstRender = useRef(true);
   useEffect(() => {
-    const t = setTimeout(() => {
-      doSearch(search);
-    }, 250);
+    if (firstRender.current) {
+      firstRender.current = false;
+      return; // The server already sent page 1; do not re-fetch it on mount.
+    }
+    const t = setTimeout(
+      () => load({ search, tab, form: selectedForm, page }),
+      search.trim() ? 250 : 0,
+    );
     return () => clearTimeout(t);
-  }, [search, doSearch]);
+  }, [search, tab, selectedForm, page, load]);
 
-  // Derived stats
-  const totalCount = medicines.length;
-  const lowStockCount = useMemo(
-    () => medicines.filter((m) => m.stockPatas <= 0 || (m.lowStockThreshold > 0 && m.stockPatas <= m.lowStockThreshold)).length,
-    [medicines],
+  // Any change to what is being filtered invalidates the current page number:
+  // staying on page 4 while a search narrows the results to one page is how a
+  // list silently shows nothing.
+  useEffect(() => {
+    setPage(1);
+  }, [search, tab, selectedForm]);
+
+  /** Re-reads the current page after a mutation. */
+  const reload = useCallback(
+    () => load({ search, tab, form: selectedForm, page }),
+    [load, search, tab, selectedForm, page],
   );
-  const activeCount = useMemo(() => medicines.filter((m) => m.active).length, [medicines]);
-  const inactiveCount = useMemo(() => medicines.filter((m) => !m.active).length, [medicines]);
 
-  // Tab & Form Filtered list
-  const displayedRows = useMemo(() => {
-    return filteredMedicines.filter((m) => {
-      // Tab filter
-      if (tab === "low-stock") {
-        const isLow = m.stockPatas <= 0 || (m.lowStockThreshold > 0 && m.stockPatas <= m.lowStockThreshold);
-        if (!isLow) return false;
-      } else if (tab === "active") {
-        if (!m.active) return false;
-      } else if (tab === "inactive") {
-        if (m.active) return false;
-      }
+  const totalCount = counts.all;
+  const lowStockCount = counts.lowStock;
+  const activeCount = counts.active;
+  const inactiveCount = counts.inactive;
+  const lastPage = Math.max(1, Math.ceil(total / pageSize));
 
-      // Form filter
-      if (selectedForm !== "all") {
-        if (m.form !== selectedForm) return false;
-      }
-
-      return true;
-    });
-  }, [filteredMedicines, tab, selectedForm]);
+  const displayedRows = rows;
 
   async function handleDeactivate(row: MedicineRow) {
     setError("");
@@ -158,7 +182,7 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
       }
       setSuccessMsg(`"${row.name}" ${row.active ? "বন্ধ" : "চালু"} করা হয়েছে`);
       setTimeout(() => setSuccessMsg(""), 3000);
-      router.refresh();
+      reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "কিছু একটা ভুল হয়েছে");
     } finally {
@@ -179,7 +203,7 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
       }
       setSuccessMsg(`"${row.name}" মুছে ফেলা হয়েছে`);
       setTimeout(() => setSuccessMsg(""), 3000);
-      router.refresh();
+      reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "কিছু একটা ভুল হয়েছে");
     } finally {
@@ -220,7 +244,7 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
       setStockBoxes("");
       setStockNote("");
       setStockExpiryDate("");
-      router.refresh();
+      reload();
     } catch (err) {
       setStockInError(err instanceof Error ? err.message : "স্টক যোগ করতে ব্যর্থ হয়েছে");
     } finally {
@@ -231,10 +255,13 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
   if (adding || editingId) {
     return (
       <MedicineForm
-        initial={filteredMedicines.find((m) => m.id === editingId) ?? undefined}
+        initial={rows.find((m) => m.id === editingId) ?? undefined}
         onDone={() => {
           setAdding(false);
           setEditingId(null);
+          // The form writes through a server action of its own, so the page
+          // in hand is stale the moment it closes.
+          reload();
         }}
       />
     );
@@ -549,6 +576,14 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
             onDelete={handleDelete}
             deactivatingId={deactivatingId}
             deletingId={deletingId}
+          />
+
+          <Pager
+            page={page}
+            lastPage={lastPage}
+            total={total}
+            busy={searching}
+            onGo={setPage}
           />
         </>
       )}

@@ -1,11 +1,13 @@
-import { listMedicines } from "@/actions/medicines";
+import { listMedicinesPage } from "@/actions/medicines";
 import { toMedicineForm } from "@/lib/unitLabels";
 import { MedicineTable, type MedicineRow } from "@/components/MedicineTable";
 
 export default async function MedicinesPage() {
-  const medicines = await listMedicines();
+  // Only the first page is rendered on the server; the table fetches the rest
+  // itself as the owner searches, filters and pages.
+  const first = await listMedicinesPage({});
 
-  const rows: MedicineRow[] = medicines.map((m) => ({
+  const rows: MedicineRow[] = first.rows.map((m) => ({
     id: m._id,
     name: m.name,
     genericName: m.genericName,
@@ -24,5 +26,12 @@ export default async function MedicinesPage() {
     expiryDate: m.expiryDate ? String(m.expiryDate) : null,
   }));
 
-  return <MedicineTable medicines={rows} />;
+  return (
+    <MedicineTable
+      initialRows={rows}
+      initialTotal={first.total}
+      initialCounts={first.counts}
+      pageSize={first.pageSize}
+    />
+  );
 }

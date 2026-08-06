@@ -5,6 +5,12 @@ import { requireAdminAction } from "@/lib/session";
 import { dhakaRangeBounds } from "@/lib/dhakaDate";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { MedicineModel, type MedicineDoc } from "@/models/Medicine";
+import {
+  REPORT_PAGE_SIZE,
+  normalizePage,
+  pageCount,
+  skipFor,
+} from "@/lib/pagination";
 
 export type SalesReportRow = {
   saleId: string;
@@ -31,10 +37,35 @@ export type SalesReportTotals = {
   duePaisa: number;
 };
 
+export type SalesReportChannel = "all" | "retail" | "wholesale";
+export type SalesReportStatus = "all" | "due" | "paid" | "cancelled";
+export type SalesReportSort =
+  | "newest"
+  | "oldest"
+  | "amount_desc"
+  | "profit_desc"
+  | "due_desc";
+
+export type SalesReportInput = {
+  fromDate: string;
+  toDate: string;
+  channel?: SalesReportChannel;
+  status?: SalesReportStatus;
+  /** Matches buyer name, phone or invoice number. */
+  search?: string;
+  sortBy?: SalesReportSort;
+  page?: number;
+};
+
 export type SalesReport = {
   fromDate: string;
   toDate: string;
+  /** One page of rows, already filtered and sorted. */
   rows: SalesReportRow[];
+  page: number;
+  pageSize: number;
+  /** Rows matching the filter across every page. */
+  totalRows: number;
   retail: SalesReportTotals;
   wholesale: SalesReportTotals;
   grandTotalPaisa: number;
@@ -55,20 +86,45 @@ export type SalesReport = {
  *
  * The range is bounded by Dhaka midnights, not UTC ones. See
  * src/lib/dhakaDate.ts for why that distinction is load-bearing.
+ *
+ * Rows come back one page at a time, and the channel/status/search filters
+ * and the sort are applied here rather than in the browser. They had to move
+ * together: a page is a slice, so filtering or sorting one in the browser
+ * would rank and count only the rows that happened to land on it. Before
+ * this, a full-year range assembled every sale in it — items included — and
+ * serialised the lot to a phone over mobile data.
+ *
+ * What is still O(range) is this function's own scan: the totals need every
+ * sale, and the cost of a line whose costPaisa was never snapshotted is
+ * recovered by reading the medicine back, which no aggregation can do without
+ * a $lookup and a second definition of "profit". One definition that scans is
+ * worth more than two that disagree, so the scan stays — bounded by a lean
+ * projection — until the snapshot backfill that would make costPaisa always
+ * present lets the totals move into MongoDB wholesale.
  */
-export async function salesReport(
-  fromDate: string,
-  toDate: string,
-): Promise<SalesReport> {
+export async function salesReport(input: SalesReportInput): Promise<SalesReport> {
   await requireAdminAction();
   await connectDb();
 
+  const { fromDate, toDate } = input;
   // Throws a clean domain error on a malformed or reversed range.
   const { start, end } = dhakaRangeBounds(fromDate, toDate);
 
+  const channel: SalesReportChannel = input.channel ?? "all";
+  const status: SalesReportStatus = input.status ?? "all";
+  const sortBy: SalesReportSort = input.sortBy ?? "newest";
+  const search = typeof input.search === "string" ? input.search.trim() : "";
+  const page = normalizePage(input.page);
+
+  // Only the fields the report actually reads. The item list dominates a
+  // sale document, and of it this needs four numbers per line — dropping the
+  // names, rates and unit labels is most of the weight of a year's sales.
   const sales = await SaleModel.find({
     createdAt: { $gte: start, $lt: end },
   })
+    .select(
+      "orderId createdAt type invoiceNo buyerName buyerPhone totalPaisa paidPaisa duePaisa status items.costPaisa items.medicineId items.quantity items.leftoverPatas",
+    )
     .sort({ createdAt: -1 })
     .lean<SaleDoc[]>();
 
@@ -167,10 +223,54 @@ export async function salesReport(
     duePaisa: sum(wholesaleRows, "duePaisa"),
   };
 
+  // Filtering, sorting and paging happen after the totals, deliberately: the
+  // summary cards answer "what did this date range do", which the search box
+  // and the status tabs must not silently narrow. That is also how the screen
+  // behaved when it filtered a fully-loaded range in the browser.
+  const matching = rows.filter((row) => {
+    if (channel !== "all" && row.type !== channel) return false;
+
+    if (status === "due" && (row.duePaisa <= 0 || row.cancelled)) return false;
+    if (status === "paid" && (row.duePaisa > 0 || row.cancelled)) return false;
+    if (status === "cancelled" && !row.cancelled) return false;
+
+    if (search) {
+      const term = search.toLowerCase();
+      const hit =
+        (row.buyerName || "").toLowerCase().includes(term) ||
+        (row.buyerPhone || "").toLowerCase().includes(term) ||
+        (row.invoiceNo || "").toLowerCase().includes(term);
+      if (!hit) return false;
+    }
+
+    return true;
+  });
+
+  const sorted = [...matching].sort((a, b) => {
+    switch (sortBy) {
+      case "oldest":
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      case "amount_desc":
+        return b.totalPaisa - a.totalPaisa;
+      case "profit_desc":
+        return b.profitPaisa - a.profitPaisa;
+      case "due_desc":
+        return b.duePaisa - a.duePaisa;
+      default:
+        return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    }
+  });
+
+  const totalRows = sorted.length;
+  const skip = skipFor(page, REPORT_PAGE_SIZE, totalRows);
+
   return {
     fromDate,
     toDate,
-    rows,
+    rows: sorted.slice(skip, skip + REPORT_PAGE_SIZE),
+    page: Math.min(page, pageCount(totalRows, REPORT_PAGE_SIZE)),
+    pageSize: REPORT_PAGE_SIZE,
+    totalRows,
     retail,
     wholesale,
     grandTotalPaisa: (retail.totalPaisa || 0) + (wholesale.totalPaisa || 0),

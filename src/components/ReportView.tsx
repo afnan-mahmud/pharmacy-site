@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
 import { salesReport, type SalesReport } from "@/actions/reports";
 import { formatTaka } from "@/lib/money";
 import { formatDhakaDateTime } from "@/lib/dhakaDate";
+import { Pager } from "./Pager";
 
 type ChannelFilter = "all" | "retail" | "wholesale";
 type StatusFilter = "all" | "due" | "paid" | "cancelled";
@@ -65,6 +66,7 @@ export function ReportView({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [sortBy, setSortBy] = useState<SortOption>("newest");
   const [customModalOpen, setCustomModalOpen] = useState(false);
+  const [page, setPage] = useState(1);
 
   // Temporary inputs for custom modal
   const [tempFromDate, setTempFromDate] = useState(initialReport.fromDate);
@@ -111,25 +113,77 @@ export function ReportView({
     return { from: today, to: today };
   }
 
-  async function fetchReport(from: string, to: string) {
-    setFromDate(from);
-    setToDate(to);
-    setTempFromDate(from);
-    setTempToDate(to);
-    setError("");
-    startTransition(async () => {
-      try {
-        const res = await salesReport(from, to);
-        setReport(res);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "রিপোর্ট লোড করতে সমস্যা হয়েছে");
-      }
-    });
-  }
+  /**
+   * Loads one page of the report.
+   *
+   * Every filter, the sort and the page number are part of the request rather
+   * than applied to what came back: rows arrive one page at a time now, and
+   * ranking or filtering a page in the browser would answer only for the rows
+   * that happened to land on it.
+   */
+  const fetchReport = useCallback(
+    (opts: {
+      from: string;
+      to: string;
+      channel?: ChannelFilter;
+      status?: StatusFilter;
+      sort?: SortOption;
+      query?: string;
+      page?: number;
+    }) => {
+      setFromDate(opts.from);
+      setToDate(opts.to);
+      setTempFromDate(opts.from);
+      setTempToDate(opts.to);
+      setError("");
+      startTransition(async () => {
+        try {
+          const res = await salesReport({
+            fromDate: opts.from,
+            toDate: opts.to,
+            channel: opts.channel ?? channelFilter,
+            status: opts.status ?? statusFilter,
+            sortBy: opts.sort ?? sortBy,
+            search: opts.query ?? search,
+            page: opts.page ?? 1,
+          });
+          setReport(res);
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "\u09b0\u09bf\u09aa\u09cb\u09b0\u09cd\u099f \u09b2\u09cb\u09a1 \u0995\u09b0\u09a4\u09c7 \u09b8\u09ae\u09b8\u09cd\u09af\u09be \u09b9\u09df\u09c7\u099b\u09c7");
+        }
+      });
+    },
+    [channelFilter, statusFilter, sortBy, search],
+  );
+
+  // Changing a filter, the sort or the page re-queries. Typing in the search
+  // box is debounced; the rest are deliberate single actions and fire at once.
+  // The date pickers call fetchReport directly, so they are not listed here.
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return; // The server already sent page 1 of today.
+    }
+    const t = setTimeout(
+      () => fetchReport({ from: fromDate, to: toDate, page }),
+      search.trim() ? 250 : 0,
+    );
+    return () => clearTimeout(t);
+    // fetchReport is intentionally left out of the deps: it changes identity
+    // whenever a filter does, which this effect already reacts to directly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channelFilter, statusFilter, sortBy, search, page]);
+
+  // A filter change invalidates the page number - staying on page 4 while a
+  // search narrows the results to one page is how a list silently empties.
+  useEffect(() => {
+    setPage(1);
+  }, [channelFilter, statusFilter, search]);
 
   function handlePresetClick(preset: "today" | "yesterday" | "last7" | "thisMonth" | "lastMonth") {
     const range = computePresetRange(preset);
-    fetchReport(range.from, range.to);
+    fetchReport({ from: range.from, to: range.to });
   }
 
   function handleCustomPresetApply(preset: "today" | "yesterday" | "last7" | "last30" | "thisMonth" | "lastMonth" | "thisYear") {
@@ -141,7 +195,7 @@ export function ReportView({
   function handleCustomSubmit(e: React.FormEvent) {
     e.preventDefault();
     setCustomModalOpen(false);
-    fetchReport(tempFromDate, tempToDate);
+    fetchReport({ from: tempFromDate, to: tempToDate });
   }
 
   // Stepper logic: Shift day(s) backward / forward
@@ -151,12 +205,12 @@ export function ReportView({
   function handleStepBackward() {
     if (isSingleDay) {
       const prev = shiftIsoDate(fromDate, -1);
-      fetchReport(prev, prev);
+      fetchReport({ from: prev, to: prev });
     } else {
       const span = getDaysDifference(fromDate, toDate);
       const newFrom = shiftIsoDate(fromDate, -span);
       const newTo = shiftIsoDate(toDate, -span);
-      fetchReport(newFrom, newTo);
+      fetchReport({ from: newFrom, to: newTo });
     }
   }
 
@@ -165,13 +219,13 @@ export function ReportView({
     if (isSingleDay) {
       const next = shiftIsoDate(fromDate, 1);
       const safeNext = next > today ? today : next;
-      fetchReport(safeNext, safeNext);
+      fetchReport({ from: safeNext, to: safeNext });
     } else {
       const span = getDaysDifference(fromDate, toDate);
       let newTo = shiftIsoDate(toDate, span);
       if (newTo > today) newTo = today;
       const newFrom = shiftIsoDate(newTo, -(span - 1));
-      fetchReport(newFrom, newTo);
+      fetchReport({ from: newFrom, to: newTo });
     }
   }
 
@@ -192,49 +246,9 @@ export function ReportView({
     !isThisMonthActive &&
     !isLastMonthActive;
 
-  // Filtered & Sorted Rows
-  const filteredRows = report.rows.filter((row) => {
-    // Channel filter
-    if (channelFilter === "retail" && row.type !== "retail") return false;
-    if (channelFilter === "wholesale" && row.type !== "wholesale") return false;
-
-    // Status filter
-    if (statusFilter === "due" && (row.duePaisa <= 0 || row.cancelled)) return false;
-    if (statusFilter === "paid" && (row.duePaisa > 0 || row.cancelled)) return false;
-    if (statusFilter === "cancelled" && !row.cancelled) return false;
-    if (statusFilter !== "cancelled" && row.cancelled && statusFilter !== "all") return false;
-
-    // Search query
-    if (search.trim()) {
-      const term = search.toLowerCase();
-      const matchBuyer = (row.buyerName || "").toLowerCase().includes(term);
-      const matchPhone = (row.buyerPhone || "").toLowerCase().includes(term);
-      const matchInvoice = (row.invoiceNo || "").toLowerCase().includes(term);
-      if (!matchBuyer && !matchPhone && !matchInvoice) return false;
-    }
-
-    return true;
-  });
-
-  // Sort rows
-  const sortedRows = [...filteredRows].sort((a, b) => {
-    if (sortBy === "newest") {
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
-    }
-    if (sortBy === "oldest") {
-      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-    }
-    if (sortBy === "amount_desc") {
-      return b.totalPaisa - a.totalPaisa;
-    }
-    if (sortBy === "profit_desc") {
-      return b.profitPaisa - a.profitPaisa;
-    }
-    if (sortBy === "due_desc") {
-      return b.duePaisa - a.duePaisa;
-    }
-    return 0;
-  });
+  // The server filters, sorts and pages; this is one page, already in order.
+  const sortedRows = report.rows;
+  const lastPage = Math.max(1, Math.ceil(report.totalRows / report.pageSize));
 
   // Computed metrics according to active channel tab
   let displayTotal = report.grandTotalPaisa || 0;
@@ -295,7 +309,7 @@ export function ReportView({
             <div className="flex items-center gap-2 no-print">
               <button
                 type="button"
-                onClick={() => fetchReport(fromDate, toDate)}
+                onClick={() => fetchReport({ from: fromDate, to: toDate, page })}
                 disabled={isPending}
                 className="inline-flex items-center gap-1.5 rounded-full bg-white/15 hover:bg-white/25 px-3 py-1.5 text-xs font-medium backdrop-blur-sm transition disabled:opacity-50"
                 title="রিপোর্ট রিফ্রেশ করুন"
@@ -919,7 +933,7 @@ export function ReportView({
       {/* Results Header Count */}
       <div className="flex items-center justify-between px-1 mb-2.5 text-xs text-muted">
         <span>
-          দেখাচ্ছে <strong className="text-ink">{sortedRows.length}</strong> টি বিক্রির হিসাব
+          দেখাচ্ছে <strong className="text-ink">{sortedRows.length}</strong> / {report.totalRows} টি বিক্রির হিসাব
         </span>
         {search && (
           <span>
@@ -1291,6 +1305,14 @@ export function ReportView({
           </tbody>
         </table>
       </div>
+
+      <Pager
+        page={report.page}
+        lastPage={lastPage}
+        total={report.totalRows}
+        busy={isPending}
+        onGo={setPage}
+      />
     </div>
   );
 }

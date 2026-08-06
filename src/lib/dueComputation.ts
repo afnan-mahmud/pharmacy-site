@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { PaymentModel, type PaymentDoc } from "@/models/Payment";
+import { LEDGER_WINDOW, MAX_LEDGER_WINDOW } from "@/lib/pagination";
 
 /**
  * A buyer's signed outstanding balance in paisa: positive = the buyer owes,
@@ -36,22 +37,43 @@ export async function computeBuyerDue(
   return (saleAgg?.total ?? 0) - (payAgg?.total ?? 0);
 }
 
-/** A buyer's wholesale sales and payments, newest first — the raw docs. */
+/**
+ * A buyer's most recent wholesale sales and payments, newest first.
+ *
+ * Bounded rather than complete. A ledger is read from the top — the owner
+ * opens it to see where a balance stands now — but it was fetching a buyer's
+ * entire history to do that, which only ever grows. Capping each collection
+ * at `limit` is enough to render the newest `limit` entries of the merged
+ * stream, because anything in the newest N of the merge is necessarily within
+ * the newest N of the collection it came from.
+ *
+ * `totalEntries` is what the window was taken out of, so the screen can say
+ * so instead of quietly presenting a slice as the whole book. The running
+ * balance stays correct on a slice because the components compute it
+ * *backwards* from the buyer's current balance rather than forwards from
+ * zero; see BuyerLedger.
+ */
 export async function loadBuyerLedger(
   buyerId: string,
-): Promise<{ sales: SaleDoc[]; payments: PaymentDoc[] }> {
+  limit = LEDGER_WINDOW,
+): Promise<{ sales: SaleDoc[]; payments: PaymentDoc[]; totalEntries: number }> {
   if (!mongoose.Types.ObjectId.isValid(buyerId)) {
-    return { sales: [], payments: [] };
+    return { sales: [], payments: [], totalEntries: 0 };
   }
   const id = new mongoose.Types.ObjectId(buyerId);
+  const capped = Math.min(Math.max(Math.trunc(limit) || LEDGER_WINDOW, 1), MAX_LEDGER_WINDOW);
 
-  const [sales, payments] = await Promise.all([
+  const [sales, payments, saleCount, paymentCount] = await Promise.all([
     SaleModel.find({ buyerId: id, type: "wholesale" })
       .sort({ createdAt: -1 })
+      .limit(capped)
       .lean<SaleDoc[]>(),
     PaymentModel.find({ buyerId: id })
       .sort({ createdAt: -1 })
+      .limit(capped)
       .lean<PaymentDoc[]>(),
+    SaleModel.countDocuments({ buyerId: id, type: "wholesale" }),
+    PaymentModel.countDocuments({ buyerId: id }),
   ]);
-  return { sales, payments };
+  return { sales, payments, totalEntries: saleCount + paymentCount };
 }
