@@ -9,6 +9,11 @@ const medicineSchema = new Schema(
     nameLower: { type: String, required: true, unique: true },
     genericName: { type: String, default: "", trim: true },
     company: { type: String, default: "", trim: true },
+    // Lowercased words from name, genericName and company, kept in sync by
+    // the actions the same way nameLower is. This is what every medicine
+    // search actually queries — see src/lib/searchTokens.ts for why a search
+    // over the display fields could not use an index.
+    searchTokens: { type: [String], default: [] },
     // Which unit words this medicine is described with — box/pata for a
     // tablet strip, carton/bottle for a syrup. Display only: every stock and
     // price field below means the same thing under every form, which is why
@@ -52,6 +57,23 @@ const medicineSchema = new Schema(
 
 medicineSchema.index({ name: 1 });
 medicineSchema.index({ genericName: 1 });
+// Multikey, and what makes an anchored `^prefix` query an index range scan
+// rather than the collection scan it replaced. See src/lib/searchTokens.ts.
+//
+// The single-field index is the one that matters and is what the admin
+// medicines table needs: that table lists deactivated rows, so its query
+// carries no `active` predicate, and a compound index keyed on `active`
+// first cannot serve it.
+//
+// The compound one is a smaller, second-order win for the sale-side searches
+// (the picker, the buyer portal), which are all scoped to `active: true`. It
+// lets that predicate be answered from the index instead of by fetching each
+// candidate and testing it. Measured on a small collection the planner is
+// happy with either — it picks the single-field index when the compound one
+// is absent — so this is an optimisation, not a correctness requirement, and
+// it is the first thing to drop if medicine writes ever need to get cheaper.
+medicineSchema.index({ active: 1, searchTokens: 1 });
+medicineSchema.index({ searchTokens: 1 });
 // Serves dashboardSummary's low-stock query. That query's actual test —
 // $expr: { $lte: ["$stockPatas", "$lowStockThreshold"] } — compares two
 // fields of the same document and so can never use an index itself. What this

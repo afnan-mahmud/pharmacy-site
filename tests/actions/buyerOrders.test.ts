@@ -27,6 +27,7 @@ import { recordWholesaleSale } from "@/actions/sales";
 import { recordPayment } from "@/actions/due";
 import { BuyerModel } from "@/models/Buyer";
 import { MedicineModel } from "@/models/Medicine";
+import { searchTokensFor } from "@/lib/searchTokens";
 import { OrderModel } from "@/models/Order";
 import { SaleModel } from "@/models/Sale";
 
@@ -54,11 +55,18 @@ async function makeSessionBuyer(overrides = {}) {
 
 async function makeMedicine(overrides = {}) {
   const name = (overrides as { name?: string }).name ?? "Napa 500mg";
+  const genericName =
+    (overrides as { genericName?: string }).genericName ?? "Paracetamol";
+  const company = (overrides as { company?: string }).company ?? "Beximco";
   return MedicineModel.create({
     name,
     nameLower: name.toLowerCase(),
-    genericName: "Paracetamol",
-    company: "Beximco",
+    // Writing straight to the model bypasses createMedicine, so the derived
+    // fields it maintains have to be set here too — searchTokens for the
+    // same reason nameLower already was. See src/lib/searchTokens.ts.
+    searchTokens: searchTokensFor(name, genericName, company),
+    genericName,
+    company,
     patasPerBox: 10,
     purchasePricePaisa: 9000,
     wholesaleBoxPricePaisa: 12000,

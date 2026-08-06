@@ -7,6 +7,7 @@ import { requireAdminAction } from "@/lib/session";
 import { toPlain, toPlainList, type Serialized } from "@/lib/serialize";
 import { MedicineModel, type MedicineDoc } from "@/models/Medicine";
 import { assertMedicineIsDeletable } from "@/lib/medicineReferences";
+import { searchTokensFor, tokenPrefixFilter } from "@/lib/searchTokens";
 import {
   MEDICINE_PAGE_SIZE,
   MAX_MEDICINE_SEARCH_RESULTS,
@@ -44,11 +45,6 @@ export type MedicineInput = {
   lowStockThreshold: number;
   expiryDate?: string | Date | null;
 };
-
-/** Escapes regex metacharacters so a typed "." or "*" is matched literally. */
-function escapeRegex(input: string): string {
-  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 /**
  * Rejects anything that isn't a finite, non-negative integer: fractional
@@ -130,6 +126,14 @@ function toFields(input: MedicineInput) {
     nameLower: name.toLowerCase(),
     genericName: toOptionalString(input.genericName, "genericName").trim(),
     company: toOptionalString(input.company, "company").trim(),
+    // Rebuilt on every write, exactly like nameLower above: a rename that
+    // left the old words in the index would make a medicine findable by a
+    // name it no longer has.
+    searchTokens: searchTokensFor(
+      name,
+      toOptionalString(input.genericName, "genericName"),
+      toOptionalString(input.company, "company"),
+    ),
     form: toMedicineForm(input.form),
     patasPerBox: input.patasPerBox,
     purchasePricePaisa: input.purchasePricePaisa ?? 0,
@@ -241,9 +245,8 @@ export async function listMedicines(
   }
 
   const filter: Record<string, unknown> = {};
-  if (term) {
-    filter.name = { $regex: escapeRegex(term), $options: "i" };
-  }
+  const match = tokenPrefixFilter(term);
+  if (match) Object.assign(filter, match);
   if (activeOnly) {
     filter.active = true;
   }
@@ -335,9 +338,8 @@ export async function listMedicinesPage(
   const page = normalizePage(input.page);
 
   const filter: Record<string, unknown> = {};
-  if (term) {
-    filter.name = { $regex: escapeRegex(term), $options: "i" };
-  }
+  const match = tokenPrefixFilter(term);
+  if (match) Object.assign(filter, match);
   if (form && form !== "all") {
     filter.form = form;
   }
@@ -386,11 +388,10 @@ export async function searchMedicines(
   const term = query.trim();
   if (!term) return [];
 
-  const pattern = { $regex: escapeRegex(term), $options: "i" };
-  const docs = await MedicineModel.find({
-    active: true,
-    $or: [{ name: pattern }, { genericName: pattern }],
-  })
+  const match = tokenPrefixFilter(term);
+  if (!match) return [];
+
+  const docs = await MedicineModel.find({ active: true, ...match })
     .sort({ name: 1 })
     .limit(limit)
     .lean<MedicineDoc[]>();

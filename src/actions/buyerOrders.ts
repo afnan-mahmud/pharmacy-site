@@ -15,20 +15,10 @@ import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { toMedicineForm, type MedicineForm } from "@/lib/unitLabels";
 import { actionResult, type ActionResult } from "@/lib/actionResult";
 import { assertLineCount, MAX_LINE_ITEMS, TOO_MANY_LINES_ERROR } from "@/lib/lineLimits";
+import { tokenPrefixFilter } from "@/lib/searchTokens";
 
 export type OrderItemInput = { medicineId: string; boxes: number; patas: number };
 export type CustomOrderItemInput = { name: string; boxes: number; patas: number };
-
-/**
- * Escapes regex metacharacters so a typed "." or "*" is matched literally.
- * Mirrors the private helper of the same name in src/actions/medicines.ts —
- * duplicated rather than imported/exported across the admin/buyer trust
- * boundary, so this file's guard (requireBuyerAction) stays the only gate a
- * reader has to check for everything exported here.
- */
-function escapeRegex(input: string): string {
-  return input.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 export type BuyerMedicineOption = {
   id: string;
@@ -69,10 +59,8 @@ export async function searchMedicinesForBuyer(
   const term = query.trim();
   let findFilter: any = { active: true };
 
-  if (term) {
-    const pattern = { $regex: escapeRegex(term), $options: "i" };
-    findFilter.$or = [{ name: pattern }, { genericName: pattern }];
-  }
+  const match = tokenPrefixFilter(term);
+  if (match) Object.assign(findFilter, match);
 
   // stockPatas and lowStockThreshold are read only to derive the three-way
   // availability signal below — they are never returned to the client. The

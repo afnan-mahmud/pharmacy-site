@@ -20,6 +20,7 @@ import {
   deleteMedicine,
   listMedicinesPage,
 } from "@/actions/medicines";
+import { MAX_MEDICINE_SEARCH_RESULTS } from "@/lib/pagination";
 import {
   SOLD_MEDICINE_DELETE_ERROR,
   ORDERED_MEDICINE_DELETE_ERROR,
@@ -774,7 +775,7 @@ describe("listMedicines caps the sale picker's search", () => {
     }
     // The picker opens with no query, which used to mean the whole catalogue.
     const all = await listMedicines();
-    expect(all).toHaveLength(100);
+    expect(all).toHaveLength(MAX_MEDICINE_SEARCH_RESULTS);
   });
 
   it("clamps a limit sent from the client", async () => {
@@ -782,7 +783,7 @@ describe("listMedicines caps the sale picker's search", () => {
       await unwrap(createMedicine({ ...napa, name: `Cap ${String(i).padStart(3, "0")}` }));
     }
     const huge = await listMedicines(undefined, false, 1_000_000);
-    expect(huge).toHaveLength(100);
+    expect(huge).toHaveLength(MAX_MEDICINE_SEARCH_RESULTS);
   });
 
   it("rejects a malformed limit", async () => {
@@ -802,3 +803,123 @@ describe("listMedicines caps the sale picker's search", () => {
  * indexed array of words. These pin the behaviour that had to survive that
  * change, and the one that deliberately did not.
  */
+/**
+ * The name of the index a query plan actually lands on, or "COLLSCAN".
+ * Walks the plan because the winning stage is nested under FETCH (and, on a
+ * sharded or sorted plan, deeper still).
+ */
+function indexUsedBy(plan: unknown): string {
+  let found = "COLLSCAN";
+  const walk = (node: unknown) => {
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (node && typeof node === "object") {
+      const stage = node as { stage?: string; indexName?: string };
+      if (stage.stage === "IXSCAN" && typeof stage.indexName === "string") {
+        found = stage.indexName;
+      }
+      Object.values(node).forEach(walk);
+    }
+  };
+  walk((plan as { queryPlanner?: { winningPlan?: unknown } }).queryPlanner?.winningPlan ?? plan);
+  return found;
+}
+
+describe("medicine search matches words, from the index", () => {
+  const napaExtra = {
+    ...napa,
+    name: "Napa Extra 500mg",
+    genericName: "Paracetamol + Caffeine",
+    company: "Beximco Pharma",
+  };
+
+  it("finds a medicine by the start of its name", async () => {
+    await unwrap(createMedicine(napaExtra));
+    expect((await searchMedicines("nap")).map((m) => m.name)).toEqual([
+      "Napa Extra 500mg",
+    ]);
+  });
+
+  it("finds a medicine by a word in the middle of its name", async () => {
+    await unwrap(createMedicine(napaExtra));
+    // This is what a plain "^prefix on the whole name" fix would have lost.
+    expect((await searchMedicines("500")).map((m) => m.name)).toEqual([
+      "Napa Extra 500mg",
+    ]);
+    expect((await searchMedicines("extra")).map((m) => m.name)).toEqual([
+      "Napa Extra 500mg",
+    ]);
+  });
+
+  it("finds a medicine by its generic name or company", async () => {
+    await unwrap(createMedicine(napaExtra));
+    expect(await searchMedicines("paracetamol")).toHaveLength(1);
+    expect(await searchMedicines("caffeine")).toHaveLength(1);
+    expect(await searchMedicines("beximco")).toHaveLength(1);
+  });
+
+  it("ignores case in the query", async () => {
+    await unwrap(createMedicine(napaExtra));
+    expect(await searchMedicines("NAPA")).toHaveLength(1);
+    expect(await searchMedicines("NaPa")).toHaveLength(1);
+  });
+
+  it("requires every word of a multi-word query", async () => {
+    await unwrap(createMedicine(napaExtra));
+    await unwrap(createMedicine({ ...napa, name: "Napa Syrup", genericName: "Paracetamol" }));
+
+    expect((await searchMedicines("napa extra")).map((m) => m.name)).toEqual([
+      "Napa Extra 500mg",
+    ]);
+    expect(await searchMedicines("napa")).toHaveLength(2);
+  });
+
+  it("does not match mid-word, which is the trade for using the index", async () => {
+    await unwrap(createMedicine(napaExtra));
+    // "eta" sits inside "Paracetamol" but starts no word.
+    expect(await searchMedicines("eta")).toEqual([]);
+  });
+
+  it("keeps the tokens in step with a rename", async () => {
+    const medicine = await unwrap(createMedicine(napaExtra));
+    await unwrap(updateMedicine(medicine._id, { ...napaExtra, name: "Ace Plus" }));
+
+    expect(await searchMedicines("napa")).toEqual([]);
+    expect((await searchMedicines("ace")).map((m) => m.name)).toEqual(["Ace Plus"]);
+  });
+
+  it("serves the sale picker's search from the searchTokens index", async () => {
+    for (let i = 0; i < 30; i++) {
+      await unwrap(createMedicine({ ...napa, name: `Filler ${i}` }));
+    }
+    await unwrap(createMedicine(napaExtra));
+
+    // Naming the index rather than just asserting "some index was used":
+    // the medicines collection carries an { active, lowStockThreshold } index
+    // too, and a plan that lands on that one would be matching the tokens as
+    // a post-filter on every fetched document — which is the cost this whole
+    // change exists to remove, wearing an IXSCAN label.
+    //
+    // The fillers above are not padding: on a collection of one or two rows
+    // every candidate plan costs the same and the planner's pick is
+    // arbitrary, so a plan assertion there tests nothing.
+    const plan = await MedicineModel.find({
+      active: true,
+      searchTokens: { $regex: "^napa" },
+    }).explain("queryPlanner");
+
+    expect(indexUsedBy(plan)).toContain("searchTokens");
+  });
+
+  it("serves the admin table's search from the index too", async () => {
+    for (let i = 0; i < 30; i++) {
+      await unwrap(createMedicine({ ...napa, name: `Filler ${i}` }));
+    }
+    // The admin table lists deactivated rows, so its query carries no
+    // `active` predicate and needs the single-field index.
+    const plan = await MedicineModel.find({
+      searchTokens: { $regex: "^filler" },
+    }).explain("queryPlanner");
+
+    expect(indexUsedBy(plan)).toContain("searchTokens");
+  });
+});
