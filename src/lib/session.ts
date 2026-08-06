@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { readSessionToken, type SessionPayload } from "@/lib/auth";
+import { connectDb } from "@/lib/db";
+import { BuyerModel } from "@/models/Buyer";
 
 export const SESSION_COOKIE = "session";
 
@@ -50,11 +52,50 @@ export async function requireAdminAction(): Promise<SessionPayload> {
 }
 
 export const BUYER_ONLY_ERROR = "Buyer login chara ei kaj kora jabe na";
+export const BUYER_INACTIVE_ERROR = "Apnar account bondho ache";
+export const BUYER_SESSION_STALE_ERROR =
+  "Apnar login ar cholbe na — abar login korun";
+
+/**
+ * Confirms the buyer behind a signed token is still allowed to use it.
+ *
+ * A session is a stateless 7-day JWT, so nothing about switching an account
+ * off or resetting its password reaches a token already in someone's
+ * browser. Checking here, in the guard every buyer entry point already
+ * calls, is what makes that structural: submitOrder and submitShortlist used
+ * to re-read `active` themselves and the read paths — the price list, the
+ * order history, the ledger, an invoice — did not, so a deactivated buyer
+ * kept full read access to the wholesale catalogue for up to a week. A rule
+ * enforced per action is a rule the next action forgets.
+ *
+ * Returns a reason rather than throwing so the two guards can do what suits
+ * them: an action rejects, a page redirects.
+ */
+async function buyerSessionProblem(
+  session: SessionPayload,
+): Promise<string | null> {
+  await connectDb();
+  const buyer = await BuyerModel.findById(session.userId)
+    .select("active sessionVersion")
+    .lean<{ active: boolean; sessionVersion?: number }>();
+
+  if (!buyer || !buyer.active) return BUYER_INACTIVE_ERROR;
+  // Absent on both sides means a token and a document that predate the
+  // field; 0 === 0 and the session stands, which is right — the owner has
+  // not revoked anything.
+  if ((buyer.sessionVersion ?? 0) !== (session.sessionVersion ?? 0)) {
+    return BUYER_SESSION_STALE_ERROR;
+  }
+  return null;
+}
 
 /** Page guard for buyer routes — redirects a non-buyer to the login page. */
 export async function requireBuyer(): Promise<SessionPayload> {
   const session = await getSession();
   if (!session || session.role !== "buyer") redirect("/login");
+  // A revoked session is no more usable than no session, so it lands in the
+  // same place rather than on an error screen the buyer can do nothing with.
+  if (await buyerSessionProblem(session)) redirect("/login");
   return session;
 }
 
@@ -63,14 +104,17 @@ export async function requireBuyer(): Promise<SessionPayload> {
  * the same reason requireAdminAction does: a server action is a POST-shaped
  * endpoint with no page render to turn a redirect into. See requireAdminAction.
  *
- * This proves only that *some* buyer is calling. It does NOT prove the buyer
- * owns the data an action names — that check must live in each action, which
- * is the only place that knows which order or balance is being touched.
+ * This proves that some buyer is calling and that their session has not been
+ * revoked (see buyerSessionProblem). It does NOT prove the buyer owns the
+ * data an action names — that check must live in each action, which is the
+ * only place that knows which order or balance is being touched.
  */
 export async function requireBuyerAction(): Promise<SessionPayload> {
   const session = await getSession();
   if (!session || session.role !== "buyer") {
     throw new Error(BUYER_ONLY_ERROR);
   }
+  const problem = await buyerSessionProblem(session);
+  if (problem) throw new Error(problem);
   return session;
 }

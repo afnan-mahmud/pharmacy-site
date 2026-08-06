@@ -69,6 +69,7 @@ export async function login(
         userId: String(buyer._id),
         role: "buyer",
         name: buyer.name,
+        sessionVersion: buyer.sessionVersion ?? 0,
       });
 
       const store = await cookies();
@@ -121,6 +122,7 @@ export async function buyerLogin(
     userId: String(buyer._id),
     role: "buyer",
     name: buyer.name,
+    sessionVersion: buyer.sessionVersion ?? 0,
   });
 
   const store = await cookies();
@@ -193,6 +195,7 @@ export async function registerBuyer(
       userId: String(buyer._id),
       role: "buyer",
       name: buyer.name,
+      sessionVersion: buyer.sessionVersion ?? 0,
     });
 
     const store = await cookies();

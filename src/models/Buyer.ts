@@ -10,6 +10,13 @@ const buyerSchema = new Schema(
     address: { type: String, default: "", trim: true },
     passwordHash: { type: String, required: true },
     active: { type: Boolean, required: true, default: true },
+    // Bumped whenever every existing login for this buyer must stop working:
+    // the account being switched off, or its password being reset. Sessions
+    // are stateless JWTs with a 7-day life, so without a number the server
+    // can compare against, nothing the owner does can take one back. The
+    // issued token carries the value it was signed with; requireBuyer /
+    // requireBuyerAction reject it once this moves past it.
+    sessionVersion: { type: Number, required: true, default: 0 },
   },
   { timestamps: true },
 );

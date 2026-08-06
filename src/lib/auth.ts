@@ -7,6 +7,14 @@ export type SessionPayload = {
   userId: string;
   role: Role;
   name: string;
+  /**
+   * Buyers only: the Buyer.sessionVersion this token was signed against, so
+   * the guards can tell a current login from one the owner has since revoked
+   * (see src/lib/session.ts). Optional because an admin has no such counter —
+   * and because a token issued before the field existed simply has none,
+   * which reads as 0, the value every buyer starts at.
+   */
+  sessionVersion?: number;
 };
 
 const SESSION_DURATION = "7d";
@@ -61,11 +69,19 @@ export async function readSessionToken(
     const { payload } = await jwtVerify(token, secretKey(), {
       algorithms: ["HS256"],
     });
-    const { userId, role, name } = payload as Record<string, unknown>;
+    const { userId, role, name, sessionVersion } = payload as Record<
+      string,
+      unknown
+    >;
     if (typeof userId !== "string") return null;
     if (role !== "admin" && role !== "buyer") return null;
     if (typeof name !== "string") return null;
-    return { userId, role, name };
+    // Present-but-wrong-type is a malformed token, not an old one: an absent
+    // version is the legitimate legacy case and reads as 0 downstream.
+    if (sessionVersion !== undefined && typeof sessionVersion !== "number") {
+      return null;
+    }
+    return { userId, role, name, sessionVersion: sessionVersion as number | undefined };
   } catch {
     return null;
   }

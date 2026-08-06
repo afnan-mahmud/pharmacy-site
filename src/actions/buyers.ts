@@ -136,9 +136,13 @@ export async function setBuyerPassword(
     }
 
     const passwordHash = await hashPassword(password);
+    // Bumping sessionVersion is what actually ends the old logins. Without
+    // it a password reset changes only what the *next* login needs, while
+    // whoever is already holding a session — which is the reason the owner
+    // is resetting it — keeps working for the rest of the token's 7 days.
     const result = await BuyerModel.updateOne(
       { _id: id },
-      { $set: { passwordHash } },
+      { $set: { passwordHash }, $inc: { sessionVersion: 1 } },
     );
     if (result.matchedCount === 0) throw new Error("Buyer pawa jay ni");
   });
@@ -160,9 +164,14 @@ export async function setBuyerActive(
     }
 
     // Deactivated, never deleted: past sales and due history reference buyers.
+    //
+    // Switching off also bumps sessionVersion. The guards reject an inactive
+    // buyer on their own, so this is not what closes the account — it is
+    // what stops a later reactivation silently bringing an old session back
+    // to life with it.
     const result = await BuyerModel.updateOne(
       { _id: id },
-      { $set: { active } },
+      active ? { $set: { active } } : { $set: { active }, $inc: { sessionVersion: 1 } },
     );
     if (result.matchedCount === 0) throw new Error("Buyer pawa jay ni");
     revalidatePath("/buyers");

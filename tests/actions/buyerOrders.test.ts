@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import mongoose from "mongoose";
 import { setupTestDb } from "../helpers/db";
 import { unwrap } from "../helpers/action";
+
+/** unwrap for an action with no payload, so a failure still surfaces. */
+async function unwrapVoid(result: { ok: boolean; error?: string }) {
+  if (!result.ok) throw new Error(result.error);
+}
 import {
   createMockCookieStore,
   setSessionCookie,
@@ -10,7 +15,11 @@ import {
   buyerToken,
   BUYER_USER_ID,
 } from "../helpers/auth";
-import { BUYER_ONLY_ERROR } from "@/lib/session";
+import {
+  BUYER_ONLY_ERROR,
+  BUYER_INACTIVE_ERROR,
+  BUYER_SESSION_STALE_ERROR,
+} from "@/lib/session";
 import {
   submitOrder,
   submitShortlist,
@@ -25,6 +34,7 @@ import {
 import { MAX_LINE_ITEMS, TOO_MANY_LINES_ERROR } from "@/lib/lineLimits";
 import { recordWholesaleSale } from "@/actions/sales";
 import { recordPayment } from "@/actions/due";
+import { setBuyerActive, setBuyerPassword } from "@/actions/buyers";
 import { BuyerModel } from "@/models/Buyer";
 import { MedicineModel } from "@/models/Medicine";
 import { searchTokensFor } from "@/lib/searchTokens";
@@ -622,5 +632,122 @@ describe("order size cap", () => {
         getMySale(new mongoose.Types.ObjectId().toString()),
       ).rejects.toThrow(BUYER_ONLY_ERROR);
     });
+  });
+});
+
+/**
+ * submitOrder and submitShortlist always re-read `active` themselves. The
+ * read paths — the wholesale price list, order history, the ledger, an
+ * invoice — did not, so switching an account off left it with full read
+ * access to the catalogue for the rest of its 7-day token. The check now
+ * lives in requireBuyerAction, which every one of them already calls.
+ */
+describe("a deactivated buyer's session stops working", () => {
+  beforeEach(async () => {
+    await makeSessionBuyer({ active: false });
+    setSessionCookie(cookieStore, await buyerToken());
+  });
+
+  it("cannot read the wholesale price list", async () => {
+    await expect(searchMedicinesForBuyer("napa")).rejects.toThrow(
+      BUYER_INACTIVE_ERROR,
+    );
+  });
+
+  it("cannot list their orders", async () => {
+    await expect(listMyOrders()).rejects.toThrow(BUYER_INACTIVE_ERROR);
+  });
+
+  it("cannot read one of their orders", async () => {
+    await expect(getMyOrder(String(new mongoose.Types.ObjectId()))).rejects.toThrow(
+      BUYER_INACTIVE_ERROR,
+    );
+  });
+
+  it("cannot read their balance", async () => {
+    await expect(myDueBalance()).rejects.toThrow(BUYER_INACTIVE_ERROR);
+  });
+
+  it("cannot read their ledger", async () => {
+    await expect(myLedger()).rejects.toThrow(BUYER_INACTIVE_ERROR);
+  });
+
+  it("cannot read one of their invoices", async () => {
+    await expect(getMySale(String(new mongoose.Types.ObjectId()))).rejects.toThrow(
+      BUYER_INACTIVE_ERROR,
+    );
+  });
+
+  // submitOrder already re-read `active` itself, so this one passed before
+  // the guard existed too. Kept as a regression guard, not as evidence.
+  it("cannot place an order", async () => {
+    const medicine = await makeMedicine();
+    await expect(
+      unwrap(submitOrder([{ medicineId: String(medicine._id), boxes: 1, patas: 0 }])),
+    ).rejects.toThrow(BUYER_INACTIVE_ERROR);
+  });
+
+  it("cannot cancel an order they really do own", async () => {
+    // A real pending order of theirs, so the refusal can only come from the
+    // session being revoked — a made-up id would fail as "not found" with or
+    // without the guard and prove nothing.
+    const order = await OrderModel.create({
+      buyerId: new mongoose.Types.ObjectId(BUYER_USER_ID),
+      buyerName: "Karim Uddin",
+      items: [
+        {
+          medicineName: "Napa 500mg",
+          boxes: 1,
+          patas: 0,
+          wholesaleBoxPricePaisa: 12000,
+          wholesalePataPricePaisa: 1300,
+        },
+      ],
+      status: "pending",
+    });
+
+    await expect(unwrap(cancelMyOrder(String(order._id)))).rejects.toThrow(
+      BUYER_INACTIVE_ERROR,
+    );
+    expect((await OrderModel.findById(order._id))!.status).toBe("pending");
+  });
+});
+
+describe("setBuyerActive and setBuyerPassword end existing sessions", () => {
+  it("stops the session when the owner switches the account off", async () => {
+    const buyer = await makeSessionBuyer();
+    setSessionCookie(cookieStore, await buyerToken());
+    await expect(listMyOrders()).resolves.toEqual([]);
+
+    setSessionCookie(cookieStore, await adminToken());
+    unwrapVoid(await setBuyerActive(String(buyer._id), false));
+
+    setSessionCookie(cookieStore, await buyerToken());
+    await expect(listMyOrders()).rejects.toThrow(BUYER_INACTIVE_ERROR);
+  });
+
+  it("does not revive an old session when the account is switched back on", async () => {
+    const buyer = await makeSessionBuyer();
+    const tokenFromBefore = await buyerToken();
+
+    setSessionCookie(cookieStore, await adminToken());
+    unwrapVoid(await setBuyerActive(String(buyer._id), false));
+    unwrapVoid(await setBuyerActive(String(buyer._id), true));
+
+    setSessionCookie(cookieStore, tokenFromBefore);
+    await expect(listMyOrders()).rejects.toThrow(BUYER_SESSION_STALE_ERROR);
+  });
+
+  it("stops the session when the owner resets the password", async () => {
+    const buyer = await makeSessionBuyer();
+    const tokenFromBefore = await buyerToken();
+
+    // Resetting a password because a session is in the wrong hands has to
+    // end that session, not merely change what the next login needs.
+    setSessionCookie(cookieStore, await adminToken());
+    unwrapVoid(await setBuyerPassword(String(buyer._id), "brand-new-pass"));
+
+    setSessionCookie(cookieStore, tokenFromBefore);
+    await expect(listMyOrders()).rejects.toThrow(BUYER_SESSION_STALE_ERROR);
   });
 });
