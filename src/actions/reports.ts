@@ -4,7 +4,6 @@ import { connectDb } from "@/lib/db";
 import { requireAdminAction } from "@/lib/session";
 import { dhakaRangeBounds } from "@/lib/dhakaDate";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
-import { MedicineModel, type MedicineDoc } from "@/models/Medicine";
 import {
   REPORT_PAGE_SIZE,
   normalizePage,
@@ -27,6 +26,12 @@ export type SalesReportRow = {
   duePaisa: number;
   status: "active" | "cancelled";
   cancelled: boolean;
+  /**
+   * False when a line sold something whose buying rate had not been entered
+   * yet, so this row's cost — and the profit derived from it — is missing a
+   * piece rather than being zero.
+   */
+  costKnown: boolean;
 };
 
 export type SalesReportTotals = {
@@ -73,6 +78,12 @@ export type SalesReport = {
   grandProfitPaisa: number;
   grandDuePaisa: number;
   cancelledCount: number;
+  /**
+   * Active sales in the range carrying at least one line with no recorded
+   * cost. Above zero, every profit figure here is an over-estimate, and the
+   * screen says so.
+   */
+  unknownCostCount: number;
 };
 
 /**
@@ -94,13 +105,14 @@ export type SalesReport = {
  * this, a full-year range assembled every sale in it — items included — and
  * serialised the lot to a phone over mobile data.
  *
- * What is still O(range) is this function's own scan: the totals need every
- * sale, and the cost of a line whose costPaisa was never snapshotted is
- * recovered by reading the medicine back, which no aggregation can do without
- * a $lookup and a second definition of "profit". One definition that scans is
- * worth more than two that disagree, so the scan stays — bounded by a lean
- * projection — until the snapshot backfill that would make costPaisa always
- * present lets the totals move into MongoDB wholesale.
+ * Cost comes only from what each line snapshotted at sale time. Where a line
+ * has none, the cost is not guessed and the row is flagged instead — see
+ * costKnown.
+ *
+ * What is still O(range) is this function's own scan: the summary totals need
+ * every sale in it, not just the page. Now that cost is a plain sum of
+ * per-line numbers, moving those totals into an aggregation is a small change
+ * whenever the range sizes justify it.
  */
 export async function salesReport(input: SalesReportInput): Promise<SalesReport> {
   await requireAdminAction();
@@ -123,60 +135,40 @@ export async function salesReport(input: SalesReportInput): Promise<SalesReport>
     createdAt: { $gte: start, $lt: end },
   })
     .select(
-      "orderId createdAt type invoiceNo buyerName buyerPhone totalPaisa paidPaisa duePaisa status items.costPaisa items.medicineId items.quantity items.leftoverPatas",
+      "orderId createdAt type invoiceNo buyerName buyerPhone totalPaisa paidPaisa duePaisa status items.costPaisa items.quantity items.leftoverPatas",
     )
     .sort({ createdAt: -1 })
     .lean<SaleDoc[]>();
-
-  // Collect medicine IDs for medicines whose cost wasn't snapshotted
-  const medicineIdsToFetch = new Set<string>();
-  for (const sale of sales) {
-    for (const item of sale.items) {
-      if (item.medicineId && (item.costPaisa === undefined || item.costPaisa === 0)) {
-        medicineIdsToFetch.add(item.medicineId.toString());
-      }
-    }
-  }
-
-  const medicineMap = new Map<string, MedicineDoc>();
-  if (medicineIdsToFetch.size > 0) {
-    const meds = await MedicineModel.find({
-      _id: { $in: Array.from(medicineIdsToFetch) },
-    }).lean<MedicineDoc[]>();
-    for (const med of meds) {
-      medicineMap.set(med._id.toString(), med);
-    }
-  }
 
   const rows: SalesReportRow[] = sales.map((sale) => {
     const totalPaisa = Number(sale.totalPaisa) || 0;
     const paidPaisa = Number(sale.paidPaisa) || 0;
     const duePaisa = Number(sale.duePaisa) || 0;
 
-    const costPaisa = (sale.items || []).reduce((total, item) => {
-      const snapshottedCost = Number(item.costPaisa);
-      if (Number.isFinite(snapshottedCost) && snapshottedCost > 0) {
-        return total + snapshottedCost;
+    // Only what the line recorded at the time. This used to fall back to the
+    // medicine's *current* purchase price whenever a line had no cost of its
+    // own, which meant correcting a cost price today silently rewrote what
+    // last year's sales were reported to have earned. A figure that changes
+    // retroactively is worse than one that is plainly incomplete.
+    let costPaisa = 0;
+    let linesWithoutCost = 0;
+    for (const item of sale.items || []) {
+      const snapshotted = Number(item.costPaisa);
+      if (Number.isFinite(snapshotted) && snapshotted > 0) {
+        costPaisa += snapshotted;
+      } else if ((Number(item.quantity) || 0) > 0 || (Number(item.leftoverPatas) || 0) > 0) {
+        // A line that sold something but recorded no cost — the medicine's
+        // buying rate had not been entered when it was sold. A zero-quantity
+        // line costing nothing is not the same thing and is not counted.
+        linesWithoutCost += 1;
       }
-      if (item.medicineId) {
-        const med = medicineMap.get(item.medicineId.toString());
-        if (med) {
-          const purchasePrice = Number(med.purchasePricePaisa) || 0;
-          if (purchasePrice > 0) {
-            const patasPerBox = Number(med.patasPerBox) > 0 ? Number(med.patasPerBox) : 10;
-            const boxes = Number(item.quantity) || 0;
-            const leftoverPatas = Number(item.leftoverPatas) || 0;
-            const itemCost =
-              boxes * purchasePrice +
-              Math.round((leftoverPatas * purchasePrice) / patasPerBox);
-            return total + (Number.isFinite(itemCost) ? itemCost : 0);
-          }
-        }
-      }
-      return total;
-    }, 0);
+    }
 
     const safeCost = Number.isFinite(costPaisa) ? costPaisa : 0;
+    // Unknown cost counts as zero, so profit on such a line is its whole
+    // revenue. That overstates it, which is why costKnown travels with the
+    // row: the screen has to be able to say the number is incomplete rather
+    // than let it be read as fact.
     const profitPaisa = totalPaisa - safeCost;
 
     return {
@@ -194,6 +186,7 @@ export async function salesReport(input: SalesReportInput): Promise<SalesReport>
       duePaisa,
       status: sale.status as "active" | "cancelled",
       cancelled: sale.status === "cancelled",
+      costKnown: linesWithoutCost === 0,
     };
   });
 
@@ -278,5 +271,6 @@ export async function salesReport(input: SalesReportInput): Promise<SalesReport>
     grandProfitPaisa: (retail.profitPaisa || 0) + (wholesale.profitPaisa || 0),
     grandDuePaisa: (retail.duePaisa || 0) + (wholesale.duePaisa || 0),
     cancelledCount: rows.length - active.length,
+    unknownCostCount: active.filter((row) => !row.costKnown).length,
   };
 }

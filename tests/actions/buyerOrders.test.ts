@@ -430,7 +430,7 @@ describe("searchMedicinesForBuyer", () => {
     ]);
   });
 
-  it("reports low availability without revealing the number", async () => {
+  it("reports availability without revealing the number", async () => {
     await makeSessionBuyer();
     await makeMedicine({ name: "LowMed", stockPatas: 10, lowStockThreshold: 20 });
     await makeMedicine({ name: "OutMed", stockPatas: 0, lowStockThreshold: 20 });
@@ -438,7 +438,11 @@ describe("searchMedicinesForBuyer", () => {
     const low = await searchMedicinesForBuyer("LowMed");
     const out = await searchMedicinesForBuyer("OutMed");
     expect(low[0].availability).toBe("low");
-    expect(out[0].availability).toBe("low");
+    // Empty reads as out. It used to read as low, which told a buyer there
+    // was some left when there was none.
+    expect(out[0].availability).toBe("out");
+    // Either way the count itself never leaves the server.
+    expect(out[0]).not.toHaveProperty("stockPatas");
   });
 
   it("matches by generic name too, and returns active medicines for a blank query", async () => {

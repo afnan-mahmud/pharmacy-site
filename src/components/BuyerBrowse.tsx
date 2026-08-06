@@ -196,10 +196,14 @@ function ProductTableRow({
   onPatasChange: (v: number) => void;
   onToggle: (checked: boolean) => void;
 }) {
-  const out = medicine.availability === "out";
-
+  // Out of stock is shown, not enforced: the red badge says so, and the
+  // controls stay live because ordering something the shop has run out of is
+  // a normal request for the owner to fill from the next delivery. Dimming
+  // and disabling the row — which is what this did while `out` was
+  // unreachable and therefore never actually happened — would turn a label
+  // into a refusal nobody decided on.
   return (
-    <div className={`grid grid-cols-[1fr_65px_65px_65px_40px] items-center gap-1 p-2 ${out ? "opacity-60" : ""}`}>
+    <div className="grid grid-cols-[1fr_65px_65px_65px_40px] items-center gap-1 p-2">
       {/* Product Details */}
       <div className="min-w-0 pr-1">
         <div className="break-words font-display text-[13px] font-extrabold uppercase text-brand-strong leading-snug">
@@ -220,7 +224,6 @@ function ProductTableRow({
       <div className={`flex items-center justify-center rounded-lg border ${inCart ? "border-brand" : "border-line"} h-[32px] w-full px-0.5`}>
         <button
           type="button"
-          disabled={out}
           onClick={() => onBoxesChange(boxes - 1)}
           className={`grid h-full flex-1 place-items-center text-sm font-bold ${inCart ? "text-brand" : "text-muted"} disabled:opacity-50`}
         >
@@ -229,14 +232,12 @@ function ProductTableRow({
         <input
           type="number"
           min={0}
-          disabled={out}
           value={boxes}
           onChange={(e) => onBoxesChange(Number(e.target.value))}
           className={`w-5 border-0 bg-transparent p-0 text-center text-xs font-bold focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none ${inCart ? "text-ink" : "text-muted"}`}
         />
         <button
           type="button"
-          disabled={out}
           onClick={() => onBoxesChange(boxes + 1)}
           className={`grid h-full flex-1 place-items-center text-sm font-bold ${inCart ? "text-brand" : "text-muted"} disabled:opacity-50`}
         >
@@ -248,7 +249,6 @@ function ProductTableRow({
       <div className={`flex items-center justify-center rounded-lg border ${inCart ? "border-brand" : "border-line"} h-[32px] w-full px-0.5`}>
         <button
           type="button"
-          disabled={out}
           onClick={() => onPatasChange(patas - 1)}
           className={`grid h-full flex-1 place-items-center text-sm font-bold ${inCart ? "text-brand" : "text-muted"} disabled:opacity-50`}
         >
@@ -257,14 +257,12 @@ function ProductTableRow({
         <input
           type="number"
           min={0}
-          disabled={out}
           value={patas}
           onChange={(e) => onPatasChange(Number(e.target.value))}
           className={`w-5 border-0 bg-transparent p-0 text-center text-xs font-bold focus:ring-0 [&::-webkit-inner-spin-button]:appearance-none ${inCart ? "text-ink" : "text-muted"}`}
         />
         <button
           type="button"
-          disabled={out}
           onClick={() => onPatasChange(patas + 1)}
           className={`grid h-full flex-1 place-items-center text-sm font-bold ${inCart ? "text-brand" : "text-muted"} disabled:opacity-50`}
         >
@@ -286,7 +284,6 @@ function ProductTableRow({
       <div className="flex items-center justify-center">
         <input
           type="checkbox"
-          disabled={out}
           checked={inCart}
           onChange={(e) => onToggle(e.target.checked)}
           className="h-5 w-5 rounded border-line text-brand focus:ring-brand disabled:opacity-50"

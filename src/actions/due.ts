@@ -15,6 +15,22 @@ import { RetailPaymentModel, type RetailPaymentDoc } from "@/models/RetailPaymen
 import { actionResult, type ActionResult } from "@/lib/actionResult";
 import { splitDueTotals } from "@/lib/dueDisplay";
 
+const taka = (paisa: number) =>
+  new Intl.NumberFormat("en-BD").format(paisa / 100);
+
+/**
+ * The message for an over-payment that was not asked for. Names the credit it
+ * would leave rather than just refusing, so the owner can tell a typo from a
+ * genuine advance and re-send it as one.
+ */
+function advanceRefusal(amountPaisa: number, duePaisa: number): string {
+  const excess = amountPaisa - Math.max(duePaisa, 0);
+  if (duePaisa <= 0) {
+    return `Ei buyer-er kono baki nei — ${taka(amountPaisa)} ৳ nile puro taka joma hishebe thakbe. Agroim hole "agroim joma" tick korun.`;
+  }
+  return `Baki ${taka(duePaisa)} ৳, kintu joma ${taka(amountPaisa)} ৳ — ${taka(excess)} ৳ beshi joma hoye thakbe. Agroim hole "agroim joma" tick korun.`;
+}
+
 export type DueRow = {
   buyerId: string;
   buyerName: string;
@@ -218,10 +234,24 @@ export async function buyerLedger(
   };
 }
 
+/**
+ * Money taken beyond what is currently owed is an advance, and has to be
+ * possible: a buyer settling up before a delivery, or handing over a round
+ * figure, is ordinary. Refusing it outright — which is what `due <= 0` and
+ * `amountPaisa > due` did between them — meant the owner simply could not
+ * record cash they were holding, and the ledger stopped matching the drawer.
+ *
+ * The guard is kept as a default rather than dropped, because it is also what
+ * catches a typed 5000 where 500 was meant. `allowAdvance` is the caller
+ * saying the excess is deliberate; the ledger screens ask before sending it.
+ * A negative balance is already a first-class state everywhere downstream —
+ * see dueDisplay's "Joma ache" and the credit that cancelSale now leaves.
+ */
 export async function recordPayment(
   buyerId: string,
   amountTaka: number,
   note: string,
+  allowAdvance = false,
 ): Promise<ActionResult<void>> {
   return actionResult(async () => {
     const adminSession = await requireAdminAction();
@@ -273,23 +303,8 @@ export async function recordPayment(
         // committed state, not a stale value captured before the retry.
         const due = await computeBuyerDue(buyerId, session);
 
-        // due <= 0 means the buyer owes nothing right now — either square,
-        // or already in credit from a cancelled paid-for sale. Either way
-        // there is nothing to pay against, so say that plainly instead of
-        // falling through to the "more than X ৳" message below, which would
-        // otherwise put a negative or zero taka figure in front of the
-        // pharmacist.
-        if (due <= 0) {
-          throw new Error(
-            due < 0
-              ? `Ei buyer er kono baki nei — uni borong ${new Intl.NumberFormat("en-BD").format(-due / 100)} ৳ joma ache, notun kore joma neoya lagbe na`
-              : "Ei buyer er kono baki nei, joma neoya lagbe na",
-          );
-        }
-        if (amountPaisa > due) {
-          throw new Error(
-            `Joma ${new Intl.NumberFormat("en-BD").format(amountPaisa / 100)} ৳ baki ${new Intl.NumberFormat("en-BD").format(due / 100)} ৳ er cheye beshi hote parbe na`,
-          );
+        if (!allowAdvance && amountPaisa > due) {
+          throw new Error(advanceRefusal(amountPaisa, due));
         }
 
         await PaymentModel.create(
@@ -415,6 +430,7 @@ export async function recordRetailPayment(
   phone: string,
   amountTaka: number,
   note: string,
+  allowAdvance = false,
 ): Promise<ActionResult<void>> {
   return actionResult(async () => {
     const adminSession = await requireAdminAction();
@@ -445,17 +461,8 @@ export async function recordRetailPayment(
 
         const due = await computeRetailDue(trimmedPhone, session);
 
-        if (due <= 0) {
-          throw new Error(
-            due < 0
-              ? `Ei customer-er kono baki nei — uni borong ${new Intl.NumberFormat("en-BD").format(-due / 100)} ৳ joma ache, notun kore joma neoya lagbe na`
-              : "Ei customer-er kono baki nei, joma neoya lagbe na",
-          );
-        }
-        if (amountPaisa > due) {
-          throw new Error(
-            `Joma ${new Intl.NumberFormat("en-BD").format(amountPaisa / 100)} ৳ baki ${new Intl.NumberFormat("en-BD").format(due / 100)} ৳ er cheye beshi hote parbe na`,
-          );
+        if (!allowAdvance && amountPaisa > due) {
+          throw new Error(advanceRefusal(amountPaisa, due));
         }
 
         await RetailPaymentModel.create(

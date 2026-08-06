@@ -110,7 +110,7 @@ describe("salesReport", () => {
     expect(report.rows[0].profitPaisa).toBe(800);
   });
 
-  it("computes cost/profit from Medicine purchasePricePaisa when cost is not snapshotted", async () => {
+  it("does not price an uncosted line from the medicine's rate today", async () => {
     const med = await MedicineModel.create({
       _id: MEDICINE_ID,
       name: "Napa Extra",
@@ -148,10 +148,85 @@ describe("salesReport", () => {
 
     const report = await salesReport({ fromDate: "2026-07-17", toDate: "2026-07-17" });
     expect(report.rows).toHaveLength(1);
-    expect(report.rows[0].costPaisa).toBe(1000);
-    expect(report.rows[0].profitPaisa).toBe(500);
-    expect(report.grandCostPaisa).toBe(1000);
-    expect(report.grandProfitPaisa).toBe(500);
+
+    // The medicine's purchase rate is 1000 today, but this line never
+    // recorded one. Reading it back would mean editing a cost price silently
+    // rewrote what past sales are reported to have earned — so the cost
+    // stays unknown, and the row says so instead.
+    expect(report.rows[0].costPaisa).toBe(0);
+    expect(report.rows[0].costKnown).toBe(false);
+    expect(report.grandCostPaisa).toBe(0);
+    expect(report.unknownCostCount).toBe(1);
+  });
+
+  it("does not change a past sale's profit when a cost price is corrected", async () => {
+    const med = await MedicineModel.create({
+      _id: MEDICINE_ID,
+      name: "Napa Extra",
+      nameLower: "napa extra",
+      form: "tablet",
+      patasPerBox: 10,
+      purchasePricePaisa: 1000,
+      wholesaleBoxPricePaisa: 1200,
+      wholesalePataPricePaisa: 120,
+      retailBoxPricePaisa: 1500,
+      retailPataPricePaisa: 150,
+      stockPatas: 100,
+      active: true,
+    });
+    await makeSale({
+      createdAt: new Date("2026-07-17T10:00:00Z"),
+      totalPaisa: 1500,
+      items: [
+        {
+          medicineId: med._id,
+          medicineName: med.name,
+          unit: "box" as const,
+          quantity: 1,
+          ratePaisa: 1500,
+          lineTotalPaisa: 1500,
+          patasDeducted: 10,
+          leftoverPatas: 0,
+          costPaisa: 900,
+        },
+      ],
+    });
+
+    const before = await salesReport({ fromDate: "2026-07-17", toDate: "2026-07-17" });
+    await MedicineModel.updateOne(
+      { _id: med._id },
+      { $set: { purchasePricePaisa: 1400 } },
+    );
+    const after = await salesReport({ fromDate: "2026-07-17", toDate: "2026-07-17" });
+
+    expect(before.grandProfitPaisa).toBe(600);
+    expect(after.grandProfitPaisa).toBe(600);
+    expect(after.unknownCostCount).toBe(0);
+  });
+
+  it("does not count a zero-quantity line as missing its cost", async () => {
+    // A line the owner could not supply costs nothing because nothing left
+    // the shelf — that is a known cost of zero, not an unknown one.
+    await makeSale({
+      createdAt: new Date("2026-07-17T10:00:00Z"),
+      totalPaisa: 0,
+      items: [
+        {
+          medicineId: MEDICINE_ID,
+          medicineName: "Napa",
+          unit: "box" as const,
+          quantity: 0,
+          ratePaisa: 1500,
+          lineTotalPaisa: 0,
+          patasDeducted: 0,
+          leftoverPatas: 0,
+        },
+      ],
+    });
+
+    const report = await salesReport({ fromDate: "2026-07-17", toDate: "2026-07-17" });
+    expect(report.unknownCostCount).toBe(0);
+    expect(report.rows[0].costKnown).toBe(true);
   });
 
   it("excludes a sale before the range", async () => {

@@ -30,6 +30,7 @@ export function RetailLedger({ phone, customerName, duePaisa, ledger, onClose }:
   const router = useRouter();
   const [payAmount, setPayAmount] = useState("");
   const [payNote, setPayNote] = useState("");
+  const [allowAdvance, setAllowAdvance] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [showPayForm, setShowPayForm] = useState(true);
@@ -76,18 +77,29 @@ export function RetailLedger({ phone, customerName, duePaisa, ledger, onClose }:
     return row;
   });
 
+  // Paisa above what is currently owed. A negative balance is credit
+  // already held, so the whole amount would be an advance.
+  const excess =
+    Math.round((Number(payAmount) || 0) * 100) - Math.max(duePaisa, 0);
+
   async function handlePayment(e: React.FormEvent) {
     e.preventDefault();
     setError("");
     setBusy(true);
     try {
-      const result = await recordRetailPayment(phone, Number(payAmount), payNote);
+      const result = await recordRetailPayment(
+        phone,
+        Number(payAmount),
+        payNote,
+        allowAdvance,
+      );
       if (!result.ok) {
         setError(result.error);
         return;
       }
       setPayAmount("");
       setPayNote("");
+      setAllowAdvance(false);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "জমা যোগ করা যায়নি");
@@ -206,6 +218,26 @@ export function RetailLedger({ phone, customerName, duePaisa, ledger, onClose }:
                 {busy ? "যোগ হচ্ছে..." : "✓ জমা এন্ট্রি করুন"}
               </button>
             </div>
+
+
+            {/* An amount above the balance is either a typo or a deliberate
+                advance, and only the person at the counter knows which. The
+                server refuses the excess unless this says otherwise, so the
+                tick is the answer rather than a formality. */}
+            {excess > 0 && (
+              <label className="flex items-start gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-semibold text-amber-900">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={allowAdvance}
+                  onChange={(e) => setAllowAdvance(e.target.checked)}
+                />
+                <span>
+                  অগ্রিম জমা — {formatTaka(excess)} বাকির বেশি, এটা জমা হিসেবে
+                  থাকবে
+                </span>
+              </label>
+            )}
 
             {error && <p role="alert" className={errorBox}>{error}</p>}
           </form>

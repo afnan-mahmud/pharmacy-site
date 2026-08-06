@@ -737,6 +737,16 @@ export function ReportView({
           <div className="mt-1 text-[10px] sm:text-xs font-medium text-emerald-800/80">
             মার্জিন (বিক্রি - ক্রয়)
           </div>
+          {/* Cost is only ever what a line recorded when it was sold, so a
+              medicine sold before its buying rate was entered contributes no
+              cost at all and reads as pure profit. Saying which sales those
+              are is the difference between an incomplete number and a wrong
+              one. */}
+          {report.unknownCostCount > 0 && (
+            <div className="mt-2 rounded-xl bg-amber-50 border border-amber-200 px-2.5 py-1.5 text-[10px] sm:text-[11px] font-semibold text-amber-900">
+              {report.unknownCostCount} টি বিক্রির ক্রয়মূল্য দেওয়া নেই — আসল লাভ এর চেয়ে কম
+            </div>
+          )}
         </div>
 
         {/* 4. মোট বাকি (Unpaid Due) */}

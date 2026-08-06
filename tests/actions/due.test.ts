@@ -17,6 +17,8 @@ import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { RetailCustomerModel } from "@/models/RetailCustomer";
 import { RetailPaymentModel } from "@/models/RetailPayment";
 import { splitDueTotals } from "@/lib/dueDisplay";
+import { computeBuyerDue } from "@/lib/dueComputation";
+import { computeRetailDue } from "@/lib/retailDueComputation";
 import {
   listBuyerDues,
   buyerDueTotals,
@@ -416,10 +418,16 @@ describe("recordPayment", () => {
       paidPaisa: 10000, // Due 2000
     }));
 
-    // 20 taka (2000 paisa) is allowed. 20.5 taka (2050 paisa) is not.
+    // Still refused by default — this is the guard that catches a typed 25
+    // where 2.5 was meant. What changed is that it can now be overridden
+    // deliberately rather than making an advance impossible.
     await expect(unwrap(recordPayment(buyer._id, 25, "test"))).rejects.toThrow(
-      "hote parbe na"
+      "beshi joma hoye thakbe",
     );
+
+    // Said deliberately, it goes through and the excess stands as credit.
+    await unwrap(recordPayment(buyer._id, 25, "agroim", true));
+    expect(await computeBuyerDue(buyer._id)).toBe(-500);
   });
 
   it("rejects an invalid buyer", async () => {
@@ -444,6 +452,12 @@ describe("recordPayment", () => {
     await expect(unwrap(recordPayment(buyer._id, 10, "test"))).rejects.toThrow(
       "kono baki nei",
     );
+
+    // But the owner can still take money from a buyer who owes nothing —
+    // paying ahead of a delivery is ordinary, and refusing it outright left
+    // cash in the drawer that the ledger did not know about.
+    await unwrap(recordPayment(buyer._id, 10, "agroim", true));
+    expect(await computeBuyerDue(buyer._id)).toBe(-121000);
   });
 
   it("rejects an unauthenticated caller", async () => {
@@ -607,7 +621,10 @@ describe("recordRetailPayment", () => {
     await SaleModel.create(retailSale({ duePaisa: 2000, totalPaisa: 2000 }));
     await expect(
       unwrap(recordRetailPayment("01711111111", 25, "test")),
-    ).rejects.toThrow("hote parbe na");
+    ).rejects.toThrow("beshi joma hoye thakbe");
+
+    await unwrap(recordRetailPayment("01711111111", 25, "agroim", true));
+    expect(await computeRetailDue("01711111111")).toBe(-500);
   });
 
   it("rejects any payment when the customer has no baki, with a clear message for credit", async () => {
@@ -618,6 +635,9 @@ describe("recordRetailPayment", () => {
     await expect(
       unwrap(recordRetailPayment("01711111111", 10, "test")),
     ).rejects.toThrow("kono baki nei");
+
+    await unwrap(recordRetailPayment("01711111111", 10, "agroim", true));
+    expect(await computeRetailDue("01711111111")).toBe(-1000);
   });
 
   it("rejects an unauthenticated caller", async () => {

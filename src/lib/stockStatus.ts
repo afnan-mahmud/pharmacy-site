@@ -19,8 +19,17 @@ export function stockStatus(
   stockPatas: number,
   lowStockThreshold: number,
 ): StockStatus {
-  // Even if stock is negative or 0, we show it as low stock and allow ordering
-  if (stockPatas <= 0) return "low";
+  // Nothing on the shelf reads as "out", including the negative stock a sale
+  // is allowed to leave behind (see src/lib/stockTransaction.ts). This used
+  // to return "low" here, which made the "out" branch — and the "Out of
+  // Stock" label that goes with it — unreachable: a buyer saw "Low Stock"
+  // against a medicine there were minus twenty-five patas of.
+  //
+  // Saying so does not stop them ordering it. The buyer portal treats this
+  // as a label, not a gate, so an out-of-stock line is still a request the
+  // owner can fill from the next delivery — which was the intent behind the
+  // old behaviour, just achieved by mislabelling instead.
+  if (stockPatas <= 0) return "out";
   if (lowStockThreshold > 0 && stockPatas <= lowStockThreshold) return "low";
   return "in";
 }
