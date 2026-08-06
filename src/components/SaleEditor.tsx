@@ -57,6 +57,21 @@ export function SaleEditor({
       const isCustom = !line.medicineId;
       const id = isCustom ? `custom_req_${customCounter++}` : String(line.medicineId);
       const current = line.medicineId ? currentPrices[String(line.medicineId)] : undefined;
+      // The rate this line was actually invoiced at, not the catalogue's
+      // rate today — the server re-bills the snapshot (see snapshotRatesFor
+      // in src/actions/sales.ts), so showing anything else here would put a
+      // preview total on screen that the saved invoice then contradicts.
+      // The pata rate is backed out of the line total the same way the
+      // server does, for lines saved before it was stored on its own.
+      const patasPortion = line.lineTotalPaisa - line.quantity * line.ratePaisa;
+      const snapshotPataRate =
+        line.pataRatePaisa > 0
+          ? line.pataRatePaisa
+          : line.leftoverPatas > 0 &&
+              patasPortion >= 0 &&
+              patasPortion % line.leftoverPatas === 0
+            ? patasPortion / line.leftoverPatas
+            : (current?.pataPricePaisa ?? 0);
       return {
         id,
         medicineId: line.medicineId ? String(line.medicineId) : undefined,
@@ -64,8 +79,8 @@ export function SaleEditor({
         medicineName: line.medicineName,
         boxes: line.quantity,
         patas: line.leftoverPatas ?? 0,
-        boxPricePaisa: current?.boxPricePaisa ?? line.ratePaisa,
-        pataPricePaisa: current?.pataPricePaisa ?? line.ratePaisa,
+        boxPricePaisa: line.ratePaisa,
+        pataPricePaisa: isCustom ? line.ratePaisa : snapshotPataRate,
         // The saved line stores the whole line's cost; the editor works in
         // per-box terms, so divide back out. A zero-quantity line has no
         // per-box cost to recover — it also cost nothing.
@@ -509,6 +524,23 @@ export function SaleEditor({
                         {" · "}
                         {formatTaka(item.pataPricePaisa)}
                         <span className="text-xs text-muted font-normal">/{labels.inner}</span>
+                        {/* An existing line keeps the rate it was invoiced
+                            at. Say so when the catalogue has moved since,
+                            so the owner is not left wondering why the
+                            screen disagrees with the medicines list. */}
+                        {!item.isAdded &&
+                          item.medicineId &&
+                          currentPrices[item.medicineId] &&
+                          currentPrices[item.medicineId].boxPricePaisa !==
+                            item.boxPricePaisa && (
+                            <div className="mt-0.5 text-[11px] font-medium text-muted">
+                              বিলের পুরনো দর · আজকের দর{" "}
+                              {formatTaka(
+                                currentPrices[item.medicineId].boxPricePaisa,
+                              )}
+                              /{labels.outer}
+                            </div>
+                          )}
                       </div>
                     )}
                   </div>

@@ -1323,3 +1323,257 @@ describe("searchRetailCustomers", () => {
     await expect(searchRetailCustomers("0171")).rejects.toThrow(ADMIN_ONLY_ERROR);
   });
 });
+
+/**
+ * The customer is holding a printed invoice. Correcting one line's quantity
+ * must not silently move every other line to today's catalogue rate — before
+ * this, an edit rebuilt every line from the live medicine and discarded the
+ * ratePaisa the schema snapshots for exactly this reason.
+ */
+describe("updateSale bills the price the invoice already says", () => {
+  async function saleThenPriceRise() {
+    const medicine = await makeMedicine({}, 500);
+    const sale = await unwrap(recordWholesaleSale({
+      buyerId: (await makeBuyer())._id,
+      items: [{ medicineId: medicine._id, boxes: 5, patas: 0 }],
+      discountPercent: 0,
+      paidPaisa: 0,
+    }));
+    expect(sale.totalPaisa).toBe(60000); // 5 x 12000
+
+    // The supplier raises the rate a month later.
+    await MedicineModel.updateOne(
+      { _id: medicine._id },
+      { $set: { wholesaleBoxPricePaisa: 20000, wholesalePataPricePaisa: 2100 } },
+    );
+    return { medicine, sale };
+  }
+
+  it("keeps the old rate when a quantity is corrected", async () => {
+    const { medicine, sale } = await saleThenPriceRise();
+
+    const edited = await unwrap(updateSale({
+      saleId: sale._id,
+      items: [{ medicineId: medicine._id, boxes: 6, patas: 0 }],
+      discount: percent(0),
+      paidPaisa: 0,
+    }));
+
+    // 6 boxes at the invoiced 12000, not at today's 20000.
+    expect(edited.items[0]!.ratePaisa).toBe(12000);
+    expect(edited.totalPaisa).toBe(72000);
+  });
+
+  it("does not move an untouched line when another one is corrected", async () => {
+    const a = await makeMedicine({}, 500);
+    const b = await makeMedicine({ name: "Ace 500" }, 500);
+    const sale = await unwrap(recordWholesaleSale({
+      buyerId: (await makeBuyer())._id,
+      items: [
+        { medicineId: a._id, boxes: 1, patas: 0 },
+        { medicineId: b._id, boxes: 1, patas: 0 },
+      ],
+      discountPercent: 0,
+      paidPaisa: 0,
+    }));
+    await MedicineModel.updateOne(
+      { _id: b._id },
+      { $set: { wholesaleBoxPricePaisa: 99000 } },
+    );
+
+    const edited = await unwrap(updateSale({
+      saleId: sale._id,
+      items: [
+        { medicineId: a._id, boxes: 2, patas: 0 },
+        { medicineId: b._id, boxes: 1, patas: 0 },
+      ],
+      discount: percent(0),
+      paidPaisa: 0,
+    }));
+
+    const bLine = edited.items.find((l) => String(l.medicineId) === b._id);
+    expect(bLine!.ratePaisa).toBe(12000);
+    expect(edited.totalPaisa).toBe(36000); // 2x12000 + 1x12000
+  });
+
+  it("keeps the old pata rate on a mixed box+pata line", async () => {
+    const medicine = await makeMedicine({}, 500);
+    const sale = await unwrap(recordWholesaleSale({
+      buyerId: (await makeBuyer())._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 3 }],
+      discountPercent: 0,
+      paidPaisa: 0,
+    }));
+    expect(sale.totalPaisa).toBe(12000 + 3 * 1300);
+
+    await MedicineModel.updateOne(
+      { _id: medicine._id },
+      { $set: { wholesaleBoxPricePaisa: 20000, wholesalePataPricePaisa: 2100 } },
+    );
+
+    const edited = await unwrap(updateSale({
+      saleId: sale._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 5 }],
+      discount: percent(0),
+      paidPaisa: 0,
+    }));
+
+    expect(edited.items[0]!.ratePaisa).toBe(12000);
+    expect(edited.items[0]!.pataRatePaisa).toBe(1300);
+    expect(edited.totalPaisa).toBe(12000 + 5 * 1300);
+  });
+
+  it("recovers the pata rate of a line saved before it was stored", async () => {
+    const medicine = await makeMedicine({}, 500);
+    const sale = await unwrap(recordWholesaleSale({
+      buyerId: (await makeBuyer())._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 3 }],
+      discountPercent: 0,
+      paidPaisa: 0,
+    }));
+
+    // Simulate a legacy line: the rate was never snapshotted on its own, so
+    // it has to be backed out of the line total.
+    await SaleModel.updateOne(
+      { _id: sale._id },
+      { $set: { "items.0.pataRatePaisa": 0 } },
+    );
+    await MedicineModel.updateOne(
+      { _id: medicine._id },
+      { $set: { wholesalePataPricePaisa: 2100 } },
+    );
+
+    const edited = await unwrap(updateSale({
+      saleId: sale._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 4 }],
+      discount: percent(0),
+      paidPaisa: 0,
+    }));
+
+    expect(edited.items[0]!.pataRatePaisa).toBe(1300);
+    expect(edited.totalPaisa).toBe(12000 + 4 * 1300);
+  });
+
+  it("bills patas added to a whole-box line at that sale's own rate", async () => {
+    const { medicine, sale } = await saleThenPriceRise();
+
+    // The line sold no patas, but the rate was snapshotted anyway — so the
+    // whole invoice stays priced as of the day it was issued rather than one
+    // line ending up half-old and half-new.
+    const edited = await unwrap(updateSale({
+      saleId: sale._id,
+      items: [{ medicineId: medicine._id, boxes: 5, patas: 2 }],
+      discount: percent(0),
+      paidPaisa: 0,
+    }));
+
+    expect(edited.items[0]!.ratePaisa).toBe(12000);
+    expect(edited.items[0]!.pataRatePaisa).toBe(1300);
+    expect(edited.totalPaisa).toBe(60000 + 2 * 1300);
+  });
+
+  it("falls back to today's pata rate only for a legacy whole-box line", async () => {
+    const { medicine, sale } = await saleThenPriceRise();
+
+    // A line written before pataRatePaisa existed: no stored rate, and no
+    // patas sold to back one out of. Today's rate is the only number left.
+    await SaleModel.updateOne(
+      { _id: sale._id },
+      { $set: { "items.0.pataRatePaisa": 0 } },
+    );
+
+    const edited = await unwrap(updateSale({
+      saleId: sale._id,
+      items: [{ medicineId: medicine._id, boxes: 5, patas: 2 }],
+      discount: percent(0),
+      paidPaisa: 0,
+    }));
+
+    // The box rate is still the invoiced one — only the unrecoverable leg
+    // falls back.
+    expect(edited.items[0]!.ratePaisa).toBe(12000);
+    expect(edited.items[0]!.pataRatePaisa).toBe(2100);
+    expect(edited.totalPaisa).toBe(60000 + 2 * 2100);
+  });
+
+  it("prices a newly added line at today's rate", async () => {
+    const { medicine, sale } = await saleThenPriceRise();
+    const added = await makeMedicine({ name: "Seclo 20" }, 500);
+    await MedicineModel.updateOne(
+      { _id: added._id },
+      { $set: { wholesaleBoxPricePaisa: 45000 } },
+    );
+
+    const edited = await unwrap(updateSale({
+      saleId: sale._id,
+      items: [
+        { medicineId: medicine._id, boxes: 5, patas: 0 },
+        { medicineId: added._id, boxes: 1, patas: 0 },
+      ],
+      discount: percent(0),
+      paidPaisa: 0,
+    }));
+
+    const addedLine = edited.items.find((l) => String(l.medicineId) === added._id);
+    expect(addedLine!.ratePaisa).toBe(45000);
+    // The pre-existing line is untouched by the addition.
+    expect(edited.items[0]!.ratePaisa).toBe(12000);
+    expect(edited.totalPaisa).toBe(60000 + 45000);
+  });
+
+  it("re-prices a line at today's rate once it is removed and added back", async () => {
+    const { medicine, sale } = await saleThenPriceRise();
+
+    // Drop the line entirely, replacing it with a custom placeholder.
+    await unwrap(updateSale({
+      saleId: sale._id,
+      items: [{ customName: "adjustment", customPricePaisa: 100, boxes: 1, patas: 0 }],
+      discount: percent(0),
+      paidPaisa: 0,
+    }));
+
+    // Adding it back is the owner's explicit way to bill the new rate.
+    const edited = await unwrap(updateSale({
+      saleId: sale._id,
+      items: [{ medicineId: medicine._id, boxes: 5, patas: 0 }],
+      discount: percent(0),
+      paidPaisa: 0,
+    }));
+
+    expect(edited.items[0]!.ratePaisa).toBe(20000);
+    expect(edited.totalPaisa).toBe(100000);
+  });
+
+  it("keeps a custom line's own price through an edit", async () => {
+    const sale = await unwrap(recordRetailSale({
+      items: [{ customName: "Syringe", customPricePaisa: 2500, boxes: 2, patas: 0 }],
+      customerName: "Walk-in",
+      discount: percent(0),
+      paidPaisa: 5000,
+    }));
+
+    const edited = await unwrap(updateSale({
+      saleId: sale._id,
+      items: [{ customName: "Syringe", customPricePaisa: 2500, boxes: 3, patas: 0 }],
+      discount: percent(0),
+      paidPaisa: 7500,
+    }));
+
+    expect(edited.items[0]!.ratePaisa).toBe(2500);
+    expect(edited.totalPaisa).toBe(7500);
+  });
+
+  it("snapshots the pata rate on a newly recorded sale", async () => {
+    const medicine = await makeMedicine({}, 500);
+    const sale = await unwrap(recordRetailSale({
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 2 }],
+      customerName: "Walk-in",
+      discount: percent(0),
+      paidPaisa: 0,
+      customerPhone: "01755555555",
+    }));
+
+    expect(sale.items[0]!.ratePaisa).toBe(13000);
+    expect(sale.items[0]!.pataRatePaisa).toBe(1400);
+  });
+});

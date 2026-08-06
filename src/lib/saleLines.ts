@@ -27,10 +27,31 @@ export type SaleLineDraft = {
   quantity: number;
   leftoverPatas: number;
   ratePaisa: number;
+  pataRatePaisa: number;
   lineTotalPaisa: number;
   patasDeducted: number;
   costPaisa: number;
 };
+
+/**
+ * The rates a line must be billed at instead of the medicine's current ones,
+ * keyed by medicine id.
+ *
+ * Only updateSale (src/actions/sales.ts) passes this, and it builds the map
+ * from the sale's own stored lines — never from anything the caller sent. An
+ * edit must not silently reprice what a customer was already invoiced for,
+ * but the price of a *catalogue* medicine still has to come from the server:
+ * the sale editor shows a medicine line's rate as read-only text precisely
+ * so that no client decides it.
+ *
+ * A null pata rate means "not recoverable for this line" (see
+ * snapshotRatesFor) and falls back to the medicine's current pata rate,
+ * which is the only number left to use.
+ */
+export type RateOverrides = Map<
+  string,
+  { boxPricePaisa: number; pataPricePaisa: number | null }
+>;
 
 /**
  * Turns requested items into priced, stock-deducted sale lines — the box +
@@ -51,6 +72,7 @@ export async function buildSaleLines(
   items: SaleItemInput[],
   session: ClientSession,
   priceMode: "retail" | "wholesale",
+  rateOverrides?: RateOverrides,
 ): Promise<SaleLineDraft[]> {
   const lines: SaleLineDraft[] = [];
 
@@ -61,14 +83,18 @@ export async function buildSaleLines(
       );
       if (!medicine) throw new Error("Medicine pawa jay ni");
 
+      const override = rateOverrides?.get(item.medicineId);
+
       const boxPricePaisa =
-        priceMode === "wholesale"
+        override?.boxPricePaisa ??
+        (priceMode === "wholesale"
           ? medicine.wholesaleBoxPricePaisa
-          : medicine.retailBoxPricePaisa;
+          : medicine.retailBoxPricePaisa);
       const pataPricePaisa =
-        priceMode === "wholesale"
+        override?.pataPricePaisa ??
+        (priceMode === "wholesale"
           ? medicine.wholesalePataPricePaisa
-          : medicine.retailPataPricePaisa;
+          : medicine.retailPataPricePaisa);
 
       const leftoverPatas = item.patas ?? 0;
       const totalPatas =
@@ -99,6 +125,7 @@ export async function buildSaleLines(
         quantity: item.boxes,
         leftoverPatas,
         ratePaisa: boxPricePaisa,
+        pataRatePaisa: pataPricePaisa,
         lineTotalPaisa:
           item.boxes * boxPricePaisa + leftoverPatas * pataPricePaisa,
         patasDeducted: totalPatas,
@@ -116,6 +143,8 @@ export async function buildSaleLines(
         quantity: item.boxes,
         leftoverPatas: 0,
         ratePaisa: item.customPricePaisa,
+        // A custom line has no patas leg to price.
+        pataRatePaisa: 0,
         lineTotalPaisa: item.boxes * item.customPricePaisa,
         patasDeducted: 0,
         // Box-only, exactly like lineTotalPaisa above: a custom line never

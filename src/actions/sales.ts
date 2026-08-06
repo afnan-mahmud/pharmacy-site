@@ -11,7 +11,7 @@ import {
   assertRetailDueIsCollectable,
 } from "@/lib/writeRetailSale";
 import { computeTotals, type DiscountInput } from "@/lib/saleTotals";
-import { buildSaleLines } from "@/lib/saleLines";
+import { buildSaleLines, type RateOverrides } from "@/lib/saleLines";
 import { toPlain, type Serialized } from "@/lib/serialize";
 import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { MedicineModel } from "@/models/Medicine";
@@ -524,6 +524,66 @@ export async function currentPricesForSale(
   );
 }
 
+/**
+ * The rates each medicine line on an existing sale was actually billed at,
+ * so that editing the sale re-bills those lines at the same numbers.
+ *
+ * Without this an edit repriced every line from the live catalogue: correct
+ * an old invoice's quantity from 5 boxes to 6 and every *other* line silently
+ * moved to today's rate too, so the paper the customer is holding and the
+ * record in the system stopped agreeing — and the customer's due changed by
+ * an amount nobody asked for. The line schema snapshots `ratePaisa` for
+ * exactly this reason ("changing a medicine's price later must never rewrite
+ * what a past invoice says the customer was charged"); the edit path was
+ * simply not reading it.
+ *
+ * The pata rate is recovered in three steps, because lines written before
+ * `pataRatePaisa` existed do not carry one:
+ *
+ *  1. the stored rate, when there is one;
+ *  2. otherwise, back it out of the line total — lineTotalPaisa is
+ *     quantity * ratePaisa + leftoverPatas * pataRate, so the remainder
+ *     divided by leftoverPatas *is* the rate. Only accepted when it divides
+ *     exactly, since a fractional paisa means the arithmetic no longer
+ *     describes how this line was priced and the result would be a guess;
+ *  3. otherwise null, and buildSaleLines falls back to the current rate for
+ *     that leg alone. Only a legacy whole-box line reaches this: it stored no
+ *     pata rate and sold no patas to back one out of, so there is genuinely
+ *     nothing to recover. Lines written since carry the rate whether or not
+ *     any patas were sold, so adding patas to one bills them at that sale's
+ *     own rate — the whole invoice stays priced as of the day it was issued,
+ *     rather than one line being half-old and half-new.
+ *
+ * Keyed by medicine id, which validateSaleItems already guarantees is unique
+ * within a sale, so a line can never match two entries. Custom lines are
+ * skipped: their price comes from the editor, which carries it through an
+ * edit unchanged.
+ */
+function snapshotRatesFor(lines: SaleDoc["items"]): RateOverrides {
+  const rates: RateOverrides = new Map();
+
+  for (const line of lines) {
+    if (!line.medicineId) continue;
+
+    let pataPricePaisa: number | null = null;
+    if (line.pataRatePaisa > 0) {
+      pataPricePaisa = line.pataRatePaisa;
+    } else if (line.leftoverPatas > 0) {
+      const patasPortion =
+        line.lineTotalPaisa - line.quantity * line.ratePaisa;
+      if (patasPortion >= 0 && patasPortion % line.leftoverPatas === 0) {
+        pataPricePaisa = patasPortion / line.leftoverPatas;
+      }
+    }
+
+    rates.set(String(line.medicineId), {
+      boxPricePaisa: line.ratePaisa,
+      pataPricePaisa,
+    });
+  }
+
+  return rates;
+}
 
 export async function updateSale(
   input: UpdateSaleInput,
@@ -563,9 +623,15 @@ export async function updateSale(
           }
         }
 
-        // 2. Build new lines & deduct new stock
+        // 2. Build new lines & deduct new stock, billing each line the
+        //    customer already has on paper rather than today's price.
         const priceMode = sale.type === "wholesale" ? "wholesale" : "retail";
-        const newLines = await buildSaleLines(input.items, session, priceMode);
+        const newLines = await buildSaleLines(
+          input.items,
+          session,
+          priceMode,
+          snapshotRatesFor(sale.items),
+        );
 
         // 3. Compute totals
         const { subtotalPaisa, discountPercent, discountPaisa, totalPaisa, duePaisa } =

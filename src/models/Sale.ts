@@ -15,6 +15,15 @@ const saleLineSchema = new Schema(
     // Snapshotted at sale time: changing a medicine's price later must
     // never rewrite what a past invoice says the customer was charged.
     ratePaisa: { type: Number, required: true, min: 0 },
+    // The *other* half of that snapshot: the per-pata rate this line was
+    // billed at, which `ratePaisa` (a per-box rate) does not capture. Without
+    // it a mixed box+pata line could only have its pata rate reconstructed by
+    // dividing the remainder of lineTotalPaisa, and a whole-box line could not
+    // have it reconstructed at all — so an edit that added patas to an old
+    // line had nothing to bill them at except today's price. 0 means "not
+    // recorded", which is every line written before this field existed; see
+    // snapshotRatesFor in src/actions/sales.ts for how those are recovered.
+    pataRatePaisa: { type: Number, required: true, default: 0, min: 0 },
     lineTotalPaisa: { type: Number, required: true, min: 0 },
     // How much stock this line actually consumed. For a box line this is
     // quantity * patasPerBox; for a pata line it is quantity, and for a
