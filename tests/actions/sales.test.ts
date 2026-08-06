@@ -92,7 +92,7 @@ describe("recordRetailSale", () => {
       discount: percent(0),
       paidPaisa: 13000,
     }));
-    expect(sale.invoiceNo).toMatch(/^ABC-\d{6}$/);
+    expect(sale.invoiceNo).toMatch(/^NP-\d{6}$/);
   });
 
   it("has no buyer", async () => {
@@ -283,8 +283,8 @@ describe("recordWholesaleSale", () => {
       paidPaisa: 12000,
     }));
 
-    expect(first.invoiceNo).toBe("ABC-000001");
-    expect(second.invoiceNo).toBe("ABC-000002");
+    expect(first.invoiceNo).toBe("NP-000001");
+    expect(second.invoiceNo).toBe("NP-000002");
   });
 
   it("uses a changed invoice prefix", async () => {

@@ -34,8 +34,8 @@ beforeEach(async () => {
 describe("getSettings", () => {
   it("creates the singleton with the placeholder name on first read", async () => {
     const settings = await getSettings();
-    expect(settings.pharmacyName).toBe("ABC Pharmacy");
-    expect(settings.invoicePrefix).toBe("ABC");
+    expect(settings.pharmacyName).toBe("Niramoy Pharmacy");
+    expect(settings.invoicePrefix).toBe("NP");
   });
 
   it("never creates a second settings document", async () => {
@@ -60,8 +60,8 @@ describe("readSettings", () => {
   it("returns the schema defaults with no admin session and no document yet", async () => {
     clearSessionCookie(cookieStore);
     const settings = await readSettings();
-    expect(settings.pharmacyName).toBe("ABC Pharmacy");
-    expect(settings.invoicePrefix).toBe("ABC");
+    expect(settings.pharmacyName).toBe("Niramoy Pharmacy");
+    expect(settings.invoicePrefix).toBe("NP");
   });
 
   it("never creates a document as a side effect", async () => {
@@ -88,7 +88,7 @@ describe("readSettings", () => {
   it("works identically for a buyer-role session", async () => {
     setSessionCookie(cookieStore, await buyerToken());
     const settings = await readSettings();
-    expect(settings.pharmacyName).toBe("ABC Pharmacy");
+    expect(settings.pharmacyName).toBe("Niramoy Pharmacy");
   });
 });
 
@@ -273,8 +273,8 @@ describe("concurrent access", () => {
     const ids = new Set(results.map((r) => String((r as unknown as { _id: unknown })._id)));
     expect(ids.size).toBe(1);
     for (const settings of results) {
-      expect(settings.pharmacyName).toBe("ABC Pharmacy");
-      expect(settings.invoicePrefix).toBe("ABC");
+      expect(settings.pharmacyName).toBe("Niramoy Pharmacy");
+      expect(settings.invoicePrefix).toBe("NP");
     }
     expect(await SettingsModel.countDocuments()).toBe(1);
   });
@@ -330,7 +330,7 @@ describe("duplicate-key race handling (mocked)", () => {
     const settings = await getSettings();
 
     expect(calls).toBe(2);
-    expect(settings.pharmacyName).toBe("ABC Pharmacy");
+    expect(settings.pharmacyName).toBe("Niramoy Pharmacy");
     expect(await SettingsModel.countDocuments()).toBe(1);
   });
 

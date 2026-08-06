@@ -26,7 +26,7 @@ export default function LoginPage() {
   const [address, setAddress] = useState("");
   const [regPassword, setRegPassword] = useState("");
 
-  const [pharmacyName, setPharmacyName] = useState("Green Pharma & Surgical");
+  const [pharmacyName, setPharmacyName] = useState("Niramoy Pharmacy");
   const [logoUrl, setLogoUrl] = useState("");
 
   useEffect(() => {

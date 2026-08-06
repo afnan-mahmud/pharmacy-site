@@ -57,7 +57,7 @@ export async function writeRetailSale(
   const settings = await SettingsModel.findOne({ key: "singleton" }).session(
     session,
   );
-  const prefix = settings?.invoicePrefix ?? "ABC";
+  const prefix = settings?.invoicePrefix ?? "NP";
   const seq = await nextInvoiceSeq(session);
 
   if (trimmedPhone) {

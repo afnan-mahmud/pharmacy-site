@@ -74,7 +74,7 @@ export async function writeWholesaleSale(
   const settings = await SettingsModel.findOne({ key: "singleton" }).session(
     session,
   );
-  const prefix = settings?.invoicePrefix ?? "ABC";
+  const prefix = settings?.invoicePrefix ?? "NP";
   const seq = await nextInvoiceSeq(session);
 
   const previousDuePaisa = await computeBuyerDue(String(params.buyer.id), session);

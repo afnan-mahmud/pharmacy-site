@@ -107,7 +107,7 @@ export function SettingsForm({
     reader.readAsDataURL(file);
   }
 
-  const sampleInvoiceNo = `${(values.invoicePrefix || "ABC").toUpperCase().trim()}-000142`;
+  const sampleInvoiceNo = `${(values.invoicePrefix || "NP").toUpperCase().trim()}-000142`;
 
   return (
     <div className="flex flex-col pb-12 w-full max-w-full overflow-x-hidden">
@@ -413,7 +413,7 @@ export function SettingsForm({
                     maxLength={8}
                     value={values.invoicePrefix}
                     onChange={(e) => updateField({ invoicePrefix: e.target.value.toUpperCase().trim() })}
-                    placeholder="ABC"
+                    placeholder="NP"
                   />
                 </div>
                 <div className="rounded-xl bg-canvas p-3 border border-line/60 flex items-center justify-between gap-2 flex-wrap text-xs">

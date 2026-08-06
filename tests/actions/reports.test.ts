@@ -201,7 +201,7 @@ describe("salesReport", () => {
     });
     await makeSale({
       type: "wholesale",
-      invoiceNo: "ABC-000001",
+      invoiceNo: "NP-000001",
       buyerName: "Karim Uddin",
       totalPaisa: 36000,
       subtotalPaisa: 36000,
@@ -295,13 +295,13 @@ describe("salesReport", () => {
   it("carries the invoice number and buyer for a wholesale row", async () => {
     await makeSale({
       type: "wholesale",
-      invoiceNo: "ABC-000041",
+      invoiceNo: "NP-000041",
       buyerName: "Karim Uddin",
       createdAt: new Date("2026-07-17T10:00:00Z"),
     });
 
     const report = await salesReport("2026-07-17", "2026-07-17");
-    expect(report.rows[0].invoiceNo).toBe("ABC-000041");
+    expect(report.rows[0].invoiceNo).toBe("NP-000041");
     expect(report.rows[0].buyerName).toBe("Karim Uddin");
   });
 

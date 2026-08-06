@@ -88,8 +88,8 @@ describe("writeWholesaleSale", () => {
     const line = [{ medicineId: String(medicine._id), boxes: 1 }];
     const first = await run({ buyer: buyer(), items: line });
     const second = await run({ buyer: buyer(), items: line });
-    expect(first!.invoiceNo).toBe("ABC-000001");
-    expect(second!.invoiceNo).toBe("ABC-000002");
+    expect(first!.invoiceNo).toBe("NP-000001");
+    expect(second!.invoiceNo).toBe("NP-000002");
   });
 
   it("records the paid and due amounts", async () => {

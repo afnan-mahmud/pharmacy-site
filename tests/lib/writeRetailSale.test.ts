@@ -70,8 +70,8 @@ describe("writeRetailSale", () => {
       customerName: "Walk-in", customerPhone: "", items: line,
       discount: { kind: "percent", percent: 0 }, paidPaisa: 13000,
     });
-    expect(first!.invoiceNo).toBe("ABC-000001");
-    expect(second!.invoiceNo).toBe("ABC-000002");
+    expect(first!.invoiceNo).toBe("NP-000001");
+    expect(second!.invoiceNo).toBe("NP-000002");
   });
 
   it("applies an amount discount exactly, no rounding round-trip", async () => {

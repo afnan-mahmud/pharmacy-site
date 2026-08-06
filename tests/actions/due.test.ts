@@ -76,7 +76,7 @@ function retailSale(overrides: Partial<SaleDoc> = {}) {
     buyerId: null,
     buyerName: "Karim",
     buyerPhone: "01711111111",
-    invoiceNo: `ABC-${Math.floor(Math.random() * 1000000)}`,
+    invoiceNo: `NP-${Math.floor(Math.random() * 1000000)}`,
     items: [
       {
         medicineId: new mongoose.Types.ObjectId(),

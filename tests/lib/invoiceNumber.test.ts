@@ -8,12 +8,12 @@ setupTestDb();
 
 describe("formatInvoiceNo", () => {
   it("pads the sequence to six digits", () => {
-    expect(formatInvoiceNo("ABC", 41)).toBe("ABC-000041");
-    expect(formatInvoiceNo("ABC", 1)).toBe("ABC-000001");
+    expect(formatInvoiceNo("NP", 41)).toBe("NP-000041");
+    expect(formatInvoiceNo("NP", 1)).toBe("NP-000001");
   });
 
   it("does not truncate a sequence past six digits", () => {
-    expect(formatInvoiceNo("ABC", 1234567)).toBe("ABC-1234567");
+    expect(formatInvoiceNo("NP", 1234567)).toBe("NP-1234567");
   });
 
   it("uses the given prefix", () => {

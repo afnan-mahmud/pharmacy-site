@@ -18,10 +18,13 @@ const inter = Inter({
 });
 
 // Static fallback title for routes outside the (admin) group (e.g. /login,
-// /_not-found). It must not depend on the database and must not name the
-// pharmacy — that comes only from Settings, read by the (admin) layout.
+// /_not-found). It must not depend on the database, so this is the one place
+// the name is hardcoded: /login renders before any session exists and cannot
+// await Settings for its tab title. Every *rendered* use of the name still
+// comes from Settings via readSettings() — if the owner renames the shop
+// there, this literal is the only thing left to update by hand.
 export const metadata: Metadata = {
-  title: "Pharmacy Management System",
+  title: "Niramoy Pharmacy",
 };
 
 export default function RootLayout({

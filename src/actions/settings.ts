@@ -45,7 +45,7 @@ function toOptionalString(value: unknown, label: string): string {
 // abbreviation, short enough to stay readable on a narrow thermal strip, and
 // restricted to a charset with no ambiguity around the "-" that separates it
 // from the sequence number. Normalized to uppercase on save (matching the
-// "ABC" schema default) rather than rejecting lowercase input outright — a
+// "NP" schema default) rather than rejecting lowercase input outright — a
 // case difference isn't a meaningfully invalid input, just one worth
 // normalizing.
 const INVOICE_PREFIX_PATTERN = /^[A-Z0-9]{2,8}$/;
@@ -121,7 +121,7 @@ export async function getSettings(): Promise<Serialized<SettingsDoc>> {
  * somehow still absent (a fresh dev database nobody has seeded yet, or a
  * test that reads before an admin has saved anything), this falls back to
  * the schema's own defaults — read off an unsaved model instance rather
- * than re-typed here, so "ABC Pharmacy" continues to exist in exactly one
+ * than re-typed here, so "Niramoy Pharmacy" continues to exist in exactly one
  * place (src/models/Settings.ts). Throwing instead would be the wrong
  * failure mode for a read with no write permission attached: it would mean
  * a screen that only *displays* the pharmacy's name — which the buyer

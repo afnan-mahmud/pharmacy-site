@@ -4,7 +4,7 @@ const settingsSchema = new Schema(
   {
     // Fixed key guarantees exactly one settings document.
     key: { type: String, required: true, unique: true, default: "singleton" },
-    pharmacyName: { type: String, required: true, default: "ABC Pharmacy" },
+    pharmacyName: { type: String, required: true, default: "Niramoy Pharmacy" },
     proprietorName: { type: String, default: "" },
     logoUrl: { type: String, default: "" },
     // A short line shown under the pharmacy name in the header, e.g.
@@ -12,7 +12,7 @@ const settingsSchema = new Schema(
     tagline: { type: String, default: "Medicine & Surgical" },
     address: { type: String, default: "" },
     phone: { type: String, default: "" },
-    invoicePrefix: { type: String, required: true, default: "ABC" },
+    invoicePrefix: { type: String, required: true, default: "NP" },
     aboutUs: { type: String, default: "" },
   },
   { timestamps: true },

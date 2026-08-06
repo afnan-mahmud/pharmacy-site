@@ -131,7 +131,7 @@ describe("dashboardSummary", () => {
     await makeSale({ createdAt: new Date("2026-07-17T05:00:00Z") });
     await makeSale({
       type: "wholesale",
-      invoiceNo: "ABC-000001",
+      invoiceNo: "NP-000001",
       buyerName: "Karim",
       totalPaisa: 36000,
       subtotalPaisa: 36000,
@@ -239,7 +239,7 @@ describe("dashboardSummary — credit total", () => {
       type: "wholesale",
       buyerId,
       buyerName: "Karim",
-      invoiceNo: "ABC-000001",
+      invoiceNo: "NP-000001",
       duePaisa: 120000,
       paidPaisa: 0,
       totalPaisa: 120000,
