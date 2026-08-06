@@ -60,6 +60,50 @@ function validateInvoicePrefix(raw: string): string {
   return prefix;
 }
 
+/**
+ * The most a logo may weigh, and the shapes it may take.
+ *
+ * The logo is not a file on disk — it is a string on the settings document,
+ * and both layouts read it, so whatever is stored here is re-sent with every
+ * page render for every user. Validated as "a string" and nothing else, one
+ * paste could put a multi-megabyte data URI on every screen in the app.
+ *
+ * The settings form already resizes an upload to 360px and re-encodes it as
+ * WebP, which lands around 30-80KB before base64. 256KB leaves generous room
+ * above that — a photographic logo rather than a flat one — while still
+ * bounding the page weight. It is also comfortably under the 1MB default
+ * limit Next.js puts on a Server Action body, so an oversized logo fails
+ * here, with a message, rather than at the framework with an opaque one.
+ *
+ * Two paths bypass the resize and are the reason this cannot live in the
+ * form: the canvas fallback when a 2D context is unavailable, which stores
+ * the original untouched, and the "paste a link" box, which stores whatever
+ * is typed.
+ */
+const MAX_LOGO_BYTES = 256 * 1024;
+
+const LOGO_SHAPE = /^(data:image\/[a-zA-Z0-9.+-]+;|https?:\/\/)/;
+
+function validateLogoUrl(value: string): string {
+  const logoUrl = value.trim();
+  if (!logoUrl) return ""; // No logo is a normal setting.
+
+  // Byte length, not character count: a data URI is ASCII so the two agree,
+  // but a link with non-ASCII characters would under-count as characters.
+  const bytes = new TextEncoder().encode(logoUrl).length;
+  if (bytes > MAX_LOGO_BYTES) {
+    throw new Error(
+      `Logo ta onek boro (${Math.round(bytes / 1024)}KB) — ${Math.round(MAX_LOGO_BYTES / 1024)}KB er beshi hote parbe na. Chhoto kore abar upload korun.`,
+    );
+  }
+  if (!LOGO_SHAPE.test(logoUrl)) {
+    throw new Error(
+      "Logo hishebe ekta image file upload korun, ba http/https link din.",
+    );
+  }
+  return logoUrl;
+}
+
 const DUPLICATE_KEY_ERROR_CODE = 11000;
 
 function isDuplicateKeyError(error: unknown): boolean {
@@ -165,7 +209,7 @@ function validate(input: SettingsInput): {
   const pharmacyName = input.pharmacyName.trim();
 
   const proprietorName = toOptionalString(input.proprietorName, "proprietorName").trim();
-  const logoUrl = toOptionalString(input.logoUrl, "logoUrl").trim();
+  const logoUrl = validateLogoUrl(toOptionalString(input.logoUrl, "logoUrl"));
   const tagline = toOptionalString(input.tagline, "tagline").trim();
   const address = toOptionalString(input.address, "address").trim();
   const phone = toOptionalString(input.phone, "phone").trim();

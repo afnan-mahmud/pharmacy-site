@@ -400,3 +400,66 @@ describe("authorization", () => {
     ).rejects.toThrow(ADMIN_ONLY_ERROR);
   });
 });
+
+/**
+ * The logo is a string on the settings document, and both layouts read it —
+ * so whatever is stored rides along with every page render for every user.
+ * Validated as "a string" and nothing else, one paste put a multi-megabyte
+ * data URI on every screen in the app.
+ */
+describe("logo size and shape", () => {
+  const base = {
+    pharmacyName: "Niramoy Pharmacy",
+    address: "Mirpur",
+    phone: "01711111111",
+    invoicePrefix: "NP",
+  };
+
+  const dataUri = (bytes: number) =>
+    "data:image/webp;base64," + "A".repeat(bytes);
+
+  it("accepts a logo of a reasonable size", async () => {
+    // Around what the form's 360px WebP re-encode actually produces.
+    const settings = await unwrap(
+      updateSettings({ ...base, logoUrl: dataUri(60 * 1024) }),
+    );
+    expect(settings.logoUrl.length).toBeGreaterThan(60 * 1024);
+  });
+
+  it("refuses one that would weigh down every page, and says how big it is", async () => {
+    await expect(
+      unwrap(updateSettings({ ...base, logoUrl: dataUri(400 * 1024) })),
+    ).rejects.toThrow(/onek boro \(4\d\dKB\)/);
+  });
+
+  it("keeps the stored logo when an oversized one is refused", async () => {
+    const good = dataUri(1024);
+    await unwrap(updateSettings({ ...base, logoUrl: good }));
+    await expect(
+      unwrap(updateSettings({ ...base, logoUrl: dataUri(400 * 1024) })),
+    ).rejects.toThrow();
+
+    const settings = await readSettings();
+    expect(settings.logoUrl).toBe(good);
+  });
+
+  it("accepts an http(s) link, which the form also allows typing", async () => {
+    const settings = await unwrap(
+      updateSettings({ ...base, logoUrl: "https://example.com/logo.png" }),
+    );
+    expect(settings.logoUrl).toBe("https://example.com/logo.png");
+  });
+
+  it("refuses a string that is neither an image nor a link", async () => {
+    for (const junk of ["just some text", "ftp://example.com/a.png", "data:text/html;base64,AAAA"]) {
+      await expect(
+        unwrap(updateSettings({ ...base, logoUrl: junk })),
+      ).rejects.toThrow("image file upload korun");
+    }
+  });
+
+  it("still treats no logo as a normal setting", async () => {
+    const settings = await unwrap(updateSettings({ ...base, logoUrl: "   " }));
+    expect(settings.logoUrl).toBe("");
+  });
+});

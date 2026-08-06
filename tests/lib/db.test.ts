@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 import mongoose from "mongoose";
-import { MongoMemoryReplSet } from "mongodb-memory-server";
-import { connectDb } from "@/lib/db";
+import { MongoMemoryReplSet, MongoMemoryServer } from "mongodb-memory-server";
+import { connectDb, STANDALONE_MONGO_ERROR } from "@/lib/db";
 
 type MongooseCache = {
   conn: typeof mongoose | null;
@@ -104,5 +104,64 @@ describe("connectDb", () => {
 
     const conn = await connectDb();
     expect(conn.connection.readyState).toBe(1);
+  });
+});
+
+/**
+ * Every write in this app runs inside a transaction, which MongoDB only
+ * offers on a replica set or a sharded cluster. A standalone mongod connects
+ * perfectly happily and then fails the first sale at the counter with a
+ * driver error about transaction numbers — long after the deploy that caused
+ * it, and in front of a customer.
+ */
+describe("connectDb refuses a database that cannot run transactions", () => {
+  it("rejects a standalone mongod, naming the reason", async () => {
+    const standalone = await MongoMemoryServer.create();
+    try {
+      resetMongooseCache();
+      await mongoose.disconnect();
+      vi.stubEnv("MONGODB_URI", standalone.getUri());
+
+      await expect(connectDb()).rejects.toThrow(STANDALONE_MONGO_ERROR);
+    } finally {
+      await mongoose.disconnect().catch(() => {});
+      await standalone.stop();
+      vi.unstubAllEnvs();
+      resetMongooseCache();
+    }
+  });
+
+  it("does not cache the failure, so a fixed URI connects on the next try", async () => {
+    const standalone = await MongoMemoryServer.create();
+    try {
+      resetMongooseCache();
+      await mongoose.disconnect();
+      vi.stubEnv("MONGODB_URI", standalone.getUri());
+      await expect(connectDb()).rejects.toThrow(STANDALONE_MONGO_ERROR);
+
+      // Point at a replica set without restarting the process — the same
+      // thing an operator does after reading the message.
+      await mongoose.disconnect().catch(() => {});
+      vi.stubEnv("MONGODB_URI", await getReplSetUri());
+      await expect(connectDb()).resolves.toBe(mongoose);
+    } finally {
+      await mongoose.disconnect().catch(() => {});
+      await standalone.stop();
+      vi.unstubAllEnvs();
+      resetMongooseCache();
+    }
+  });
+
+  it("accepts a replica set", async () => {
+    try {
+      resetMongooseCache();
+      await mongoose.disconnect();
+      vi.stubEnv("MONGODB_URI", await getReplSetUri());
+      await expect(connectDb()).resolves.toBe(mongoose);
+    } finally {
+      await mongoose.disconnect().catch(() => {});
+      vi.unstubAllEnvs();
+      resetMongooseCache();
+    }
   });
 });

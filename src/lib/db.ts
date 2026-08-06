@@ -17,6 +17,45 @@ const cache: MongooseCache = globalWithMongoose._mongooseCache ?? {
 };
 globalWithMongoose._mongooseCache = cache;
 
+export const STANDALONE_MONGO_ERROR =
+  "Ei database e transaction cholbe na — MongoDB standalone mode e ache, " +
+  "replica set ba sharded cluster lagbe. Atlas emnitei replica set; " +
+  "nijer server e MongoDB chalale replica set kore chalate hobe.";
+
+/**
+ * Refuses a MongoDB that cannot run transactions.
+ *
+ * Every write in this app — a sale, a cancellation, an edit, a stock-in, a
+ * payment — runs inside session.withTransaction, because each of them
+ * changes more than one document and none of them may half-happen. That is
+ * a hard requirement, not a preference, so it is not something to relax; a
+ * standalone mongod simply cannot serve this app.
+ *
+ * What it can do is say so. Without this check a standalone connects
+ * happily, every page renders, and then the first sale at the counter fails
+ * with a driver error about "Transaction numbers are only allowed on a
+ * replica set member or mongos" — at the till, in front of a customer, long
+ * after the deploy that caused it. Failing at connect turns a silent
+ * mis-provisioning into an error on the first page load, with the fix in the
+ * message.
+ *
+ * `hello` is the one command that answers this: a replica set member reports
+ * `setName`, a mongos reports `msg: "isdbgrid"`, and a standalone reports
+ * neither. It needs no special privilege and runs once per process, since
+ * connectDb caches the connection.
+ */
+async function assertTransactionsSupported(
+  connected: typeof mongoose,
+): Promise<typeof mongoose> {
+  const info = await connected.connection.db!.admin().command({ hello: 1 });
+  const isReplicaSet = typeof info.setName === "string";
+  const isSharded = info.msg === "isdbgrid";
+  if (!isReplicaSet && !isSharded) {
+    throw new Error(STANDALONE_MONGO_ERROR);
+  }
+  return connected;
+}
+
 export async function connectDb(): Promise<typeof mongoose> {
   if (cache.conn) return cache.conn;
 
@@ -61,6 +100,7 @@ export async function connectDb(): Promise<typeof mongoose> {
         // it rather than let it hold one of the ten pool sockets forever.
         socketTimeoutMS: 45_000,
       })
+      .then(assertTransactionsSupported)
       .catch((err) => {
         cache.promise = null;
         throw err;
