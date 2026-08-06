@@ -44,6 +44,7 @@ const medicineSchema = new Schema(
     // outrun what is on hand; see src/lib/stockTransaction.ts. See src/lib/units.ts.
     stockPatas: { type: Number, required: true, default: 0 },
     lowStockThreshold: { type: Number, required: true, default: 0, min: 0 },
+    expiryDate: { type: Date, default: null },
     active: { type: Boolean, required: true, default: true },
   },
   { timestamps: true },

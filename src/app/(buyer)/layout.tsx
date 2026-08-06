@@ -16,6 +16,7 @@ export default async function BuyerLayout({
       <BuyerNav
         pharmacyName={settings.pharmacyName}
         tagline={settings.tagline}
+        logoUrl={settings.logoUrl}
         buyerName={session.name}
       />
       {/* Bottom padding leaves room for the fixed mobile tab bar. */}

@@ -454,3 +454,42 @@ describe("medicine form", () => {
     expect(updated.form).toBe("tablet");
   });
 });
+
+describe("expiryDate", () => {
+  it("stores expiryDate when provided during creation", async () => {
+    const medicine = await unwrap(
+      createMedicine({
+        ...napa,
+        expiryDate: "2028-12-31",
+      }),
+    );
+    expect(medicine.expiryDate).toBeDefined();
+    expect(new Date(medicine.expiryDate!).getFullYear()).toBe(2028);
+  });
+
+  it("updates expiryDate on medicine update", async () => {
+    const created = await unwrap(createMedicine(napa));
+    expect(created.expiryDate).toBeFalsy();
+
+    const updated = await unwrap(
+      updateMedicine(created._id, {
+        ...napa,
+        expiryDate: "2027-06-15",
+      }),
+    );
+    expect(updated.expiryDate).toBeDefined();
+    expect(new Date(updated.expiryDate!).getFullYear()).toBe(2027);
+  });
+
+  it("rejects invalid expiry date format", async () => {
+    await expect(
+      unwrap(
+        createMedicine({
+          ...napa,
+          expiryDate: "not-a-valid-date",
+        }),
+      ),
+    ).rejects.toThrow("expiryDate thik na");
+  });
+});
+

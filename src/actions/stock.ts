@@ -10,11 +10,13 @@ import { applyStockDelta } from "@/lib/stockTransaction";
 import { MedicineModel } from "@/models/Medicine";
 import { StockEntryModel, type StockEntryDoc } from "@/models/StockEntry";
 import { actionResult, type ActionResult } from "@/lib/actionResult";
+import { parseOptionalDate } from "@/lib/dhakaDate";
 
 export type StockInInput = {
   medicineId: string;
   boxes: number;
   note: string;
+  expiryDate?: string | Date | null;
 };
 
 /**
@@ -46,6 +48,7 @@ function validate(input: StockInInput): void {
   if (typeof input.note !== "string") {
     throw new Error("note must be a string");
   }
+  parseOptionalDate(input.expiryDate, "expiryDate");
 }
 
 export async function stockIn(
@@ -55,6 +58,7 @@ export async function stockIn(
     const adminSession = await requireAdminAction();
     await connectDb();
     validate(input);
+    const parsedExpiry = parseOptionalDate(input.expiryDate, "expiryDate");
 
     // The stock increment and the audit record must both land or neither:
     // an increment without a record is stock nobody can account for, and a
@@ -89,6 +93,14 @@ export async function stockIn(
         );
         if (!matched) throw new Error("Medicine not found");
 
+        if (parsedExpiry !== null) {
+          await MedicineModel.findByIdAndUpdate(
+            medicine._id,
+            { $set: { expiryDate: parsedExpiry } },
+            { session },
+          );
+        }
+
         await StockEntryModel.create(
           [
             {
@@ -98,6 +110,7 @@ export async function stockIn(
               patasAdded,
               form: medicine.form,
               note: input.note.trim(),
+              expiryDate: parsedExpiry,
               createdBy: new mongoose.Types.ObjectId(adminSession.userId),
             },
           ],

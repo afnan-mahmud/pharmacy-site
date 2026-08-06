@@ -22,9 +22,11 @@ const LINKS = [
 export function AdminNav({
   pharmacyName,
   tagline,
+  logoUrl,
 }: {
   pharmacyName: string;
   tagline?: string;
+  logoUrl?: string;
 }) {
   const pathname = usePathname();
 
@@ -32,7 +34,7 @@ export function AdminNav({
     <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center gap-4 px-4 py-2.5">
         <Link href="/dashboard" className="shrink-0">
-          <Brand name={pharmacyName} tagline={tagline} />
+          <Brand name={pharmacyName} tagline={tagline} logoUrl={logoUrl} />
         </Link>
 
         {/* Desktop only — on mobile the bottom tab bar carries navigation.

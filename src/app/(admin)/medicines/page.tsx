@@ -21,6 +21,7 @@ export default async function MedicinesPage() {
     lowStockThreshold: m.lowStockThreshold,
     stockPatas: m.stockPatas,
     active: m.active,
+    expiryDate: m.expiryDate ? String(m.expiryDate) : null,
   }));
 
   return <MedicineTable medicines={rows} />;

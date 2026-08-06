@@ -33,6 +33,7 @@ export type MedicineFormValues = {
   retailPataPricePaisa: number;
   mrpBoxPricePaisa: number;
   lowStockThreshold: number;
+  expiryDate?: string | null;
 };
 
 export function MedicineForm({
@@ -72,6 +73,9 @@ export function MedicineForm({
   );
   const [threshold, setThreshold] = useState(
     String(initial?.lowStockThreshold ?? 0),
+  );
+  const [expiryDate, setExpiryDate] = useState(
+    initial?.expiryDate ? new Date(initial.expiryDate).toISOString().slice(0, 10) : "",
   );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -115,6 +119,7 @@ export function MedicineForm({
         retailPataPricePaisa,
         mrpBoxPricePaisa: takaToPaisa(mrp || 0),
         lowStockThreshold: Number(threshold),
+        expiryDate: expiryDate ? expiryDate : null,
       };
 
       const result = initial?.id
@@ -133,6 +138,7 @@ export function MedicineForm({
           medicineId: targetId,
           boxes: Number(stockBoxes),
           note: stockNote,
+          expiryDate: expiryDate ? expiryDate : undefined,
         });
         if (!stockResult.ok) {
           setError(stockResult.error);
@@ -267,6 +273,23 @@ export function MedicineForm({
               onChange={(e) => setCompany(e.target.value)}
               placeholder="যেমন: Beximco Pharmaceuticals"
             />
+          </div>
+
+          {/* Expiry Date */}
+          <div className="space-y-1.5">
+            <label htmlFor="expiryDate" className={labelCls}>
+              মেয়াদোত্তীর্ণের তারিখ / Expiry Date (ঐচ্ছিক)
+            </label>
+            <input
+              id="expiryDate"
+              type="date"
+              className={input}
+              value={expiryDate}
+              onChange={(e) => setExpiryDate(e.target.value)}
+            />
+            <p className="text-[11px] text-muted">
+              ওষুধের মেয়াদ শেষ হওয়ার তারিখ (যদি থাকে)।
+            </p>
           </div>
 
           {/* Patas Per Box */}
@@ -553,6 +576,16 @@ export function MedicineForm({
                     </span>
                   </div>
                   {entry.note && <div className="text-[11px] text-muted mt-0.5">{entry.note}</div>}
+                  {entry.expiryDate && (
+                    <div className="text-[11px] text-brand-strong font-medium mt-0.5">
+                      মেয়াদ: {new Date(entry.expiryDate).toLocaleDateString("bn-BD", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                        timeZone: "Asia/Dhaka",
+                      })}
+                    </div>
+                  )}
                 </div>
                 <div className="text-[11px] text-muted text-right font-medium">
                   {new Date(entry.createdAt).toLocaleDateString("bn-BD", {

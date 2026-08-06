@@ -9,6 +9,8 @@ import { actionResult, type ActionResult } from "@/lib/actionResult";
 
 export type SettingsInput = {
   pharmacyName: string;
+  proprietorName?: string;
+  logoUrl?: string;
   // Optional; omitted behaves like the schema default. See Settings.tagline.
   tagline?: string;
   address: string;
@@ -149,6 +151,8 @@ export async function readSettings(): Promise<Serialized<SettingsDoc>> {
  */
 function validate(input: SettingsInput): {
   pharmacyName: string;
+  proprietorName: string;
+  logoUrl: string;
   tagline: string;
   address: string;
   phone: string;
@@ -160,6 +164,8 @@ function validate(input: SettingsInput): {
   }
   const pharmacyName = input.pharmacyName.trim();
 
+  const proprietorName = toOptionalString(input.proprietorName, "proprietorName").trim();
+  const logoUrl = toOptionalString(input.logoUrl, "logoUrl").trim();
   const tagline = toOptionalString(input.tagline, "tagline").trim();
   const address = toOptionalString(input.address, "address").trim();
   const phone = toOptionalString(input.phone, "phone").trim();
@@ -170,7 +176,7 @@ function validate(input: SettingsInput): {
   }
   const invoicePrefix = validateInvoicePrefix(input.invoicePrefix.trim());
 
-  return { pharmacyName, tagline, address, phone, invoicePrefix, aboutUs };
+  return { pharmacyName, proprietorName, logoUrl, tagline, address, phone, invoicePrefix, aboutUs };
 }
 
 export async function updateSettings(
@@ -180,14 +186,14 @@ export async function updateSettings(
     await requireAdminAction();
     await connectDb();
 
-    const { pharmacyName, tagline, address, phone, invoicePrefix, aboutUs } =
+    const { pharmacyName, proprietorName, logoUrl, tagline, address, phone, invoicePrefix, aboutUs } =
       validate(input);
 
     const settings = await withDuplicateKeyRetry(() =>
       SettingsModel.findOneAndUpdate(
         { key: "singleton" },
         {
-          $set: { pharmacyName, tagline, invoicePrefix, address, phone, aboutUs },
+          $set: { pharmacyName, proprietorName, logoUrl, tagline, invoicePrefix, address, phone, aboutUs },
           $setOnInsert: { key: "singleton" },
         },
         { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },

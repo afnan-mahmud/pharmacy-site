@@ -8,6 +8,8 @@ export default async function SettingsPage() {
     <SettingsForm
       initial={{
         pharmacyName: settings.pharmacyName,
+        proprietorName: settings.proprietorName ?? "",
+        logoUrl: settings.logoUrl ?? "",
         tagline: settings.tagline ?? "",
         address: settings.address,
         phone: settings.phone,

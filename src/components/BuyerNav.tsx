@@ -13,17 +13,19 @@ const LINKS = [
 export function BuyerNav({
   pharmacyName,
   tagline,
+  logoUrl,
   buyerName,
 }: {
   pharmacyName: string;
   tagline?: string;
+  logoUrl?: string;
   buyerName: string;
 }) {
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface/95 backdrop-blur">
       <div className="mx-auto flex max-w-4xl items-center gap-4 px-4 py-2.5">
         <Link href="/buyer" className="shrink-0">
-          <Brand name={pharmacyName} tagline={tagline} />
+          <Brand name={pharmacyName} tagline={tagline} logoUrl={logoUrl} />
         </Link>
 
         {/* Desktop links; on mobile these live in the bottom tab bar instead. */}

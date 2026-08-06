@@ -144,3 +144,24 @@ export function formatDhakaDateTime(value: Date | string): string {
     hour12: false,
   });
 }
+
+export function parseOptionalDate(value: unknown, label = "তারিখ"): Date | null {
+  if (value === undefined || value === null || value === "") return null;
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) {
+      throw new Error(`${label} thik na`);
+    }
+    return value;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = new Date(trimmed);
+    if (isNaN(parsed.getTime())) {
+      throw new Error(`${label} thik na`);
+    }
+    return parsed;
+  }
+  throw new Error(`${label} thik na`);
+}
+

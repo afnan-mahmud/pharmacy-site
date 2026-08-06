@@ -19,6 +19,7 @@ import {
   cancelMyOrder,
   myDueBalance,
   myLedger,
+  getMySale,
   searchMedicinesForBuyer,
 } from "@/actions/buyerOrders";
 import { MAX_LINE_ITEMS, TOO_MANY_LINES_ERROR } from "@/lib/lineLimits";
@@ -27,6 +28,7 @@ import { recordPayment } from "@/actions/due";
 import { BuyerModel } from "@/models/Buyer";
 import { MedicineModel } from "@/models/Medicine";
 import { OrderModel } from "@/models/Order";
+import { SaleModel } from "@/models/Sale";
 
 const cookieStore = createMockCookieStore();
 vi.mock("next/headers", () => ({
@@ -540,5 +542,77 @@ describe("order size cap", () => {
 
     expect(order.items).toHaveLength(MAX_LINE_ITEMS);
     expect(order.items[0].boxes).toBe(5);
+  });
+
+  describe("getMySale", () => {
+    it("returns the sale when it belongs to the logged-in buyer", async () => {
+      const buyer = await makeSessionBuyer();
+      const medicine = await makeMedicine();
+
+      // Record a wholesale sale for this buyer
+      setSessionCookie(cookieStore, await adminToken());
+      const recorded = await unwrap(
+        recordWholesaleSale({
+          buyerId: String(buyer._id),
+          items: [{ medicineId: String(medicine._id), boxes: 2, patas: 0 }],
+          discountPercent: 0,
+          paidPaisa: 5000,
+        }),
+      );
+
+      // Now switch to buyer session and fetch
+      setSessionCookie(cookieStore, await buyerToken());
+      const sale = await getMySale(recorded._id);
+
+      expect(sale).not.toBeNull();
+      expect(sale?._id).toBe(recorded._id);
+      expect(sale?.invoiceNo).toBe(recorded.invoiceNo);
+      expect(sale?.totalPaisa).toBe(recorded.totalPaisa);
+      expect(sale?.items).toHaveLength(1);
+      expect(sale?.items[0].medicineName).toBe("Napa 500mg");
+    });
+
+    it("returns null when the sale belongs to a different buyer", async () => {
+      await makeSessionBuyer();
+      const medicine = await makeMedicine();
+
+      const otherBuyer = await BuyerModel.create({
+        name: "Other Buyer",
+        shopName: "Other Pharmacy",
+        phone: "01722222222",
+        passwordHash: "x",
+        active: true,
+      });
+
+      setSessionCookie(cookieStore, await adminToken());
+      const otherSale = await unwrap(
+        recordWholesaleSale({
+          buyerId: String(otherBuyer._id),
+          items: [{ medicineId: String(medicine._id), boxes: 1, patas: 0 }],
+          discountPercent: 0,
+          paidPaisa: 0,
+        }),
+      );
+
+      // Logged-in buyer should not see other buyer's sale
+      setSessionCookie(cookieStore, await buyerToken());
+      const result = await getMySale(otherSale._id);
+      expect(result).toBeNull();
+    });
+
+    it("returns null for non-existent or invalid sale id", async () => {
+      await makeSessionBuyer();
+      setSessionCookie(cookieStore, await buyerToken());
+
+      expect(await getMySale("invalid-id")).toBeNull();
+      expect(await getMySale(new mongoose.Types.ObjectId().toString())).toBeNull();
+    });
+
+    it("rejects when not authenticated as buyer", async () => {
+      clearSessionCookie(cookieStore);
+      await expect(
+        getMySale(new mongoose.Types.ObjectId().toString()),
+      ).rejects.toThrow(BUYER_ONLY_ERROR);
+    });
   });
 });

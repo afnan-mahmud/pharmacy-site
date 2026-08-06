@@ -10,6 +10,8 @@ export function SettingsForm({
 }: {
   initial: {
     pharmacyName: string;
+    proprietorName: string;
+    logoUrl: string;
     tagline: string;
     address: string;
     phone: string;
@@ -23,6 +25,7 @@ export function SettingsForm({
   const [done, setDone] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showPreview, setShowPreview] = useState(true);
+  const [logoInputMode, setLogoInputMode] = useState<"file" | "url">("file");
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -40,6 +43,8 @@ export function SettingsForm({
       const saved = result.data;
       setValues({
         pharmacyName: saved.pharmacyName,
+        proprietorName: saved.proprietorName ?? "",
+        logoUrl: saved.logoUrl ?? "",
         tagline: saved.tagline ?? "",
         address: saved.address,
         phone: saved.phone,
@@ -61,10 +66,51 @@ export function SettingsForm({
     setDone(false);
   }
 
+  function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      setError("অনুগ্রহ করে একটি ছবি (PNG, JPG, WebP) নির্বাচন করুন");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let { width, height } = img;
+        const maxDim = 360;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL("image/webp", 0.9);
+          updateField({ logoUrl: dataUrl });
+        } else {
+          updateField({ logoUrl: event.target?.result as string });
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  }
+
   const sampleInvoiceNo = `${(values.invoicePrefix || "ABC").toUpperCase().trim()}-000142`;
 
   return (
-    <div className="flex flex-col pb-12">
+    <div className="flex flex-col pb-12 w-full max-w-full overflow-x-hidden">
       {/* Hero Header Banner */}
       <section className="-mx-4 -mt-4 mb-6 sm:-mx-6 sm:-mt-6 rounded-b-3xl bg-gradient-to-br from-brand via-brand-strong to-brand-deep px-5 pb-7 pt-7 text-white shadow-md relative overflow-hidden">
         <div className="absolute right-0 top-0 -translate-y-1/3 translate-x-1/3 h-64 w-64 rounded-full bg-white/10 blur-3xl pointer-events-none" />
@@ -80,18 +126,26 @@ export function SettingsForm({
             </h1>
           </div>
           <p className="text-xs sm:text-sm text-white/85 mt-1 max-w-xl">
-            ফার্মেসির নাম, ঠিকানা, ইনভয়েস প্রিফিক্স ও রশিদ সংক্রান্ত তথ্য পরিবর্তন করুন
+            ফার্মেসির নাম, লোগো, ঠিকানা, ইনভয়েস প্রিফিক্স ও রশিদ সংক্রান্ত তথ্য পরিবর্তন করুন
           </p>
 
           {/* Quick Info Summary Pill */}
           <div className="mt-4 flex flex-wrap items-center gap-2 text-xs">
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-white/15 backdrop-blur px-3 py-1 text-white">
-              <span>🏪</span>
-              <span className="font-bold">{values.pharmacyName || "ফার্মেসির নাম"}</span>
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-white/15 backdrop-blur px-3 py-1 text-white max-w-full">
+              {values.logoUrl ? (
+                <img
+                  src={values.logoUrl}
+                  alt="Logo"
+                  className="h-4 w-4 shrink-0 rounded-full object-contain bg-white/20"
+                />
+              ) : (
+                <span>🏪</span>
+              )}
+              <span className="font-bold truncate">{values.pharmacyName || "ফার্মেসির নাম"}</span>
             </div>
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-white/15 backdrop-blur px-3 py-1 text-white">
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-white/15 backdrop-blur px-3 py-1 text-white max-w-full">
               <span>🧾</span>
-              <span>মেমো নম্বর: <strong className="font-mono">{sampleInvoiceNo}</strong></span>
+              <span className="truncate">মেমো নম্বর: <strong className="font-mono">{sampleInvoiceNo}</strong></span>
             </div>
           </div>
         </div>
@@ -117,22 +171,23 @@ export function SettingsForm({
 
       <div className="grid gap-5 lg:grid-cols-12 max-w-5xl mx-auto w-full">
         {/* Main Settings Form */}
-        <form onSubmit={handleSubmit} className="space-y-4 lg:col-span-7">
+        <form onSubmit={handleSubmit} className="space-y-4 lg:col-span-7 w-full max-w-full">
           {/* Section 1: Identity & Branding */}
-          <div className={`${card} p-4 sm:p-5 space-y-4`}>
+          <div className={`${card} p-4 sm:p-5 space-y-4 max-w-full overflow-hidden`}>
             <div className="flex items-center gap-2 border-b border-line pb-2.5">
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-sky-50 text-sky-700 text-sm font-bold">
                 ১
               </span>
               <div>
                 <h2 className="font-display text-sm sm:text-base font-bold text-ink">
-                  ফার্মেসির পরিচয় ও ব্র্যান্ডিং
+                  ফার্মেসির পরিচয়, লোগো ও ব্র্যান্ডিং
                 </h2>
-                <p className="text-[11px] text-muted">অ্যাপ ও রশিদের হেডার হিসেবে প্রদর্শিত হবে</p>
+                <p className="text-[11px] text-muted">অ্যাপের সব হেডার, লগইন ও রশিদে এই লোগো ও তথ্য প্রদর্শিত হবে</p>
               </div>
             </div>
 
             <div className="space-y-3.5">
+              {/* Pharmacy Name */}
               <div className="space-y-1.5">
                 <label htmlFor="pharmacyName" className={labelCls}>
                   ফার্মেসির নাম <span className="text-danger">*</span>
@@ -149,6 +204,122 @@ export function SettingsForm({
                 </div>
               </div>
 
+              {/* Logo Field */}
+              <div className="space-y-3 rounded-2xl border border-line bg-canvas/60 p-3 sm:p-4 max-w-full">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <label className={labelCls}>
+                    ফার্মেসির লোগো (Pharmacy Logo)
+                  </label>
+                  <div className="inline-flex items-center gap-1 self-start sm:self-auto rounded-lg border border-line bg-surface p-0.5 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => setLogoInputMode("file")}
+                      className={`px-2.5 py-1 rounded-md font-semibold transition ${
+                        logoInputMode === "file"
+                          ? "bg-brand text-white shadow-xs"
+                          : "text-muted hover:text-ink"
+                      }`}
+                    >
+                      ছবি আপলোড
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLogoInputMode("url")}
+                      className={`px-2.5 py-1 rounded-md font-semibold transition ${
+                        logoInputMode === "url"
+                          ? "bg-brand text-white shadow-xs"
+                          : "text-muted hover:text-ink"
+                      }`}
+                    >
+                      ইমেজ লিংক (URL)
+                    </button>
+                  </div>
+                </div>
+
+                {values.logoUrl ? (
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 rounded-xl border border-line bg-surface p-3 max-w-full overflow-hidden">
+                    <div className="flex items-center gap-3 min-w-0 flex-1 max-w-full">
+                      <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-line bg-canvas p-1 overflow-hidden">
+                        <img
+                          src={values.logoUrl}
+                          alt="Uploaded logo preview"
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold text-ink flex items-center gap-1.5">
+                          <span className="h-2 w-2 shrink-0 rounded-full bg-brand" />
+                          <span className="truncate">লোগো নির্বাচন করা হয়েছে</span>
+                        </div>
+                        <p className="text-[11px] text-muted truncate mt-0.5">
+                          অ্যাপের সব জায়গায় ও রশিদে এই লোগোটি দেখাবে
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => updateField({ logoUrl: "" })}
+                      className="w-full sm:w-auto shrink-0 inline-flex items-center justify-center gap-1 rounded-lg border border-danger/20 bg-danger/5 px-3 py-1.5 text-xs font-semibold text-danger hover:bg-danger/10 transition"
+                    >
+                      <span>✕</span>
+                      <span>মুছে ফেলুন</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div>
+                    {logoInputMode === "file" ? (
+                      <label className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-line hover:border-brand bg-surface p-4 cursor-pointer transition group text-center">
+                        <span className="text-2xl group-hover:scale-110 transition">🖼️</span>
+                        <div>
+                          <span className="text-xs font-bold text-brand-strong group-hover:underline block">
+                            ডিভাইস থেকে লোগো ছবি বেছে নিন
+                          </span>
+                          <p className="text-[10px] text-muted mt-0.5 max-w-xs">
+                            PNG, JPG, WebP বা SVG ফরম্যাট (স্বয়ংক্রিয়ভাবে সাইজ অপ্টিমাইজ হবে)
+                          </p>
+                        </div>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    ) : (
+                      <div className="space-y-1">
+                        <input
+                          id="logoUrlInput"
+                          className={input}
+                          value={values.logoUrl}
+                          onChange={(e) => updateField({ logoUrl: e.target.value })}
+                          placeholder="https://example.com/logo.png"
+                        />
+                        <p className="text-[10px] text-muted">ইন্টারনেটে থাকা যেকোনো লোগোর লিংক দিন।</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Proprietor Name */}
+              <div className="space-y-1.5">
+                <label htmlFor="proprietorName" className={labelCls}>
+                  প্রোপ্রাইটরের নাম (Proprietor Name)
+                </label>
+                <div className="relative">
+                  <input
+                    id="proprietorName"
+                    className={input}
+                    value={values.proprietorName}
+                    onChange={(e) => updateField({ proprietorName: e.target.value })}
+                    placeholder="যেমন: মোঃ রফিকুল ইসলাম"
+                  />
+                  <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted">👤</span>
+                </div>
+                <p className="text-[11px] text-muted">ইনভয়েস ও মেমোতে ফার্মেসির নামের নিচে "Proprietor - [নাম]" হিসেবে প্রদর্শিত হবে।</p>
+              </div>
+
+              {/* Tagline */}
               <div className="space-y-1.5">
                 <label htmlFor="tagline" className={labelCls}>
                   স্লোগান / ট্যাগলাইন
@@ -166,7 +337,7 @@ export function SettingsForm({
           </div>
 
           {/* Section 2: Contact & Address */}
-          <div className={`${card} p-4 sm:p-5 space-y-4`}>
+          <div className={`${card} p-4 sm:p-5 space-y-4 max-w-full overflow-hidden`}>
             <div className="flex items-center gap-2 border-b border-line pb-2.5">
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 text-sm font-bold">
                 ২
@@ -216,7 +387,7 @@ export function SettingsForm({
           </div>
 
           {/* Section 3: Invoice Prefix Configuration */}
-          <div className={`${card} p-4 sm:p-5 space-y-4`}>
+          <div className={`${card} p-4 sm:p-5 space-y-4 max-w-full overflow-hidden`}>
             <div className="flex items-center gap-2 border-b border-line pb-2.5">
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-50 text-purple-700 text-sm font-bold">
                 ৩
@@ -245,7 +416,7 @@ export function SettingsForm({
                     placeholder="ABC"
                   />
                 </div>
-                <div className="rounded-xl bg-canvas p-3 border border-line/60 flex items-center justify-between text-xs">
+                <div className="rounded-xl bg-canvas p-3 border border-line/60 flex items-center justify-between gap-2 flex-wrap text-xs">
                   <span className="text-muted">ইনভয়েস নম্বরের নমুনা:</span>
                   <span className="font-mono font-bold text-brand-strong bg-surface px-2.5 py-1 rounded-lg border border-brand-line">
                     {sampleInvoiceNo}
@@ -259,7 +430,7 @@ export function SettingsForm({
           </div>
 
           {/* Section 4: Buyer Portal About Us */}
-          <div className={`${card} p-4 sm:p-5 space-y-4`}>
+          <div className={`${card} p-4 sm:p-5 space-y-4 max-w-full overflow-hidden`}>
             <div className="flex items-center gap-2 border-b border-line pb-2.5">
               <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-50 text-amber-700 text-sm font-bold">
                 ৪
@@ -332,9 +503,21 @@ export function SettingsForm({
                 <div className="text-[10px] font-bold tracking-widest text-muted uppercase">
                   নমুনা মেমো রশিদ
                 </div>
+                {values.logoUrl && (
+                  <img
+                    src={values.logoUrl}
+                    alt="Logo"
+                    className="mx-auto mb-2 h-10 w-auto max-w-[120px] object-contain"
+                  />
+                )}
                 <h4 className="font-display text-lg font-black text-ink leading-tight">
                   {values.pharmacyName || "ফার্মেসির নাম"}
                 </h4>
+                {values.proprietorName && (
+                  <p className="text-xs font-semibold text-ink/80">
+                    Proprietor - {values.proprietorName}
+                  </p>
+                )}
                 {values.tagline && (
                   <p className="text-xs font-medium text-brand-strong">
                     {values.tagline}
@@ -408,6 +591,7 @@ export function SettingsForm({
               <span>সহায়ক তথ্য</span>
             </div>
             <ul className="space-y-1.5 list-disc list-inside">
+              <li>লোগো পরিবর্তন করলে সাইটের সব পেইজের হেডার, লগইন স্ক্রিন ও রশিদে এই লোগো দেখাবে।</li>
               <li>এখানে সংরক্ষিত নাম এবং মোবাইল নম্বর সব রশিদে প্রিন্ট হবে।</li>
               <li>ইনভয়েস প্রিফিক্স পরিবর্তন করলে নতুন তৈরি হওয়া সেলগুলোতে তা কার্যকর হবে।</li>
               <li>বায়ার পোর্টালের হেডারেও আপনার ফার্মেসির এই নামটি দেখাবে।</li>

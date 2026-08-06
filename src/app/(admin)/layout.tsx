@@ -44,7 +44,11 @@ export default async function AdminLayout({
 
   return (
     <div className="min-h-screen bg-canvas">
-      <AdminNav pharmacyName={settings.pharmacyName} tagline={settings.tagline} />
+      <AdminNav
+        pharmacyName={settings.pharmacyName}
+        tagline={settings.tagline}
+        logoUrl={settings.logoUrl}
+      />
       {/* Bottom padding leaves room for the fixed mobile tab bar. */}
       <main className="mx-auto max-w-6xl p-4 pb-24 sm:p-6 md:pb-6">{children}</main>
       <AdminBottomNav />

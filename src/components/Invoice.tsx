@@ -3,6 +3,8 @@ import { unitLabelsFor } from "@/lib/unitLabels";
 
 type InvoiceProps = {
   pharmacyName: string;
+  proprietorName?: string;
+  logoUrl?: string;
   address: string;
   phone: string;
   invoiceNo: string;
@@ -61,6 +63,8 @@ function formatWholesaleQty(
 
 export function Invoice({
   pharmacyName,
+  proprietorName,
+  logoUrl,
   address,
   phone,
   invoiceNo,
@@ -94,7 +98,15 @@ export function Invoice({
       )}
 
       <div className="mb-4 text-center">
+        {logoUrl && (
+          <img
+            src={logoUrl}
+            alt={pharmacyName}
+            className="mx-auto mb-2 h-12 w-auto max-w-[120px] object-contain"
+          />
+        )}
         <div className="text-base font-bold">{pharmacyName}</div>
+        {proprietorName && <div>Proprietor - {proprietorName}</div>}
         {address && <div>{address}</div>}
         {phone && <div>Tel: {phone}</div>}
       </div>

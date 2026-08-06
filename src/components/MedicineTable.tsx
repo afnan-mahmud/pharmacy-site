@@ -61,6 +61,7 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
   const [stockInTarget, setStockInTarget] = useState<MedicineRow | null>(null);
   const [stockBoxes, setStockBoxes] = useState("");
   const [stockNote, setStockNote] = useState("");
+  const [stockExpiryDate, setStockExpiryDate] = useState("");
   const [stockInBusy, setStockInBusy] = useState(false);
   const [stockInError, setStockInError] = useState("");
 
@@ -95,6 +96,7 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
             lowStockThreshold: m.lowStockThreshold,
             stockPatas: m.stockPatas,
             active: m.active,
+            expiryDate: m.expiryDate ? String(m.expiryDate) : null,
           })),
         );
       } catch {
@@ -203,6 +205,7 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
         medicineId: stockInTarget.id,
         boxes: boxesNum,
         note: stockNote.trim(),
+        expiryDate: stockExpiryDate ? stockExpiryDate : undefined,
       });
 
       if (!res.ok) {
@@ -216,6 +219,7 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
       setStockInTarget(null);
       setStockBoxes("");
       setStockNote("");
+      setStockExpiryDate("");
       router.refresh();
     } catch (err) {
       setStockInError(err instanceof Error ? err.message : "স্টক যোগ করতে ব্যর্থ হয়েছে");
@@ -521,6 +525,7 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
               setStockInTarget(row);
               setStockBoxes("");
               setStockNote("");
+              setStockExpiryDate(row.expiryDate ? new Date(row.expiryDate).toISOString().slice(0, 10) : "");
               setStockInError("");
             }}
             onDeactivate={handleDeactivate}
@@ -537,6 +542,7 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
               setStockInTarget(row);
               setStockBoxes("");
               setStockNote("");
+              setStockExpiryDate(row.expiryDate ? new Date(row.expiryDate).toISOString().slice(0, 10) : "");
               setStockInError("");
             }}
             onDeactivate={handleDeactivate}
@@ -622,6 +628,19 @@ export function MedicineTable({ medicines }: { medicines: MedicineRow[] }) {
                     = {boxesToPatas(Number(stockBoxes), stockInTarget.patasPerBox)} {unitLabelsFor(stockInTarget.form).inner} যুক্ত হবে
                   </p>
                 )}
+              </div>
+
+              {/* Expiry Date */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-ink">
+                  মেয়াদোত্তীর্ণের তারিখ / Expiry Date (ঐচ্ছিক)
+                </label>
+                <input
+                  type="date"
+                  value={stockExpiryDate}
+                  onChange={(e) => setStockExpiryDate(e.target.value)}
+                  className="w-full rounded-2xl border border-line bg-surface px-3.5 py-2.5 text-xs text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                />
               </div>
 
               <div className="space-y-1.5">
@@ -789,6 +808,12 @@ function DesktopRows({
                         {row.genericName}
                       </span>
                     )}
+                    {row.expiryDate && (
+                      <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200/60 rounded px-1.5 py-0.5 mt-1 inline-flex items-center gap-1 w-fit font-medium">
+                        <span>📅 মেয়াদ:</span>
+                        <span>{new Date(row.expiryDate).toLocaleDateString("bn-BD", { month: "short", year: "numeric", timeZone: "Asia/Dhaka" })}</span>
+                      </span>
+                    )}
                   </div>
                 </td>
                 <td className={`${td} text-xs text-muted font-medium`}>{row.company || "—"}</td>
@@ -936,6 +961,12 @@ function MobileCards({
                     {!isPiece && (
                       <span className="text-muted/60">• ({row.patasPerBox} {labels.inner}/{labels.outer})</span>
                     )}
+                  </div>
+                )}
+                {row.expiryDate && (
+                  <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200/60 rounded px-1.5 py-0.5 inline-flex items-center gap-1 w-fit font-medium">
+                    <span>📅 মেয়াদ:</span>
+                    <span>{new Date(row.expiryDate).toLocaleDateString("bn-BD", { month: "short", year: "numeric", timeZone: "Asia/Dhaka" })}</span>
                   </div>
                 )}
               </div>

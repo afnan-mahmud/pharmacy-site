@@ -27,11 +27,15 @@ export default function LoginPage() {
   const [regPassword, setRegPassword] = useState("");
 
   const [pharmacyName, setPharmacyName] = useState("Green Pharma & Surgical");
+  const [logoUrl, setLogoUrl] = useState("");
 
   useEffect(() => {
     readSettings()
       .then((settings) => {
         setPharmacyName(settings.pharmacyName);
+        if (settings.logoUrl) {
+          setLogoUrl(settings.logoUrl);
+        }
       })
       .catch(console.error);
   }, []);
@@ -80,7 +84,15 @@ export default function LoginPage() {
       <main className="flex flex-1 flex-col items-center px-4">
         {/* Logo & Header */}
         <div className="mb-6 flex flex-col items-center text-center">
-          <CapsuleMark className="mb-3 h-16 w-16 -rotate-45" />
+          {logoUrl ? (
+            <img
+              src={logoUrl}
+              alt={pharmacyName}
+              className="mb-3 h-16 w-16 rounded-2xl object-contain shadow-md bg-surface p-1 border border-line"
+            />
+          ) : (
+            <CapsuleMark className="mb-3 h-16 w-16 -rotate-45" />
+          )}
           <h1 className="font-display text-2xl font-extrabold text-brand-strong sm:text-3xl">
             {pharmacyName}
           </h1>

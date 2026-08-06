@@ -11,7 +11,7 @@ import { BuyerModel } from "@/models/Buyer";
 import { MedicineModel } from "@/models/Medicine";
 import { OrderModel, type OrderDoc } from "@/models/Order";
 import { type PaymentDoc } from "@/models/Payment";
-import { type SaleDoc } from "@/models/Sale";
+import { SaleModel, type SaleDoc } from "@/models/Sale";
 import { toMedicineForm, type MedicineForm } from "@/lib/unitLabels";
 import { actionResult, type ActionResult } from "@/lib/actionResult";
 import { assertLineCount, MAX_LINE_ITEMS, TOO_MANY_LINES_ERROR } from "@/lib/lineLimits";
@@ -278,6 +278,27 @@ export async function myLedger(): Promise<{
   await connectDb();
   const { sales, payments } = await loadBuyerLedger(session.userId);
   return { sales: toPlainList(sales), payments: toPlainList(payments) };
+}
+
+/**
+ * Returns a specific sale/invoice for the session's own buyer.
+ * Scoped by buyerId so a buyer can only ever view their own sales.
+ */
+export async function getMySale(
+  saleId: string,
+): Promise<Serialized<SaleDoc> | null> {
+  const session = await requireBuyerAction();
+  await connectDb();
+
+  if (!mongoose.Types.ObjectId.isValid(saleId)) return null;
+
+  const sale = await SaleModel.findOne({
+    _id: saleId,
+    buyerId: session.userId,
+    type: "wholesale",
+  }).lean<SaleDoc>();
+
+  return sale ? toPlain(sale) : null;
 }
 
 /**

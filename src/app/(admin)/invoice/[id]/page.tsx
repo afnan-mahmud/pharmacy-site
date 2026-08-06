@@ -68,6 +68,8 @@ export default async function InvoicePage({
 
       <Invoice
         pharmacyName={settings.pharmacyName}
+        proprietorName={settings.proprietorName ?? ""}
+        logoUrl={settings.logoUrl ?? ""}
         address={settings.address ?? ""}
         phone={settings.phone ?? ""}
         invoiceNo={sale.invoiceNo ?? ""}

@@ -154,6 +154,43 @@ describe("updateSettings", () => {
     expect(settings.phone).toBe("");
   });
 
+  it("saves and returns proprietorName and logoUrl", async () => {
+    const settings = await unwrap(updateSettings({
+      pharmacyName: "Proprietor Pharmacy",
+      proprietorName: "Md. Rafiqul Islam",
+      logoUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+      address: "Dhaka",
+      phone: "01711111111",
+      invoicePrefix: "PP",
+    }));
+    expect(settings.proprietorName).toBe("Md. Rafiqul Islam");
+    expect(settings.logoUrl).toBe("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==");
+  });
+
+  it("rejects a non-string logoUrl instead of crashing on .trim()", async () => {
+    await expect(
+      unwrap(updateSettings({
+        pharmacyName: "Name",
+        logoUrl: 123 as unknown as string,
+        address: "x",
+        phone: "y",
+        invoicePrefix: "NN",
+      })),
+    ).rejects.toThrow("logoUrl must be a string");
+  });
+
+  it("rejects a non-string proprietorName instead of crashing on .trim()", async () => {
+    await expect(
+      unwrap(updateSettings({
+        pharmacyName: "Name",
+        proprietorName: 123 as unknown as string,
+        address: "x",
+        phone: "y",
+        invoicePrefix: "NN",
+      })),
+    ).rejects.toThrow("proprietorName must be a string");
+  });
+
   it("rejects a non-string address instead of crashing on .trim()", async () => {
     await expect(
       unwrap(updateSettings({

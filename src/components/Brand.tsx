@@ -7,10 +7,12 @@
 export function Brand({
   name,
   tagline,
+  logoUrl,
   size = "md",
 }: {
   name: string;
   tagline?: string;
+  logoUrl?: string;
   size?: "sm" | "md";
 }) {
   const mark = size === "sm" ? "h-7 w-7" : "h-9 w-9";
@@ -21,7 +23,15 @@ export function Brand({
 
   return (
     <div className="flex items-center gap-2.5">
-      <CapsuleMark className={mark} />
+      {logoUrl ? (
+        <img
+          src={logoUrl}
+          alt={name}
+          className={`${mark} rounded-xl object-contain shadow-2xs`}
+        />
+      ) : (
+        <CapsuleMark className={mark} />
+      )}
       <div className="leading-tight">
         <div className={`font-display text-brand-strong ${nameCls}`}>{name}</div>
         {tagline ? (

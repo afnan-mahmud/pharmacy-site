@@ -97,6 +97,27 @@ describe("stockIn", () => {
     expect(String(entries[0].createdBy)).toBe(ADMIN_USER_ID);
   });
 
+  it("persists expiryDate into stockEntry and updates medicine expiryDate", async () => {
+    const medicine = await unwrap(createMedicine(napa));
+    await unwrap(
+      stockIn({
+        medicineId: String(medicine._id),
+        boxes: 10,
+        note: "Batch with expiry",
+        expiryDate: "2029-01-01",
+      }),
+    );
+
+    const updatedMedicine = await MedicineModel.findById(medicine._id);
+    expect(updatedMedicine?.expiryDate).toBeDefined();
+    expect(new Date(updatedMedicine!.expiryDate!).getFullYear()).toBe(2029);
+
+    const entries = await StockEntryModel.find();
+    expect(entries).toHaveLength(1);
+    expect(entries[0].expiryDate).toBeDefined();
+    expect(new Date(entries[0].expiryDate!).getFullYear()).toBe(2029);
+  });
+
   it("keeps the historical patasAdded when patasPerBox later changes, and a new entry uses the new pack size", async () => {
     const medicine = await unwrap(createMedicine(napa));
     await unwrap(stockIn({

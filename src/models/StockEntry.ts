@@ -21,6 +21,7 @@ const stockEntrySchema = new Schema(
     // src/lib/unitLabels.ts.
     form: { type: String, default: "tablet" },
     note: { type: String, default: "" },
+    expiryDate: { type: Date, default: null },
     createdBy: { type: Schema.Types.ObjectId, ref: "AdminUser", required: true },
   },
   { timestamps: true },

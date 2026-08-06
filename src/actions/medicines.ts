@@ -12,6 +12,7 @@ import {
   toMedicineForm,
   type MedicineForm,
 } from "@/lib/unitLabels";
+import { parseOptionalDate } from "@/lib/dhakaDate";
 
 export type MedicineInput = {
   name: string;
@@ -33,6 +34,7 @@ export type MedicineInput = {
   // wholesaleBoxPricePaisa.
   mrpBoxPricePaisa?: number;
   lowStockThreshold: number;
+  expiryDate?: string | Date | null;
 };
 
 /** Escapes regex metacharacters so a typed "." or "*" is matched literally. */
@@ -80,6 +82,7 @@ function validate(input: MedicineInput): void {
   // company); toFields() re-derives the actual field values below.
   toOptionalString(input.genericName, "genericName");
   toOptionalString(input.company, "company");
+  parseOptionalDate(input.expiryDate, "expiryDate");
 
   // Undefined is the "not specified" case and defaults to tablet in
   // toFields(); anything else present must be a form we actually know.
@@ -128,6 +131,7 @@ function toFields(input: MedicineInput) {
     retailPataPricePaisa: input.retailPataPricePaisa,
     mrpBoxPricePaisa: input.mrpBoxPricePaisa ?? 0,
     lowStockThreshold: input.lowStockThreshold,
+    expiryDate: parseOptionalDate(input.expiryDate, "expiryDate"),
   };
 }
 
