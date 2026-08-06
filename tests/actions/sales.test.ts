@@ -14,9 +14,10 @@ import {
   recordWholesaleSale,
   cancelSale,
   searchRetailCustomers,
+  updateSale,
 } from "@/actions/sales";
 import { createBuyer } from "@/actions/buyers";
-import { listBuyerDues } from "@/actions/due";
+import { listBuyerDues, listRetailDues, recordRetailPayment } from "@/actions/due";
 import { computeBuyerDue } from "@/lib/dueComputation";
 import { computeRetailDue } from "@/lib/retailDueComputation";
 import { MedicineModel } from "@/models/Medicine";
@@ -881,6 +882,206 @@ describe("cancelSale returns the money paid, not only the stock", () => {
     // cancelled one: square, not zero-by-accident.
     expect(await computeBuyerDue(buyer._id)).toBe(0);
     expect(await PaymentModel.countDocuments({ buyerId: buyer._id })).toBe(1);
+  });
+});
+
+/**
+ * An edit re-derives duePaisa from a new paid amount, so it can turn a
+ * fully-paid counter sale — legitimately created with no phone — into one
+ * carrying a due. listRetailDues groups by buyerPhone and excludes the empty
+ * string, so such a due is invisible the moment it is written: owed, and
+ * unreachable by any screen or payment.
+ */
+describe("updateSale keeps a retail due collectable", () => {
+  async function anonymousPaidSale() {
+    const medicine = await makeMedicine();
+    const sale = await unwrap(recordRetailSale({
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      customerName: "Walk-in",
+      discount: percent(0),
+      paidPaisa: 13000,
+    }));
+    expect(sale.buyerPhone).toBe("");
+    expect(sale.duePaisa).toBe(0);
+    return { medicine, sale };
+  }
+
+  it("refuses an edit that would leave a due with no phone", async () => {
+    const { medicine, sale } = await anonymousPaidSale();
+
+    await expect(
+      unwrap(updateSale({
+        saleId: sale._id,
+        items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+        discount: percent(0),
+        paidPaisa: 0,
+      })),
+    ).rejects.toThrow("Baki rakhte hole phone number dite hobe");
+  });
+
+  it("leaves the sale untouched when that edit is refused", async () => {
+    const { medicine, sale } = await anonymousPaidSale();
+
+    await expect(
+      unwrap(updateSale({
+        saleId: sale._id,
+        items: [{ medicineId: medicine._id, boxes: 2, patas: 0 }],
+        discount: percent(0),
+        paidPaisa: 0,
+      })),
+    ).rejects.toThrow();
+
+    // The whole edit runs in one transaction, so a refusal must not leave
+    // the stock returned or the lines rewritten.
+    const stored = await SaleModel.findById(sale._id);
+    expect(stored!.paidPaisa).toBe(13000);
+    expect(stored!.duePaisa).toBe(0);
+    expect(stored!.items).toHaveLength(1);
+    expect(stored!.items[0]!.quantity).toBe(1);
+    expect((await MedicineModel.findById(medicine._id))!.stockPatas).toBe(490);
+  });
+
+  it("accepts the same edit once a phone is supplied", async () => {
+    const { medicine, sale } = await anonymousPaidSale();
+
+    const edited = await unwrap(updateSale({
+      saleId: sale._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discount: percent(0),
+      paidPaisa: 0,
+      customerPhone: "01712345678",
+    }));
+
+    expect(edited.duePaisa).toBe(13000);
+    expect(edited.buyerPhone).toBe("01712345678");
+  });
+
+  it("puts that due on the khuchra baki list where the owner can see it", async () => {
+    const { medicine, sale } = await anonymousPaidSale();
+
+    await unwrap(updateSale({
+      saleId: sale._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discount: percent(0),
+      paidPaisa: 0,
+      customerPhone: "01712345678",
+    }));
+
+    expect(await computeRetailDue("01712345678")).toBe(13000);
+    const rows = await listRetailDues();
+    expect(rows.find((r) => r.phone === "01712345678")?.duePaisa).toBe(13000);
+  });
+
+  it("registers the customer so the due can actually be paid off", async () => {
+    const { medicine, sale } = await anonymousPaidSale();
+
+    await unwrap(updateSale({
+      saleId: sale._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discount: percent(0),
+      paidPaisa: 0,
+      customerPhone: "01712345678",
+    }));
+
+    // recordRetailPayment refuses a phone with no RetailCustomer behind it,
+    // so a due introduced by an edit would otherwise be uncollectable.
+    await unwrap(recordRetailPayment("01712345678", 130, "purota"));
+    expect(await computeRetailDue("01712345678")).toBe(0);
+  });
+
+  it("still allows an edit that leaves no due on an anonymous sale", async () => {
+    const { medicine, sale } = await anonymousPaidSale();
+
+    const edited = await unwrap(updateSale({
+      saleId: sale._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discount: percent(10),
+      paidPaisa: 11700,
+    }));
+
+    expect(edited.duePaisa).toBe(0);
+    expect(edited.buyerPhone).toBe("");
+  });
+
+  it("keeps the existing phone when the edit does not mention one", async () => {
+    const medicine = await makeMedicine();
+    const sale = await unwrap(recordRetailSale({
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      customerName: "Rahim",
+      customerPhone: "01787654321",
+      discount: percent(0),
+      paidPaisa: 0,
+    }));
+
+    const edited = await unwrap(updateSale({
+      saleId: sale._id,
+      items: [{ medicineId: medicine._id, boxes: 2, patas: 0 }],
+      discount: percent(0),
+      paidPaisa: 0,
+    }));
+
+    expect(edited.buyerPhone).toBe("01787654321");
+    expect(await computeRetailDue("01787654321")).toBe(26000);
+  });
+
+  it("moves the due when a mistyped phone is corrected", async () => {
+    const medicine = await makeMedicine();
+    const sale = await unwrap(recordRetailSale({
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      customerName: "Rahim",
+      customerPhone: "01711111111",
+      discount: percent(0),
+      paidPaisa: 0,
+    }));
+    expect(await computeRetailDue("01711111111")).toBe(13000);
+
+    await unwrap(updateSale({
+      saleId: sale._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discount: percent(0),
+      paidPaisa: 0,
+      customerPhone: "01722222222",
+    }));
+
+    expect(await computeRetailDue("01711111111")).toBe(0);
+    expect(await computeRetailDue("01722222222")).toBe(13000);
+  });
+
+  it("ignores customerPhone on a wholesale sale, whose phone is the buyer's", async () => {
+    const medicine = await makeMedicine();
+    const buyer = await makeBuyer();
+    const sale = await unwrap(recordWholesaleSale({
+      buyerId: buyer._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discountPercent: 0,
+      paidPaisa: 0,
+    }));
+
+    const edited = await unwrap(updateSale({
+      saleId: sale._id,
+      items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+      discount: percent(0),
+      paidPaisa: 0,
+      customerPhone: "01799999999",
+    }));
+
+    expect(edited.buyerPhone).toBe(buyer.phone);
+    // A wholesale due is keyed by buyerId, so it is unaffected either way.
+    expect(await computeBuyerDue(buyer._id)).toBe(12000);
+  });
+
+  it("rejects a non-string phone", async () => {
+    const { medicine, sale } = await anonymousPaidSale();
+
+    await expect(
+      unwrap(updateSale({
+        saleId: sale._id,
+        items: [{ medicineId: medicine._id, boxes: 1, patas: 0 }],
+        discount: percent(0),
+        paidPaisa: 0,
+        customerPhone: 1712345678 as unknown as string,
+      })),
+    ).rejects.toThrow("customerPhone must be a string");
   });
 });
 

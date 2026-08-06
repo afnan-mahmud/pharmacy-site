@@ -19,6 +19,32 @@ export type WriteRetailSaleParams = {
 };
 
 /**
+ * A retail due with no phone number attached is not allowed to exist.
+ *
+ * The phone is the only key a retail balance has: `Sale.buyerPhone` is what
+ * listRetailDues groups by, and that query filters out the empty string (see
+ * src/actions/due.ts). So a due saved without one is money owed that no
+ * screen can ever display, that no total includes, and that
+ * recordRetailPayment can never be settled against — it is lost the moment
+ * it is written, silently.
+ *
+ * Exported rather than inlined below because writeRetailSale is not the only
+ * path that can leave a sale holding a due: updateSale
+ * (src/actions/sales.ts) re-derives the totals of an existing sale and has
+ * to reach the same verdict. Two copies of this rule would be two chances
+ * for the create path and the edit path to disagree about it — which is
+ * exactly what happened before this was shared.
+ */
+export function assertRetailDueIsCollectable(
+  duePaisa: number,
+  phone: string,
+): void {
+  if (duePaisa > 0 && !phone.trim()) {
+    throw new Error("Baki rakhte hole phone number dite hobe");
+  }
+}
+
+/**
  * The single definition of "make a retail sale" — parallel to
  * writeWholesaleSale (src/lib/writeWholesaleSale.ts). Has one caller today
  * (recordRetailSale), but the transaction is non-trivial enough (line
@@ -49,10 +75,7 @@ export async function writeRetailSale(
   const trimmedPhone = params.customerPhone.trim();
   const trimmedName = params.customerName.trim();
 
-  // A due with no way to find the customer again is not allowed to exist.
-  if (duePaisa > 0 && !trimmedPhone) {
-    throw new Error("Baki rakhte hole phone number dite hobe");
-  }
+  assertRetailDueIsCollectable(duePaisa, trimmedPhone);
 
   const settings = await SettingsModel.findOne({ key: "singleton" }).session(
     session,

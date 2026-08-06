@@ -102,6 +102,13 @@ export function SaleEditor({
     sale.paidPaisa > 0 ? (sale.paidPaisa / 100).toString() : "0",
   );
 
+  // Editable for a counter sale only: lowering the paid amount here can turn
+  // a settled sale into one carrying a due, and the server refuses a retail
+  // due with no phone to collect it against (see
+  // assertRetailDueIsCollectable). A wholesale sale's phone comes from the
+  // buyer record and is not this screen's to change.
+  const [customerPhone, setCustomerPhone] = useState(sale.buyerPhone ?? "");
+
   const [priorDuePaisa, setPriorDuePaisa] = useState<number | null>(
     sale.previousDuePaisa ?? null,
   );
@@ -279,6 +286,7 @@ export function SaleEditor({
         items: inputItems,
         discount: discountArg,
         paidPaisa,
+        ...(sale.type === "retail" ? { customerPhone } : {}),
       });
 
       if (!result.ok) {
@@ -773,6 +781,41 @@ export function SaleEditor({
               <span className="text-xs font-bold text-muted">৳</span>
             </div>
           </div>
+
+          {/* Customer phone — retail only. A due needs a number to collect
+              against, so the field is prompted the moment one appears. */}
+          {sale.type === "retail" && (
+            <div className="rounded-2xl border border-line bg-surface p-3.5 space-y-1.5 sm:col-span-3">
+              <label
+                htmlFor="editCustomerPhone"
+                className="block text-xs font-bold text-muted"
+              >
+                ক্রেতার ফোন নম্বর
+                {finalDuePaisa > 0 && (
+                  <span className="text-danger"> (বাকি রাখতে হলে দরকার)</span>
+                )}
+              </label>
+              <input
+                id="editCustomerPhone"
+                type="tel"
+                inputMode="numeric"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                className={`w-full rounded-xl border bg-canvas px-3 py-2 text-xs sm:text-sm font-bold text-ink focus:outline-none ${
+                  finalDuePaisa > 0 && !customerPhone.trim()
+                    ? "border-danger focus:border-danger"
+                    : "border-line focus:border-brand"
+                }`}
+                placeholder="01XXXXXXXXX"
+              />
+              {finalDuePaisa > 0 && !customerPhone.trim() && (
+                <p className="text-[11px] font-semibold text-danger">
+                  ফোন নম্বর ছাড়া বাকি রাখা যাবে না — এই বাকি খুচরা বাকির
+                  তালিকায় দেখা যাবে না।
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Calculation Summary Card */}

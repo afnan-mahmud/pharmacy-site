@@ -6,7 +6,10 @@ import { connectDb } from "@/lib/db";
 import { requireAdminAction } from "@/lib/session";
 import { applyStockDelta } from "@/lib/stockTransaction";
 import { writeWholesaleSale } from "@/lib/writeWholesaleSale";
-import { writeRetailSale } from "@/lib/writeRetailSale";
+import {
+  writeRetailSale,
+  assertRetailDueIsCollectable,
+} from "@/lib/writeRetailSale";
 import { computeTotals, type DiscountInput } from "@/lib/saleTotals";
 import { buildSaleLines } from "@/lib/saleLines";
 import { toPlain, type Serialized } from "@/lib/serialize";
@@ -463,6 +466,19 @@ export type UpdateSaleInput = {
   items: UpdateSaleItemInput[];
   discount: DiscountInput;
   paidPaisa: number;
+  /**
+   * Retail only, and optional: omitted leaves the sale's existing phone
+   * alone, which is what every caller did before an edit could change it.
+   *
+   * It exists because an edit can turn a fully-paid counter sale into one
+   * carrying a due, and a retail due is uncollectable without a phone (see
+   * assertRetailDueIsCollectable). Without a way to supply one here the
+   * owner would simply be unable to save a correction that produced a due —
+   * the guard would be right and the screen would be a dead end. Ignored for
+   * a wholesale sale, where the phone belongs to the buyer record and is not
+   * the edit screen's to rewrite.
+   */
+  customerPhone?: string;
 };
 
 export async function currentPricesForSale(
@@ -559,7 +575,40 @@ export async function updateSale(
             input.paidPaisa,
           );
 
-        // 4. Update the Sale document
+        // 4. Resolve the phone this sale is keyed to, and refuse to leave an
+        //    uncollectable due behind.
+        //
+        //    This is the same rule writeRetailSale enforces at creation, and
+        //    it has to be enforced here too: an edit re-derives duePaisa from
+        //    a new paid amount, so a counter sale that was created fully paid
+        //    — legitimately, with no phone — can be edited into one carrying
+        //    a due. That sale is then invisible to listRetailDues, which
+        //    groups by buyerPhone and excludes the empty string, so the money
+        //    is owed and unreachable. A wholesale sale is untouched: its
+        //    phone belongs to the buyer record, not to this screen.
+        const nextPhone =
+          sale.type === "retail" && input.customerPhone !== undefined
+            ? toOptionalString(input.customerPhone, "customerPhone").trim()
+            : (sale.buyerPhone ?? "");
+
+        if (sale.type === "retail") {
+          assertRetailDueIsCollectable(duePaisa, nextPhone);
+
+          // A due keyed to a phone with no RetailCustomer behind it would be
+          // shown with a blank name and — worse — could never be paid off:
+          // recordRetailPayment refuses a phone it cannot find a customer
+          // for. writeRetailSale upserts for exactly this reason; an edit
+          // that introduces a new phone has to do the same.
+          if (nextPhone && nextPhone !== sale.buyerPhone) {
+            await RetailCustomerModel.findOneAndUpdate(
+              { phone: nextPhone },
+              { $set: { name: sale.buyerName } },
+              { session, upsert: true },
+            );
+          }
+        }
+
+        // 5. Update the Sale document
         sale.items = newLines as any;
         sale.subtotalPaisa = subtotalPaisa;
         sale.discountPercent = discountPercent;
@@ -567,6 +616,7 @@ export async function updateSale(
         sale.totalPaisa = totalPaisa;
         sale.paidPaisa = input.paidPaisa;
         sale.duePaisa = duePaisa;
+        sale.buyerPhone = nextPhone;
 
         await sale.save({ session });
         updatedSaleId = sale._id;
